@@ -1,0 +1,7 @@
+{
+  "name": "commerce-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Commerce Platform — motor multi-marca de conteúdo e afiliação (FastCompre e futuras marcas).",
+  "packageManager": "pnpm@11.17.0"
+}
