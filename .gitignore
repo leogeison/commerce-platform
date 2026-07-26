@@ -26,6 +26,12 @@ pnpm-debug.log*
 # Prisma
 *.db
 
+# Next.js
+next-env.d.ts
+
+# TypeScript
+*.tsbuildinfo
+
 # Cache
 .eslintcache
 .turbo/
