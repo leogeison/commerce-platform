@@ -1,3 +1,8 @@
 import base from "@leogeison/eslint-config";
 
-export default base;
+export default [
+  {
+    ignores: ["**/dist", "**/node_modules", "**/coverage"],
+  },
+  ...base,
+];

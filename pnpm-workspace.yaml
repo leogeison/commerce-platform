@@ -3,3 +3,5 @@ packages:
   - "packages/*"
 minimumReleaseAgeExclude:
   - "@leogeison/eslint-config@0.1.1"
+allowBuilds:
+  unrs-resolver: true

@@ -5,6 +5,9 @@
   "description": "Commerce Platform — motor multi-marca de conteúdo e afiliação (FastCompre e futuras marcas).",
   "packageManager": "pnpm@11.17.0",
   "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "start:api": "pnpm --filter api start",
+    "build:api": "pnpm --filter api build",
     "lint": "eslint ."
   },
   "devDependencies": {
