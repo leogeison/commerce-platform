@@ -101,7 +101,8 @@ CREATE TABLE "Offer" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "Offer_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Offer_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "Offer_price_check" CHECK ("price" > 0)
 );
 
 -- CreateTable
