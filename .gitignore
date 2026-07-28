@@ -25,6 +25,7 @@ pnpm-debug.log*
 
 # Prisma
 *.db
+apps/api/src/generated/
 
 # Next.js
 next-env.d.ts
