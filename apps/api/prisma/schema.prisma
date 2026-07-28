@@ -6,3 +6,239 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ── TENANCY ──────────────────────────────
+model Site {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  domain    String   @unique
+  locale    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  siteUsers       SiteUser[]
+  categories      Category[]
+  products        Product[]
+  offers          Offer[]
+  articles        Article[]
+  authors         Author[]
+  affiliateClicks AffiliateClick[]
+}
+
+// ── IDENTITY & ACCESS ────────────────────
+// E-mails são sempre normalizados para minúsculas pela aplicação antes de
+// gravar ou consultar.
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions       Session[]
+  siteUsers      SiteUser[]
+  authorProfiles Author[]
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt, revokedAt])
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model SiteUser {
+  id     String  @id @default(uuid())
+  userId String
+  siteId String
+  role   Role    @default(EDITOR)
+  active Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, siteId])
+  @@index([siteId])
+}
+
+// ── CATALOG ──────────────────────────────
+model Category {
+  id         String    @id @default(uuid())
+  siteId     String
+  name       String
+  slug       String
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  products Product[]
+  articles Article[]
+
+  @@unique([siteId, slug])
+  @@unique([id, siteId])
+}
+
+model Product {
+  id          String    @id @default(uuid())
+  siteId      String
+  categoryId  String?
+  name        String
+  slug        String
+  description String?
+  imageUrl    String?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  category Category? @relation(fields: [categoryId, siteId], references: [id, siteId], onDelete: Restrict)
+
+  offers   Offer[]
+  articles ArticleProduct[]
+
+  @@unique([siteId, slug])
+  @@unique([id, siteId])
+  @@index([siteId, archivedAt])
+  @@index([siteId, categoryId, archivedAt])
+}
+
+enum Marketplace {
+  MERCADO_LIVRE
+  AMAZON_BR
+  AMAZON_INTL
+  ALIEXPRESS
+}
+
+model Offer {
+  id           String      @id @default(uuid())
+  siteId       String
+  productId    String
+  marketplace  Marketplace
+  price        Decimal     @db.Decimal(10, 2) // CHECK ("price" > 0) adicionado manualmente na migration
+  currency     String      @default("BRL")
+  affiliateUrl String
+  inStock      Boolean     @default(true)
+  archivedAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [productId, siteId], references: [id, siteId], onDelete: Restrict)
+
+  affiliateClicks AffiliateClick[]
+
+  @@unique([id, siteId])
+  @@index([siteId, productId, archivedAt, inStock])
+}
+
+// ── EDITORIAL ────────────────────────────
+enum ArticleType {
+  REVIEW
+  COMPARISON
+  BUYING_GUIDE
+  DEAL
+}
+
+// ARCHIVED significa retirada manual e deliberada de publicação pelo admin.
+// Nunca é aplicado automaticamente por falta de Oferta válida.
+enum ArticleStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Article {
+  id              String        @id @default(uuid())
+  siteId          String
+  categoryId      String?
+  authorId        String?
+  type            ArticleType
+  status          ArticleStatus @default(DRAFT)
+  title           String
+  slug            String
+  metaDescription String?
+  coverImageUrl   String?
+  bodyMdx         String        @default("")
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  category Category? @relation(fields: [categoryId, siteId], references: [id, siteId], onDelete: Restrict)
+  author   Author?   @relation(fields: [authorId, siteId], references: [id, siteId], onDelete: Restrict)
+
+  products        ArticleProduct[]
+  affiliateClicks AffiliateClick[]
+
+  @@unique([siteId, slug])
+  @@unique([id, siteId])
+  @@index([siteId, status, publishedAt])
+}
+
+model ArticleProduct {
+  siteId    String
+  articleId String
+  productId String
+  position  Int    @default(0)
+
+  article Article @relation(fields: [articleId, siteId], references: [id, siteId], onDelete: Restrict)
+  product Product @relation(fields: [productId, siteId], references: [id, siteId], onDelete: Restrict)
+
+  @@id([siteId, articleId, productId])
+}
+
+model Author {
+  id        String  @id @default(uuid())
+  siteId    String
+  userId    String?
+  name      String
+  bio       String?
+  avatarUrl String?
+
+  site Site  @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  articles Article[]
+
+  @@unique([id, siteId])
+  @@unique([siteId, userId])
+}
+
+// ── TRACKING ─────────────────────────────
+model AffiliateClick {
+  id          String   @id @default(uuid())
+  siteId      String
+  offerId     String
+  articleId   String?
+  referer     String?
+  userAgent   String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  clickedAt   DateTime @default(now())
+
+  site    Site     @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  offer   Offer    @relation(fields: [offerId, siteId], references: [id, siteId], onDelete: Restrict)
+  article Article? @relation(fields: [articleId, siteId], references: [id, siteId], onDelete: Restrict)
+
+  @@index([siteId, clickedAt])
+  @@index([siteId, offerId, clickedAt])
+  @@index([siteId, articleId, clickedAt])
+}
