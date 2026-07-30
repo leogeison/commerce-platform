@@ -5,6 +5,7 @@ describe('validateEnv', () => {
     DATABASE_URL: 'postgresql://user:pass@localhost:5432/commerce_platform',
     SESSION_SECRET: 'a'.repeat(16),
     REVALIDATION_SECRET: 'b'.repeat(16),
+    ADMIN_ORIGIN: 'http://localhost:3001',
   };
 
   it('retorna as variáveis quando o ambiente é válido', () => {
@@ -35,9 +36,15 @@ describe('validateEnv', () => {
     ).toThrow(/REVALIDATION_SECRET/);
   });
 
+  it('lança erro claro quando ADMIN_ORIGIN não é uma URL válida', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, ADMIN_ORIGIN: 'nao-e-uma-url' }),
+    ).toThrow(/ADMIN_ORIGIN/);
+  });
+
   it('lança erro listando todas as variáveis ausentes de uma vez', () => {
     expect(() => validateEnv({})).toThrow(
-      /DATABASE_URL[\s\S]*SESSION_SECRET[\s\S]*REVALIDATION_SECRET/,
+      /DATABASE_URL[\s\S]*SESSION_SECRET[\s\S]*REVALIDATION_SECRET[\s\S]*ADMIN_ORIGIN/,
     );
   });
 });

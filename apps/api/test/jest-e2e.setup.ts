@@ -11,3 +11,4 @@
 process.env.DATABASE_URL ??= 'postgresql://test:test@localhost:5432/test';
 process.env.SESSION_SECRET ??= 'e2e-test-session-secret-0000000';
 process.env.REVALIDATION_SECRET ??= 'e2e-test-revalidation-secret-00';
+process.env.ADMIN_ORIGIN ??= 'http://localhost:3001';

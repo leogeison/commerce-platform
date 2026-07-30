@@ -21,6 +21,10 @@ export const envSchema = z
     REVALIDATION_SECRET: z
       .string()
       .min(16, 'REVALIDATION_SECRET deve ter pelo menos 16 caracteres'),
+    // Origem exata do apps/admin — único valor aceito pelo CORS restritivo
+    // (INF-005). CORS de rotas públicas, mais permissivo, é tratado à parte
+    // quando existir.
+    ADMIN_ORIGIN: z.string().url('ADMIN_ORIGIN deve ser uma URL válida'),
   })
   .passthrough();
 
