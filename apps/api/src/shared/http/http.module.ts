@@ -3,6 +3,8 @@ import { APP_FILTER } from '@nestjs/core';
 import { AppConfigModule } from '../config/config.module';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { OriginGuard } from './origin.guard';
+import { RateLimitGuard } from './rate-limit.guard';
+import { RateLimitStore } from './rate-limit.store';
 import { SessionCookieHelper } from './session-cookie.helper';
 
 /**
@@ -24,6 +26,12 @@ import { SessionCookieHelper } from './session-cookie.helper';
  *
  * Também expõe o `SessionCookieHelper` (INF-004) como provider injetável
  * para quando a lógica de sessão (Fase 5) existir.
+ *
+ * `RateLimitGuard`/`RateLimitStore` (INF-007) seguem o mesmo padrão do
+ * `OriginGuard`: providers comuns, exportados, **não** globais — só valem
+ * onde forem anexados explicitamente via `@UseGuards(RateLimitGuard)` numa
+ * rota que também tenha `@RateLimit(...)`. Nenhuma rota usa isso ainda
+ * (fora do escopo desta tarefa; aplicação real é Fase 5/9 — login/redirect).
  */
 @Module({
   imports: [AppConfigModule],
@@ -33,8 +41,10 @@ import { SessionCookieHelper } from './session-cookie.helper';
       useClass: AllExceptionsFilter,
     },
     OriginGuard,
+    RateLimitGuard,
+    RateLimitStore,
     SessionCookieHelper,
   ],
-  exports: [OriginGuard, SessionCookieHelper],
+  exports: [OriginGuard, RateLimitGuard, RateLimitStore, SessionCookieHelper],
 })
 export class HttpModule {}
