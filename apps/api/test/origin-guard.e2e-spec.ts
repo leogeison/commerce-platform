@@ -13,9 +13,14 @@ import { App } from 'supertest/types';
 import { HttpModule } from '../src/shared/http/http.module';
 import { OriginGuard } from '../src/shared/http/origin.guard';
 
-// Precisa bater com o fallback de `ADMIN_ORIGIN` em `jest-e2e.setup.ts`,
-// já que o `OriginGuard` lê o valor real via `ConfigService`.
-const ADMIN_ORIGIN = 'http://localhost:3001';
+// Lê do `process.env` (populado por `jest-e2e.setup.ts`, a partir do `.env`
+// real se existir, senão do fallback fictício `http://localhost:3001`) em
+// vez de fixo — mesmo valor que o `OriginGuard` vai ler via `ConfigService`
+// dentro da app sob teste. Fixo aqui divergia do `ADMIN_ORIGIN` real sempre
+// que o `.env` local define uma porta diferente (ex.: 3000, padrão do
+// `next dev` do apps/admin), fazendo o guard rejeitar com 403 requisições
+// que deveriam passar.
+const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN ?? 'http://localhost:3001';
 
 @Controller('test-origin')
 @UseGuards(OriginGuard)

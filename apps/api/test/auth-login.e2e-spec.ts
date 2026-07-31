@@ -9,7 +9,14 @@ import { PrismaUserRepository } from '../src/modules/identity/infrastructure/pri
 import { ADMIN_SESSION_COOKIE_NAME } from '../src/modules/identity/session.constants';
 import { PrismaService } from '../src/shared/database/prisma.service';
 
-const ADMIN_ORIGIN = 'http://localhost:3001';
+// Lê do `process.env` (populado por `jest-e2e.setup.ts`, a partir do `.env`
+// real se existir, senão do fallback fictício `http://localhost:3001`) em
+// vez de fixo — mesmo valor que o `OriginGuard` vai ler via `ConfigService`
+// dentro da app sob teste. Fixo aqui divergia do `ADMIN_ORIGIN` real sempre
+// que o `.env` local define uma porta diferente (ex.: 3000, padrão do
+// `next dev` do apps/admin), fazendo o guard rejeitar com 403 requisições
+// que deveriam passar.
+const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN ?? 'http://localhost:3001';
 const SEED_EMAIL = 'auth005-login@test.com';
 const SEED_PASSWORD = 'correct horse battery staple';
 const SEED_NAME = 'Auth005 Seed';

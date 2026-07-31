@@ -7,6 +7,7 @@ import { PrismaUserRepository } from './infrastructure/prisma-user.repository';
 import { CreateSessionUseCase } from './application/create-session.use-case';
 import { LoginUseCase } from './application/login.use-case';
 import { AuthController } from './presentation/auth.controller';
+import { SessionAuthGuard } from './presentation/session-auth.guard';
 
 /**
  * Primeiro módulo de domínio real ligado ao `AppModule` (AUTH-005) — até
@@ -22,6 +23,12 @@ import { AuthController } from './presentation/auth.controller';
  * provider — a classe em si continua sem `@Injectable()`/import de
  * `@nestjs/*` (decisão da AUTH-002); quem sabe que a implementação é
  * Argon2id é só este módulo.
+ *
+ * `SessionAuthGuard` (AUTH-006) exportado de propósito: o objetivo da
+ * tarefa é permitir `@UseGuards(SessionAuthGuard)` em qualquer rota
+ * protegida, inclusive em outros módulos futuros (AUTH-007/008/009 e
+ * módulos de domínio fora de `identity`) — sem `exports`, o Nest não deixa
+ * injetá-lo fora deste módulo.
  */
 @Module({
   imports: [DatabaseModule, HttpModule],
@@ -30,10 +37,12 @@ import { AuthController } from './presentation/auth.controller';
     PrismaUserRepository,
     CreateSessionUseCase,
     LoginUseCase,
+    SessionAuthGuard,
     {
       provide: PASSWORD_HASHER,
       useFactory: () => new Argon2PasswordHasher(),
     },
   ],
+  exports: [SessionAuthGuard],
 })
 export class IdentityModule {}

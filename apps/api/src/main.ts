@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { buildCorsOptions } from './shared/http/cors.config';
@@ -11,6 +12,10 @@ async function bootstrap() {
   // logger padrão do Nest, não em JSON).
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+
+  // Popula `request.cookies` (AUTH-006, `SessionAuthGuard`) — sem isso, o
+  // Express não faz parsing nenhum do header `Cookie`.
+  app.use(cookieParser());
 
   const configService = app.get(ConfigService<EnvVars, true>);
   app.enableCors(buildCorsOptions(configService.get('ADMIN_ORIGIN', { infer: true })));
