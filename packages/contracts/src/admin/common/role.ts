@@ -6,7 +6,7 @@ import { z } from 'zod';
  * pessoa pode ter Roles diferentes em Sites diferentes.
  *
  * Fica em `admin/common/`, não em `admin/auth/`, porque representa acesso
- * a um Site — reutilizável por qualquer contrato administrativo que
+ * a um Site — reutilizável por  qualquer contrato administrativo que
  * precise expor Role (hoje só `admin/auth`; futuras superfícies de gestão
  * de membros, fora do MVP, reaproveitam o mesmo schema em vez de duplicar).
  */

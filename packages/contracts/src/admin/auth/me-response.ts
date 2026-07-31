@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { roleSchema } from '../common/role';
-import { authUserSchema } from './auth-user';
+import { roleSchema } from '../common/role.js';
+import { authUserSchema } from './auth-user.js';
 
 /**
  * Um Site ao qual o usuário autenticado tem acesso, com a Role nesse Site

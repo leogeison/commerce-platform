@@ -1,4 +1,5 @@
 import react from "@leogeison/eslint-config/react";
+import node from "@leogeison/eslint-config/node";
 
 export default [
   {
@@ -12,4 +13,8 @@ export default [
     ],
   },
   ...react,
+  {
+    files: ["scripts/**/*.mjs"],
+    ...node[node.length - 1],
+  },
 ];

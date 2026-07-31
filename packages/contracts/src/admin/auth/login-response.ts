@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { authUserSchema } from './auth-user';
+import { authUserSchema } from './auth-user.js';
 
 /**
  * Corpo de resposta do login (Architecture.md, Seção 32 — "Seletor de
