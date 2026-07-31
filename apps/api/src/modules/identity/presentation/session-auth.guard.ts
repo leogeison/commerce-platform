@@ -17,8 +17,13 @@ import type { AuthContext } from './auth-context';
  * desconhecido, sessão expirada, sessão revogada) — nunca revela qual dos
  * casos ocorreu, mesmo padrão de mensagem genérica já usado em
  * `LoginUseCase`/`AuthController` (AUTH-005).
+ *
+ * Exportada (AUTH-009): `SiteAuthorizationGuard` reaproveita esta mesma
+ * mensagem quando `request.auth` está ausente (guard aplicado sem
+ * `SessionAuthGuard` antes) — mesmo `401` genérico, em vez de duplicar a
+ * string literal em outro módulo.
  */
-const INVALID_SESSION_MESSAGE = 'Sessão inválida ou expirada.';
+export const INVALID_SESSION_MESSAGE = 'Sessão inválida ou expirada.';
 
 /**
  * Guard de autenticação por sessão opaca (AUTH-006; Architecture.md,
