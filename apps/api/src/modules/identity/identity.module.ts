@@ -6,6 +6,7 @@ import { Argon2PasswordHasher } from './infrastructure/argon2-password-hasher';
 import { PrismaUserRepository } from './infrastructure/prisma-user.repository';
 import { CreateSessionUseCase } from './application/create-session.use-case';
 import { LoginUseCase } from './application/login.use-case';
+import { LogoutUseCase } from './application/logout.use-case';
 import { AuthController } from './presentation/auth.controller';
 import { SessionAuthGuard } from './presentation/session-auth.guard';
 
@@ -37,6 +38,7 @@ import { SessionAuthGuard } from './presentation/session-auth.guard';
     PrismaUserRepository,
     CreateSessionUseCase,
     LoginUseCase,
+    LogoutUseCase,
     SessionAuthGuard,
     {
       provide: PASSWORD_HASHER,
