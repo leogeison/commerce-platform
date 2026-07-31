@@ -12,6 +12,15 @@
  * ainda não implementados) nunca decide como a senha vira hash, só que ela
  * precisa virar antes de ser persistida, e que pode ser conferida depois.
  */
+/**
+ * Token de injeção do Nest para `PasswordHasher` (AUTH-005 — primeiro
+ * consumidor real). `Argon2PasswordHasher` não é `@Injectable()` de
+ * propósito (ver seu próprio comentário) — quem liga a implementação
+ * concreta ao token é o módulo (`IdentityModule`), via factory provider.
+ * Casos de uso injetam sempre a interface, nunca a classe concreta.
+ */
+export const PASSWORD_HASHER = Symbol('PasswordHasher');
+
 export interface PasswordHasher {
   /** Recebe a senha em texto puro, devolve o hash pronto para persistir. */
   hash(plainPassword: string): Promise<string>;
