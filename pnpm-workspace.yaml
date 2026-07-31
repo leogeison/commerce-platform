@@ -23,6 +23,7 @@ minimumReleaseAgeExclude:
   - "@prisma/get-platform@7.9.1"
   - "prisma@7.9.1"
 allowBuilds:
+  argon2: true
   unrs-resolver: true
   sharp: true
   "@prisma/engines": true
