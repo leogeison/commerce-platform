@@ -4,6 +4,7 @@ import { HttpModule } from '../../shared/http/http.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { CreateCategoryUseCase } from './application/create-category.use-case';
+import { GetCategoryUseCase } from './application/get-category.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
 import { CategoriesController } from './presentation/categories.controller';
@@ -30,6 +31,11 @@ import { CategoriesController } from './presentation/categories.controller';
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
   controllers: [CategoriesController],
-  providers: [PrismaCategoryRepository, CreateCategoryUseCase, ListCategoriesUseCase],
+  providers: [
+    PrismaCategoryRepository,
+    CreateCategoryUseCase,
+    ListCategoriesUseCase,
+    GetCategoryUseCase,
+  ],
 })
 export class CatalogModule {}

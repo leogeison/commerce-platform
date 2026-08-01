@@ -109,6 +109,25 @@ export class PrismaCategoryRepository {
 
     return { items, total };
   }
+
+  /**
+   * Busca uma `Category` por `id`, restrita ao Site (CAT-003).
+   *
+   * `findUnique` pela chave composta `id_siteId` (gerada pelo Prisma a
+   * partir de `@@unique([id, siteId])` do schema) — mais direto que
+   * `findFirst({ where: { id, siteId } })` para uma busca por identidade
+   * única, e usa o mesmo índice da constraint. Um `id` real de Categoria
+   * de outro Site nunca bate nessa chave composta (o par `id_siteId` não
+   * existe), então retorna `null` do mesmo jeito que um `id` inexistente
+   * — quem chama nunca distingue os dois casos, sempre um `404` genérico
+   * (decisão explícita da CAT-003, mesmo raciocínio de isolamento já usado
+   * na AUTH-010).
+   */
+  async findOneBySite(siteId: string, id: string): Promise<Category | null> {
+    return this.prisma.category.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
 }
 
 /**

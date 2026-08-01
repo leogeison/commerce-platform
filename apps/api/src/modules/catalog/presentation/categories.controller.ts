@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -13,10 +14,12 @@ import {
 import type { Request } from 'express';
 import {
   categoriesSiteParamsSchema,
+  categoryParamsSchema,
   createCategoryRequestSchema,
   listCategoriesQuerySchema,
   type CategoriesSiteParams,
   type CategoryAdmin,
+  type CategoryParams,
   type CreateCategoryRequest,
   type ListCategoriesQuery,
   type ListCategoriesResponse,
@@ -27,10 +30,12 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateCategoryUseCase } from '../application/create-category.use-case';
+import { GetCategoryUseCase } from '../application/get-category.use-case';
 import { ListCategoriesUseCase } from '../application/list-categories.use-case';
 import { toCategoryAdmin } from './category.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe uma categoria com este slug neste Site.';
+const CATEGORY_NOT_FOUND_MESSAGE = 'Categoria não encontrada.';
 
 /**
  * `POST /admin/sites/:siteSlug/categories` (CAT-001; CTR-003).
@@ -66,6 +71,7 @@ export class CategoriesController {
   constructor(
     private readonly createCategoryUseCase: CreateCategoryUseCase,
     private readonly listCategoriesUseCase: ListCategoriesUseCase,
+    private readonly getCategoryUseCase: GetCategoryUseCase,
   ) {}
 
   @Post()
@@ -131,5 +137,46 @@ export class CategoriesController {
       total: result.total,
       totalPages: result.totalPages,
     };
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/categories/:id` (CAT-003; CTR-003).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `list()`: `GET` não mutável, sem
+   * `OriginGuard`, leitura mínima da hierarquia.
+   *
+   * `categoryParamsSchema` (não `categoriesSiteParamsSchema`): a única
+   * diferença entre as duas rotas é o `id` — o pipe já garante `422` para
+   * um `id` que não seja UUID, antes até de chegar ao repository.
+   *
+   * `404` genérico para "não existe" e "existe, mas é de outro Site":
+   * `GetCategoryUseCase`/`findOneBySite` já devolvem o mesmo `null` para os
+   * dois casos (decisão explícita da CAT-003, mesmo raciocínio de
+   * isolamento da AUTH-010) — o controller nunca tenta distinguir o que o
+   * caso de uso já não distingue.
+   *
+   * Categoria arquivada (`archivedAt` preenchido) continua sendo detalhada
+   * normalmente com `200` — `archivedAt` é só um campo do estado, não um
+   * filtro de visibilidade nesta rota (ao contrário da listagem, CAT-002,
+   * onde `archived` é um filtro explícito e opcional).
+   */
+  @Get(':id')
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async detail(
+    @Param(new ZodValidationPipe(categoryParamsSchema))
+    params: CategoryParams,
+    @Req() req: Request,
+  ): Promise<CategoryAdmin> {
+    const category = await this.getCategoryUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!category) {
+      throw new NotFoundException(CATEGORY_NOT_FOUND_MESSAGE);
+    }
+
+    return toCategoryAdmin(category);
   }
 }
