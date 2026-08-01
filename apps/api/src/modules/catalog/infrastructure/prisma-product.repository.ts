@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
-import type { Product } from '../../../generated/prisma/client';
+import { Prisma, type Product } from '../../../generated/prisma/client';
 
 export interface CreateProductInput {
   siteId: string;
@@ -15,6 +15,21 @@ export type CreateProductRepositoryResult =
   | { ok: true; product: Product }
   | { ok: false; reason: 'SLUG_CONFLICT' }
   | { ok: false; reason: 'CATEGORY_NOT_FOUND' };
+
+export interface FindManyBySiteInput {
+  siteId: string;
+  page: number;
+  pageSize: number;
+  /** `undefined` = sem filtro por Categoria. */
+  categoryId?: string;
+  /** `undefined` = sem filtro (ativos e arquivados juntos). */
+  archived?: boolean;
+}
+
+export interface FindManyBySiteResult {
+  items: Product[];
+  total: number;
+}
 
 /**
  * Repository concreto (Prisma) de `Product` (CAT-008). `PrismaProductRepository`,
@@ -73,6 +88,47 @@ export class PrismaProductRepository {
 
       throw err;
     }
+  }
+
+  /**
+   * Lista paginada de `Product` de um Site (CAT-009). Mesmo padrão de
+   * `PrismaCategoryRepository.findManyBySite` (CAT-002): `findMany` +
+   * `count` no mesmo `where` via `prisma.$transaction([...])` (mesmo
+   * snapshot consistente), ordenação determinística `name asc, id asc`
+   * (mesmo critério de desempate).
+   *
+   * `categoryId` ausente não entra no `where` — sem filtro por Categoria.
+   * Presente, filtra exatamente por aquele `categoryId`; se pertencer a
+   * outro Site, o `where` combinado com `siteId` simplesmente não bate em
+   * nenhum Produto (nenhum Produto daquele Site tem esse `categoryId`) —
+   * lista vazia, não erro, sem tratamento especial.
+   *
+   * `archived` ausente não entra no `where` — ativos e arquivados juntos.
+   * Presente, vira `archivedAt: null` (ativos) ou `archivedAt: { not: null }`
+   * (arquivados), mesmo critério de Categoria.
+   */
+  async findManyBySite(
+    input: FindManyBySiteInput,
+  ): Promise<FindManyBySiteResult> {
+    const where: Prisma.ProductWhereInput = {
+      siteId: input.siteId,
+      ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
+      ...(input.archived === undefined
+        ? {}
+        : { archivedAt: input.archived ? { not: null } : null }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { items, total };
   }
 }
 

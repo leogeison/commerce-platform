@@ -2,9 +2,11 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UnprocessableEntityException,
   UseGuards,
@@ -12,8 +14,11 @@ import {
 import type { Request } from 'express';
 import {
   createProductRequestSchema,
+  listProductsQuerySchema,
   productsSiteParamsSchema,
   type CreateProductRequest,
+  type ListProductsQuery,
+  type ListProductsResponse,
   type ProductAdmin,
   type ProductsSiteParams,
 } from '@commerce-platform/contracts';
@@ -23,6 +28,7 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateProductUseCase } from '../application/create-product.use-case';
+import { ListProductsUseCase } from '../application/list-products.use-case';
 import { toProductAdmin } from './product.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe um produto com este slug neste Site.';
@@ -48,7 +54,10 @@ const CATEGORY_NOT_FOUND_MESSAGE =
  */
 @Controller('admin/sites/:siteSlug/products')
 export class ProductsController {
-  constructor(private readonly createProductUseCase: CreateProductUseCase) {}
+  constructor(
+    private readonly createProductUseCase: CreateProductUseCase,
+    private readonly listProductsUseCase: ListProductsUseCase,
+  ) {}
 
   @Post()
   @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
@@ -79,5 +88,46 @@ export class ProductsController {
     }
 
     return toProductAdmin(result.product);
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/products` (CAT-009; CTR-004).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `CategoriesController.list()`
+   * (CAT-002): `GET` não mutável, sem `OriginGuard`, leitura mínima da
+   * hierarquia.
+   *
+   * Itens "rasos" (`productAdminSchema`, sem `offers`) — o resumo de
+   * ofertas só aparece no detalhe (`productDetailAdminSchema`, CAT-010).
+   *
+   * `categoryId`/`archived` ausentes não filtram; presentes, filtram
+   * exatamente por aquele valor. Um `categoryId` válido mas de outro Site
+   * não dá erro — só não bate em nenhum Produto deste Site, lista vazia.
+   */
+  @Get()
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async list(
+    @Param(new ZodValidationPipe(productsSiteParamsSchema))
+    _params: ProductsSiteParams,
+    @Query(new ZodValidationPipe(listProductsQuerySchema))
+    query: ListProductsQuery,
+    @Req() req: Request,
+  ): Promise<ListProductsResponse> {
+    const result = await this.listProductsUseCase.execute({
+      siteId: req.tenant!.siteId,
+      page: query.page,
+      pageSize: query.pageSize,
+      categoryId: query.categoryId,
+      archived: query.archived,
+    });
+
+    return {
+      items: result.items.map(toProductAdmin),
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      totalPages: result.totalPages,
+    };
   }
 }
