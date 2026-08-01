@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
-import type { Category } from '../../../generated/prisma/client';
+import { Prisma, type Category } from '../../../generated/prisma/client';
 
 export interface CreateCategoryInput {
   siteId: string;
@@ -11,6 +11,19 @@ export interface CreateCategoryInput {
 export type CreateCategoryRepositoryResult =
   | { ok: true; category: Category }
   | { ok: false; reason: 'SLUG_CONFLICT' };
+
+export interface FindManyBySiteInput {
+  siteId: string;
+  page: number;
+  pageSize: number;
+  /** `undefined` = sem filtro (ativas e arquivadas juntas). */
+  archived?: boolean;
+}
+
+export interface FindManyBySiteResult {
+  items: Category[];
+  total: number;
+}
 
 /**
  * Repository concreto (Prisma) de `Category` (CAT-001). `PrismaCategoryRepository`,
@@ -55,6 +68,46 @@ export class PrismaCategoryRepository {
 
       throw err;
     }
+  }
+
+  /**
+   * Lista paginada de `Category` de um Site (CAT-002).
+   *
+   * `findMany` + `count` no mesmo `where` via `prisma.$transaction([...])`:
+   * as duas consultas veem o mesmo snapshot consistente do banco (evita
+   * `total` e `items` divergirem se uma escrita concorrente acontecer entre
+   * as duas chamadas separadas).
+   *
+   * `archived` ausente não entra no `where` — nenhum filtro por
+   * `archivedAt`, retorna ativas e arquivadas juntas. Presente, vira
+   * `archivedAt: null` (ativas) ou `archivedAt: { not: null }` (arquivadas).
+   *
+   * Ordenação determinística `name asc, id asc` (decisão explícita da
+   * CAT-002): `id` como desempate evita ordem instável quando dois nomes
+   * coincidem — sem ele, a ordem relativa entre linhas de nome igual não é
+   * garantida pelo Postgres.
+   */
+  async findManyBySite(
+    input: FindManyBySiteInput,
+  ): Promise<FindManyBySiteResult> {
+    const where: Prisma.CategoryWhereInput = {
+      siteId: input.siteId,
+      ...(input.archived === undefined
+        ? {}
+        : { archivedAt: input.archived ? { not: null } : null }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.category.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.category.count({ where }),
+    ]);
+
+    return { items, total };
   }
 }
 

@@ -2,9 +2,11 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -12,9 +14,12 @@ import type { Request } from 'express';
 import {
   categoriesSiteParamsSchema,
   createCategoryRequestSchema,
+  listCategoriesQuerySchema,
   type CategoriesSiteParams,
   type CategoryAdmin,
   type CreateCategoryRequest,
+  type ListCategoriesQuery,
+  type ListCategoriesResponse,
 } from '@commerce-platform/contracts';
 import { OriginGuard } from '../../../shared/http/origin.guard';
 import { ZodValidationPipe } from '../../../shared/http/zod-validation.pipe';
@@ -22,6 +27,7 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateCategoryUseCase } from '../application/create-category.use-case';
+import { ListCategoriesUseCase } from '../application/list-categories.use-case';
 import { toCategoryAdmin } from './category.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe uma categoria com este slug neste Site.';
@@ -57,7 +63,10 @@ const SLUG_CONFLICT_MESSAGE = 'Já existe uma categoria com este slug neste Site
  */
 @Controller('admin/sites/:siteSlug/categories')
 export class CategoriesController {
-  constructor(private readonly createCategoryUseCase: CreateCategoryUseCase) {}
+  constructor(
+    private readonly createCategoryUseCase: CreateCategoryUseCase,
+    private readonly listCategoriesUseCase: ListCategoriesUseCase,
+  ) {}
 
   @Post()
   @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
@@ -81,5 +90,46 @@ export class CategoriesController {
     }
 
     return toCategoryAdmin(result.category);
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/categories` (CAT-002; CTR-003).
+   *
+   * Só `SessionAuthGuard, SiteAuthorizationGuard` (sem `OriginGuard`): `GET`
+   * não é mutável, mesmo critério já usado em `GET /admin/auth/me`
+   * (AUTH-008) e nas rotas `GET` de `site-isolation.e2e-spec.ts`.
+   *
+   * `@MinRole('VIEWER')`: a Role mínima da hierarquia — listar é leitura,
+   * critério explícito do bloco comum CAT-001–007 do backlog ("VIEWER
+   * lê").
+   *
+   * `listCategoriesQuerySchema` já aplica os defaults (`page: 1, pageSize:
+   * 20`) e a coerção de `archived` antes de chegar aqui — o handler nunca
+   * lida com strings de query cruas.
+   */
+  @Get()
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async list(
+    @Param(new ZodValidationPipe(categoriesSiteParamsSchema))
+    _params: CategoriesSiteParams,
+    @Query(new ZodValidationPipe(listCategoriesQuerySchema))
+    query: ListCategoriesQuery,
+    @Req() req: Request,
+  ): Promise<ListCategoriesResponse> {
+    const result = await this.listCategoriesUseCase.execute({
+      siteId: req.tenant!.siteId,
+      page: query.page,
+      pageSize: query.pageSize,
+      archived: query.archived,
+    });
+
+    return {
+      items: result.items.map(toCategoryAdmin),
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      totalPages: result.totalPages,
+    };
   }
 }
