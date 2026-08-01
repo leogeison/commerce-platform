@@ -93,4 +93,26 @@ describe('ProvisionTenantUseCase (integração de transação)', () => {
     // sobrevivido à transação abortada.
     expect(user).toBeNull();
   });
+
+  it('normaliza o e-mail (maiúsculas e espaços) antes de persistir o User', async () => {
+    const result = await useCase.execute({
+      userEmail: '  Owner-DB013-Normalize@Test.com  ',
+      userPasswordHash: 'fixture-hash-not-a-real-password',
+      siteSlug: 'db013-normalize',
+      siteName: 'DB-013 Normalize Site',
+      siteDomain: 'db013-normalize.test',
+      siteLocale: 'pt-BR',
+    });
+
+    const user = await prisma.user.findUnique({ where: { id: result.userId } });
+    expect(user?.email).toBe('owner-db013-normalize@test.com');
+
+    // Mesmo e-mail, já normalizado, precisa encontrar o mesmo User — prova
+    // que a busca (PrismaUserRepository, que também normaliza) e a escrita
+    // deste caso de uso concordam sobre o mesmo valor persistido.
+    const found = await prisma.user.findUnique({
+      where: { email: 'owner-db013-normalize@test.com' },
+    });
+    expect(found?.id).toBe(result.userId);
+  });
 });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
 import type { User } from '../../../generated/prisma/client';
+import { normalizeEmail } from '../domain/email';
 
 /**
  * Entrada de criação de `User` (AUTH-001). Deliberadamente sem
@@ -27,9 +28,11 @@ export interface CreateUserInput {
  * (ex.: AUTH-005, login), essa interface nasce naquele momento.
  *
  * A regra de negócio "e-mail sempre normalizado para minúsculas antes de
- * salvar/consultar" (Architecture.md, Seção 15) é aplicada aqui, no único
- * ponto de acesso ao Prisma para `User` — nunca delegada a quem chama, para
- * que não exista um caminho de escrita/leitura que esqueça a normalização.
+ * salvar/consultar" (Architecture.md, Seção 15) vive em `normalizeEmail`
+ * (`identity/domain/email.ts`), reaproveitada por este repository e por
+ * `ProvisionTenantUseCase` (o outro ponto que cria `User` diretamente) —
+ * nunca duplicada, para que nenhum caminho de escrita/leitura esqueça a
+ * normalização.
  */
 @Injectable()
 export class PrismaUserRepository {
@@ -50,8 +53,4 @@ export class PrismaUserRepository {
       where: { email: normalizeEmail(email) },
     });
   }
-}
-
-function normalizeEmail(email: string): string {
-  return email.toLowerCase();
 }

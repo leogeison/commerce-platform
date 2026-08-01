@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
 import { Role } from '../../../generated/prisma/enums';
+import { normalizeEmail } from '../../identity/domain/email';
 
 /**
  * `passwordHash` chega sempre pronto: nesta fase do backlog (DB-013) o
@@ -36,6 +37,14 @@ export interface ProvisionTenantResult {
  * transação, revertendo tudo), em vez de criar duplicata silenciosa. Não é
  * um mecanismo de idempotência por chave própria — isso é explicitamente
  * fora do escopo desta tarefa (não é um comando pensado para produção).
+ *
+ * `normalizeEmail` (correção pós-AUTH-013): este caso de uso cria `User`
+ * diretamente, fora de `PrismaUserRepository` — sem normalizar aqui também,
+ * o invariante "e-mail sempre em minúsculas" (Architecture.md, Seção 15)
+ * ficaria furado justamente no primeiro consumidor real com e-mail digitado
+ * por humano (o comando de bootstrap), quebrando o login por divergência de
+ * capitalização entre o que foi salvo e o que
+ * `PrismaUserRepository.findByEmail` normaliza na busca.
  */
 @Injectable()
 export class ProvisionTenantUseCase {
@@ -45,7 +54,7 @@ export class ProvisionTenantUseCase {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          email: input.userEmail,
+          email: normalizeEmail(input.userEmail),
           passwordHash: input.userPasswordHash,
           name: input.userName,
         },
