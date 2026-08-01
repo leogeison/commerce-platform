@@ -29,9 +29,11 @@ import { ZodValidationPipe } from '../../../shared/http/zod-validation.pipe';
 import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard';
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
+import { ArchiveCategoryUseCase } from '../application/archive-category.use-case';
 import { CreateCategoryUseCase } from '../application/create-category.use-case';
 import { GetCategoryUseCase } from '../application/get-category.use-case';
 import { ListCategoriesUseCase } from '../application/list-categories.use-case';
+import { UnarchiveCategoryUseCase } from '../application/unarchive-category.use-case';
 import { toCategoryAdmin } from './category.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe uma categoria com este slug neste Site.';
@@ -72,6 +74,8 @@ export class CategoriesController {
     private readonly createCategoryUseCase: CreateCategoryUseCase,
     private readonly listCategoriesUseCase: ListCategoriesUseCase,
     private readonly getCategoryUseCase: GetCategoryUseCase,
+    private readonly archiveCategoryUseCase: ArchiveCategoryUseCase,
+    private readonly unarchiveCategoryUseCase: UnarchiveCategoryUseCase,
   ) {}
 
   @Post()
@@ -169,6 +173,70 @@ export class CategoriesController {
     @Req() req: Request,
   ): Promise<CategoryAdmin> {
     const category = await this.getCategoryUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!category) {
+      throw new NotFoundException(CATEGORY_NOT_FOUND_MESSAGE);
+    }
+
+    return toCategoryAdmin(category);
+  }
+
+  /**
+   * `POST /admin/sites/:siteSlug/categories/:id/archive` (CAT-005; CTR-003).
+   *
+   * `OriginGuard` de volta (mutável, `POST` — mesma ordem de guards de
+   * `create()`). `@MinRole('OWNER')`: arquivar é uma ação administrativa do
+   * Site, não escrita comum de conteúdo — critério de aceite comum do
+   * bloco Categoria ("`OWNER` arquiva/exclui"), diferente do `EDITOR` de
+   * `create()`.
+   *
+   * Idempotente: arquivar uma Categoria já arquivada continua `200`, sem
+   * sobrescrever `archivedAt` — comportamento garantido pelo
+   * `PrismaCategoryRepository.archiveBySite`, não recalculado aqui.
+   *
+   * `404` genérico para "não existe"/"de outro Site", mesmo critério já
+   * usado em `detail()`.
+   */
+  @Post(':id/archive')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('OWNER')
+  @HttpCode(200)
+  async archive(
+    @Param(new ZodValidationPipe(categoryParamsSchema))
+    params: CategoryParams,
+    @Req() req: Request,
+  ): Promise<CategoryAdmin> {
+    const category = await this.archiveCategoryUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!category) {
+      throw new NotFoundException(CATEGORY_NOT_FOUND_MESSAGE);
+    }
+
+    return toCategoryAdmin(category);
+  }
+
+  /**
+   * `POST /admin/sites/:siteSlug/categories/:id/unarchive` (CAT-006;
+   * CTR-003). Espelha `archive()`: mesmos guards/`@MinRole('OWNER')`,
+   * mesma idempotência (garantida por
+   * `PrismaCategoryRepository.unarchiveBySite`), mesmo `404` genérico.
+   */
+  @Post(':id/unarchive')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('OWNER')
+  @HttpCode(200)
+  async unarchive(
+    @Param(new ZodValidationPipe(categoryParamsSchema))
+    params: CategoryParams,
+    @Req() req: Request,
+  ): Promise<CategoryAdmin> {
+    const category = await this.unarchiveCategoryUseCase.execute({
       siteId: req.tenant!.siteId,
       id: params.id,
     });

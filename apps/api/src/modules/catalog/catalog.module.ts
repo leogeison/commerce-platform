@@ -3,9 +3,11 @@ import { DatabaseModule } from '../../shared/database/database.module';
 import { HttpModule } from '../../shared/http/http.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { ArchiveCategoryUseCase } from './application/archive-category.use-case';
 import { CreateCategoryUseCase } from './application/create-category.use-case';
 import { GetCategoryUseCase } from './application/get-category.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
+import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
 import { CategoriesController } from './presentation/categories.controller';
 
@@ -36,6 +38,8 @@ import { CategoriesController } from './presentation/categories.controller';
     CreateCategoryUseCase,
     ListCategoriesUseCase,
     GetCategoryUseCase,
+    ArchiveCategoryUseCase,
+    UnarchiveCategoryUseCase,
   ],
 })
 export class CatalogModule {}

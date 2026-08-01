@@ -128,6 +128,46 @@ export class PrismaCategoryRepository {
       where: { id_siteId: { id, siteId } },
     });
   }
+
+  /**
+   * Arquiva uma `Category` do Site (CAT-005). Idempotente sem sobrescrever
+   * `archivedAt`: o `updateMany` só afeta a linha quando `id + siteId`
+   * batem **e** `archivedAt` ainda é `null` — arquivar uma Categoria já
+   * arquivada não toca a linha (0 registros afetados), preservando o
+   * timestamp original do primeiro arquivamento. O `findUnique` seguinte
+   * pela chave composta `id_siteId` devolve o estado atual (recém-arquivado
+   * ou já arquivado antes, tanto faz) — ou `null` se `id + siteId` não
+   * corresponderem a nenhuma Categoria (inexistente ou de outro Site, mesmo
+   * `404` genérico da CAT-003).
+   */
+  async archiveBySite(siteId: string, id: string): Promise<Category | null> {
+    await this.prisma.category.updateMany({
+      where: { id, siteId, archivedAt: null },
+      data: { archivedAt: new Date() },
+    });
+
+    return this.prisma.category.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
+
+  /**
+   * Desarquiva uma `Category` do Site (CAT-006). Mesmo raciocínio de
+   * `archiveBySite`, invertido: o `updateMany` só afeta a linha quando
+   * `archivedAt` ainda não é `null` — desarquivar uma Categoria já ativa
+   * não toca a linha, e o `findUnique` devolve o estado atual (`archivedAt:
+   * null`) de qualquer forma.
+   */
+  async unarchiveBySite(siteId: string, id: string): Promise<Category | null> {
+    await this.prisma.category.updateMany({
+      where: { id, siteId, archivedAt: { not: null } },
+      data: { archivedAt: null },
+    });
+
+    return this.prisma.category.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
 }
 
 /**
