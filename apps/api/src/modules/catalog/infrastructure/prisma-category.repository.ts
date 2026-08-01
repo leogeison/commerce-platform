@@ -12,6 +12,11 @@ export type CreateCategoryRepositoryResult =
   | { ok: true; category: Category }
   | { ok: false; reason: 'SLUG_CONFLICT' };
 
+export type DeleteCategoryRepositoryResult =
+  | { ok: true }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'HAS_PRODUCTS' };
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -168,6 +173,49 @@ export class PrismaCategoryRepository {
       where: { id_siteId: { id, siteId } },
     });
   }
+
+  /**
+   * Exclui fisicamente uma `Category` do Site (CAT-007) — operação
+   * **interna** do Catalog, sem controller/rota HTTP própria; quem chama é
+   * `APP-006` (cross-domain, fora deste módulo), depois de já ter
+   * confirmado que não há Artigo vinculado.
+   *
+   * Reativa, sem pré-checagem de Produto vinculado — mesmo raciocínio já
+   * usado em `create()` para conflito de slug: tenta o `delete` direto pela
+   * chave composta `id_siteId` e traduz o erro do Postgres/Prisma, em vez
+   * de checar e excluir em dois passos (evita corrida entre checar
+   * "nenhum Produto vinculado" e um Produto ser criado logo depois, antes
+   * da exclusão de fato acontecer).
+   *
+   * `Product.category` é `onDelete: Restrict` no schema — o próprio
+   * Postgres recusa a exclusão se existir Produto vinculado, e o Prisma
+   * traduz isso para `P2003` (violação de foreign key). Já `P2025` é
+   * "registro não encontrado" — cobre tanto `id` inexistente quanto `id`
+   * de outra Categoria (a chave composta `id_siteId` nunca bate), mesmo
+   * critério de isolamento já usado em `findOneBySite`.
+   */
+  async deleteBySite(
+    siteId: string,
+    id: string,
+  ): Promise<DeleteCategoryRepositoryResult> {
+    try {
+      await this.prisma.category.delete({
+        where: { id_siteId: { id, siteId } },
+      });
+
+      return { ok: true };
+    } catch (err) {
+      if (isRecordNotFound(err)) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isForeignKeyConstraintViolation(err)) {
+        return { ok: false, reason: 'HAS_PRODUCTS' };
+      }
+
+      throw err;
+    }
+  }
 }
 
 /**
@@ -182,5 +230,25 @@ function isUniqueConstraintViolation(err: unknown): boolean {
     err !== null &&
     'code' in err &&
     (err as { code?: unknown }).code === 'P2002'
+  );
+}
+
+/** `P2025`: operação (aqui, `delete`) não encontrou o registro pela `where`. */
+function isRecordNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2025'
+  );
+}
+
+/** `P2003`: violação de foreign key — aqui, Produto(s) ainda vinculados à Categoria. */
+function isForeignKeyConstraintViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2003'
   );
 }
