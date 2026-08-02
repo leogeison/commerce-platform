@@ -16,6 +16,17 @@ export type CreateOfferRepositoryResult =
   | { ok: true; offer: Offer }
   | { ok: false; reason: 'PRODUCT_NOT_FOUND' };
 
+export interface FindManyByProductInput {
+  siteId: string;
+  productId: string;
+  page: number;
+  pageSize: number;
+}
+
+export type FindManyByProductRepositoryResult =
+  | { ok: true; items: Offer[]; total: number }
+  | { ok: false; reason: 'PRODUCT_NOT_FOUND' };
+
 /**
  * Repository concreto (Prisma) de `Offer` (CAT-015). `PrismaOfferRepository`,
  * mesmo padrão de `PrismaProductRepository`/`PrismaCategoryRepository`:
@@ -75,6 +86,60 @@ export class PrismaOfferRepository {
 
       throw err;
     }
+  }
+
+  /**
+   * Lista paginada de `Offer` de um Produto (CAT-016). Diferente de
+   * `PrismaProductRepository.findManyBySite` (CAT-009), onde `categoryId`
+   * é um *filtro* opcional (inexistente/de outro Site → lista vazia,
+   * `200`), aqui `productId` é o recurso-pai identificado pela própria
+   * rota (`/products/:productId/offers`) — mesmo critério já usado no
+   * `create()` acima e no padrão de detalhe (`GET .../:id`): recurso-pai
+   * inexistente ou de outro Site é `404`, nunca lista vazia. Decisão
+   * explícita da CAT-016, confirmada pelo usuário.
+   *
+   * Por isso a existência do Produto é confirmada primeiro, via
+   * `findUnique` na mesma chave composta `id_siteId` já usada em
+   * `PrismaProductRepository` — pré-checagem legítima aqui porque é leitura
+   * pura: não há mutação em jogo, então não existe corrida (TOCTOU) capaz
+   * de corromper dado nenhum; o pior cenário (Produto excluído entre a
+   * checagem e a listagem) resulta numa lista vazia, não numa
+   * inconsistência.
+   *
+   * Sem filtro de `archived` (Architecture.md: "Ofertas: nenhum [filtro]")
+   * — ofertas arquivadas aparecem na lista, mesmo critério já usado no
+   * resumo de ofertas embutido no Produto (CAT-010).
+   *
+   * `findMany` + `count` no mesmo `where` via `prisma.$transaction([...])`
+   * — mesmo padrão de `PrismaCategoryRepository.findManyBySite`/
+   * `PrismaProductRepository.findManyBySite`. Ordenação `createdAt asc, id
+   * asc` — mesma convenção já usada nas ofertas embutidas no detalhe do
+   * Produto (CAT-010).
+   */
+  async findManyByProduct(
+    input: FindManyByProductInput,
+  ): Promise<FindManyByProductRepositoryResult> {
+    const product = await this.prisma.product.findUnique({
+      where: { id_siteId: { id: input.productId, siteId: input.siteId } },
+    });
+
+    if (!product) {
+      return { ok: false, reason: 'PRODUCT_NOT_FOUND' };
+    }
+
+    const where = { siteId: input.siteId, productId: input.productId };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.offer.findMany({
+        where,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.offer.count({ where }),
+    ]);
+
+    return { ok: true, items, total };
   }
 }
 

@@ -1,18 +1,23 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   createOfferRequestSchema,
+  listOffersQuerySchema,
   offersProductParamsSchema,
   type CreateOfferRequest,
+  type ListOffersQuery,
+  type ListOffersResponse,
   type OfferAdmin,
   type OffersProductParams,
 } from '@commerce-platform/contracts';
@@ -22,6 +27,7 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateOfferUseCase } from '../application/create-offer.use-case';
+import { ListOffersUseCase } from '../application/list-offers.use-case';
 import { toOfferAdmin } from './offer.presenter';
 
 const PRODUCT_NOT_FOUND_MESSAGE =
@@ -48,7 +54,10 @@ const PRODUCT_NOT_FOUND_MESSAGE =
  */
 @Controller('admin/sites/:siteSlug/products/:productId/offers')
 export class OffersController {
-  constructor(private readonly createOfferUseCase: CreateOfferUseCase) {}
+  constructor(
+    private readonly createOfferUseCase: CreateOfferUseCase,
+    private readonly listOffersUseCase: ListOffersUseCase,
+  ) {}
 
   @Post()
   @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
@@ -76,5 +85,52 @@ export class OffersController {
     }
 
     return toOfferAdmin(result.offer);
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/products/:productId/offers` (CAT-016;
+   * CTR-005).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `ProductsController.list()`
+   * (CAT-009): `GET` não mutável, sem `OriginGuard`, leitura mínima da
+   * hierarquia.
+   *
+   * Sem filtros — só `page`/`pageSize` (Architecture.md: "Ofertas: nenhum
+   * [filtro]"). Ofertas arquivadas aparecem na lista, sem tratamento
+   * especial.
+   *
+   * Diferente de `ProductsController.list()`: `productId` aqui não é
+   * filtro, é o recurso-pai da rota — inexistente ou de outro Site é
+   * `404`, nunca lista vazia (mesmo critério já usado em `create()` acima,
+   * decisão explícita da CAT-016).
+   */
+  @Get()
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async list(
+    @Param(new ZodValidationPipe(offersProductParamsSchema))
+    params: OffersProductParams,
+    @Query(new ZodValidationPipe(listOffersQuerySchema))
+    query: ListOffersQuery,
+    @Req() req: Request,
+  ): Promise<ListOffersResponse> {
+    const result = await this.listOffersUseCase.execute({
+      siteId: req.tenant!.siteId,
+      productId: params.productId,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+
+    if (!result.ok) {
+      throw new NotFoundException(PRODUCT_NOT_FOUND_MESSAGE);
+    }
+
+    return {
+      items: result.items.map(toOfferAdmin),
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      totalPages: result.totalPages,
+    };
   }
 }
