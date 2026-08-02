@@ -171,6 +171,48 @@ export class PrismaOfferRepository {
       where: { id, siteId, productId },
     });
   }
+
+  /**
+   * Arquiva uma `Offer` do Site (CAT-019, operação **interna** — sem
+   * controller/rota HTTP própria; endpoint real é `REV-013`, ainda não
+   * implementado). Mesmo padrão de `PrismaProductRepository.archiveBySite`
+   * (CAT-012): `updateMany` condicionado a `archivedAt: null` (idempotente,
+   * não sobrescreve o timestamp original), seguido de `findUnique` na
+   * chave composta `id_siteId` — `null` cobre "não existe"/"de outro
+   * Site", mesmo critério de isolamento já usado em
+   * `findOneByProductAndSite`.
+   *
+   * Sem `productId` no `where`: diferente de `findOneByProductAndSite`
+   * (CAT-017), esta é uma operação interna chamada só com `siteId` + `id`
+   * (mesma assinatura de `ArchiveProductUseCase`) — não há parâmetro de
+   * rota "produto errado" para distinguir aqui.
+   */
+  async archiveBySite(siteId: string, id: string): Promise<Offer | null> {
+    await this.prisma.offer.updateMany({
+      where: { id, siteId, archivedAt: null },
+      data: { archivedAt: new Date() },
+    });
+
+    return this.prisma.offer.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
+
+  /**
+   * Desarquiva uma `Offer` do Site (CAT-020, operação **interna** — mesmo
+   * critério de `archiveBySite`, invertido). Endpoint real também é
+   * `REV-013`.
+   */
+  async unarchiveBySite(siteId: string, id: string): Promise<Offer | null> {
+    await this.prisma.offer.updateMany({
+      where: { id, siteId, archivedAt: { not: null } },
+      data: { archivedAt: null },
+    });
+
+    return this.prisma.offer.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
 }
 
 /** `P2003`: violação de foreign key — aqui, `productId` inválido/de outro Site. */

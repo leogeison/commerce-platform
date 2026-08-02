@@ -4,6 +4,7 @@ import { HttpModule } from '../../shared/http/http.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { ArchiveCategoryUseCase } from './application/archive-category.use-case';
+import { ArchiveOfferUseCase } from './application/archive-offer.use-case';
 import { ArchiveProductUseCase } from './application/archive-product.use-case';
 import { CreateCategoryUseCase } from './application/create-category.use-case';
 import { CreateOfferUseCase } from './application/create-offer.use-case';
@@ -17,6 +18,7 @@ import { ListCategoriesUseCase } from './application/list-categories.use-case';
 import { ListOffersUseCase } from './application/list-offers.use-case';
 import { ListProductsUseCase } from './application/list-products.use-case';
 import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-case';
+import { UnarchiveOfferUseCase } from './application/unarchive-offer.use-case';
 import { UnarchiveProductUseCase } from './application/unarchive-product.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
 import { PrismaOfferRepository } from './infrastructure/prisma-offer.repository';
@@ -73,6 +75,8 @@ import { ProductsController } from './presentation/products.controller';
     CreateOfferUseCase,
     ListOffersUseCase,
     GetOfferUseCase,
+    ArchiveOfferUseCase,
+    UnarchiveOfferUseCase,
   ],
 })
 export class CatalogModule {}
