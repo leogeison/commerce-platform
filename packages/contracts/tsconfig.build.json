@@ -6,7 +6,10 @@
     "declaration": true,
     "declarationMap": true,
     "incremental": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    // Mesmo ajuste de `tsconfig.json` (`lib` não é aditivo com `extends`):
+    // `DOM` para o global `URL` usado em `affiliate-url.ts` (CTR-005).
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src"]
 }

@@ -1,4 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // `lib` não é aditivo com `extends` — precisa listar `ES2022` de novo,
+    // mesma base de `tsconfig.base.json`, mais `DOM` só para o global
+    // `URL` (WHATWG, disponível tanto em Node quanto em browser em
+    // runtime) ficar tipado aqui. `affiliate-url.ts` (CTR-005) é o
+    // primeiro arquivo do pacote a precisar disso.
+    "lib": ["ES2022", "DOM"]
+  },
   "include": ["src"]
 }
