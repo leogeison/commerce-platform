@@ -6,6 +6,7 @@ import { TenancyModule } from '../tenancy/tenancy.module';
 import { ArchiveCategoryUseCase } from './application/archive-category.use-case';
 import { ArchiveProductUseCase } from './application/archive-product.use-case';
 import { CreateCategoryUseCase } from './application/create-category.use-case';
+import { CreateOfferUseCase } from './application/create-offer.use-case';
 import { CreateProductUseCase } from './application/create-product.use-case';
 import { DeleteCategoryUseCase } from './application/delete-category.use-case';
 import { DeleteProductUseCase } from './application/delete-product.use-case';
@@ -16,8 +17,10 @@ import { ListProductsUseCase } from './application/list-products.use-case';
 import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-case';
 import { UnarchiveProductUseCase } from './application/unarchive-product.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
+import { PrismaOfferRepository } from './infrastructure/prisma-offer.repository';
 import { PrismaProductRepository } from './infrastructure/prisma-product.repository';
 import { CategoriesController } from './presentation/categories.controller';
+import { OffersController } from './presentation/offers.controller';
 import { ProductsController } from './presentation/products.controller';
 
 /**
@@ -32,9 +35,9 @@ import { ProductsController } from './presentation/products.controller';
  * `IdentityModule`/`TenancyModule` importados para que o Nest resolva a
  * injeção de `SessionAuthGuard` (exportado por `IdentityModule`, AUTH-006)
  * e `SiteAuthorizationGuard` (exportado por `TenancyModule`, AUTH-009) nos
- * `@UseGuards` de `CategoriesController`/`ProductsController` (este último
- * desde a CAT-008). `HttpModule` continua necessário pelo `OriginGuard`,
- * mesmo padrão já usado em `IdentityModule`.
+ * `@UseGuards` de `CategoriesController`/`ProductsController`/`OffersController`
+ * (os dois últimos desde a CAT-008/CAT-015). `HttpModule` continua
+ * necessário pelo `OriginGuard`, mesmo padrão já usado em `IdentityModule`.
  *
  * Nenhum `exports`: nada em `catalog` é consumido por outro módulo ainda
  * (diferente de `SessionAuthGuard`/`SiteAuthorizationGuard`, que existem
@@ -48,7 +51,7 @@ import { ProductsController } from './presentation/products.controller';
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
-  controllers: [CategoriesController, ProductsController],
+  controllers: [CategoriesController, ProductsController, OffersController],
   providers: [
     PrismaCategoryRepository,
     CreateCategoryUseCase,
@@ -64,6 +67,8 @@ import { ProductsController } from './presentation/products.controller';
     ArchiveProductUseCase,
     UnarchiveProductUseCase,
     DeleteProductUseCase,
+    PrismaOfferRepository,
+    CreateOfferUseCase,
   ],
 })
 export class CatalogModule {}

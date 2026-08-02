@@ -5,7 +5,6 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { apiErrorSchema, productDetailAdminSchema } from '@commerce-platform/contracts';
 import { CatalogModule } from '../src/modules/catalog/catalog.module';
-import { Prisma } from '../src/generated/prisma/client';
 import { ADMIN_SESSION_COOKIE_NAME } from '../src/modules/identity/session.constants';
 import {
   generateSessionToken,
@@ -180,11 +179,11 @@ describe('GET /admin/sites/:siteSlug/products/:id (e2e)', () => {
     expect(productDetailAdminSchema.safeParse(response.body).success).toBe(true);
     expect(response.body.offers).toHaveLength(1);
     expect(typeof response.body.offers[0].price).toBe('string');
-    // `Prisma.Decimal.toString()` normaliza zeros à direita
-    // (`"199.90"` → `"199.9"`) — o contrato só exige que `price` seja uma
-    // string, não que preserve a formatação textual original. Comparação
-    // por valor decimal, não por igualdade de string.
-    expect(new Prisma.Decimal(response.body.offers[0].price).equals('199.90')).toBe(true);
+    // `toProductDetailAdmin` serializa `price` via `Decimal.toFixed(2)`
+    // (não `.toString()`) — sempre duas casas decimais, resposta
+    // previsível, então a comparação volta a ser igualdade exata de
+    // string (decisão revisada na CAT-015).
+    expect(response.body.offers[0].price).toBe('199.90');
   });
 
   it('resumo da oferta não expõe campos extras (só id, marketplace, price, currency, inStock, archivedAt)', async () => {

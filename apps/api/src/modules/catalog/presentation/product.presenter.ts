@@ -29,9 +29,13 @@ export function toProductAdmin(product: Product): ProductAdmin {
  * `ProductDetailAdmin` (CTR-004; CAT-010). Reaproveita os mesmos campos de
  * `toProductAdmin` — só acrescenta `offers`.
  *
- * `price` (`Decimal` do Prisma) vira `string` via `.toString()` — nunca
+ * `price` (`Decimal` do Prisma) vira `string` via `.toFixed(2)` — nunca
  * `number`, mesma decisão da CTR-004 (evita perda de precisão em valor
- * monetário).
+ * monetário). `toFixed(2)` em vez de `toString()`: o banco é
+ * `Decimal(10,2)`, então a saída sempre tem exatamente duas casas
+ * decimais, mesmo padrão de `offer.presenter.ts` (decisão explícita,
+ * revisão da CAT-015, para não haver serialização diferente entre criação
+ * e detalhe).
  */
 export function toProductDetailAdmin(
   product: ProductWithOfferSummaries,
@@ -41,7 +45,7 @@ export function toProductDetailAdmin(
     offers: product.offers.map((offer) => ({
       id: offer.id,
       marketplace: offer.marketplace,
-      price: offer.price.toString(),
+      price: offer.price.toFixed(2),
       currency: offer.currency,
       inStock: offer.inStock,
       archivedAt: offer.archivedAt ? offer.archivedAt.toISOString() : null,
