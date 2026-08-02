@@ -32,6 +32,35 @@ export interface FindManyBySiteResult {
 }
 
 /**
+ * Só os campos que `productOfferSummarySchema` (CTR-004) expõe — `select`,
+ * não `include` cru, mesmo critério já usado em `GET /admin/auth/me`
+ * (AUTH-008): a Offer completa (`affiliateUrl`, `siteId`, `productId`,
+ * `updatedAt` etc.) nunca sai deste método.
+ *
+ * Ordenação `createdAt asc, id asc` (decisão explícita da CAT-010): ordem
+ * de criação, sem inventar uma noção de "mais barata primeiro" ou
+ * semelhante — `id` como desempate, mesmo critério de determinismo já
+ * usado em `findManyBySite`.
+ */
+const OFFER_SUMMARY_SELECT = {
+  id: true,
+  marketplace: true,
+  price: true,
+  currency: true,
+  inStock: true,
+  archivedAt: true,
+} as const satisfies Prisma.OfferSelect;
+
+/**
+ * Tipo explícito do `Product` com o resumo de ofertas selecionado (CAT-010)
+ * — via `Prisma.ProductGetPayload`, gerado a partir da própria consulta
+ * (`include`/`select` abaixo), sem `as`/cast algum.
+ */
+export type ProductWithOfferSummaries = Prisma.ProductGetPayload<{
+  include: { offers: { select: typeof OFFER_SUMMARY_SELECT } };
+}>;
+
+/**
  * Repository concreto (Prisma) de `Product` (CAT-008). `PrismaProductRepository`,
  * mesmo padrão de `PrismaCategoryRepository`/`PrismaUserRepository`: classe
  * concreta dependente do Prisma, sem interface/porta própria.
@@ -129,6 +158,32 @@ export class PrismaProductRepository {
     ]);
 
     return { items, total };
+  }
+
+  /**
+   * Busca um `Product` por `id`, restrito ao Site, com o resumo de suas
+   * `Offer`s (CAT-010). `findUnique` pela chave composta `id_siteId`, mesmo
+   * padrão de `PrismaCategoryRepository.findOneBySite` (CAT-003) — um `id`
+   * real de Produto de outro Site nunca bate nessa chave, então retorna
+   * `null` do mesmo jeito que um `id` inexistente, mesmo `404` genérico.
+   *
+   * Ofertas arquivadas aparecem no resumo, sem filtro — visão
+   * administrativa de detalhe (decisão explícita da CAT-010), mesmo
+   * critério de `archivedAt` exposto cru já usado em Categoria/Produto.
+   */
+  async findOneBySiteWithOffers(
+    siteId: string,
+    id: string,
+  ): Promise<ProductWithOfferSummaries | null> {
+    return this.prisma.product.findUnique({
+      where: { id_siteId: { id, siteId } },
+      include: {
+        offers: {
+          select: OFFER_SUMMARY_SELECT,
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+      },
+    });
   }
 }
 

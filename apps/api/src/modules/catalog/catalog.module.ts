@@ -8,6 +8,7 @@ import { CreateCategoryUseCase } from './application/create-category.use-case';
 import { CreateProductUseCase } from './application/create-product.use-case';
 import { DeleteCategoryUseCase } from './application/delete-category.use-case';
 import { GetCategoryUseCase } from './application/get-category.use-case';
+import { GetProductUseCase } from './application/get-product.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
 import { ListProductsUseCase } from './application/list-products.use-case';
 import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-case';
@@ -54,6 +55,7 @@ import { ProductsController } from './presentation/products.controller';
     PrismaProductRepository,
     CreateProductUseCase,
     ListProductsUseCase,
+    GetProductUseCase,
   ],
 })
 export class CatalogModule {}

@@ -212,13 +212,15 @@ describe('POST /admin/sites/:siteSlug/products (e2e)', () => {
       .set('Origin', ADMIN_ORIGIN)
       .send({
         name: 'Monitor',
-        slug: 'monitor',
+        slug: 'cat008-monitor-categoryid-inexistente',
         categoryId: '00000000-0000-0000-0000-000000000000',
       });
 
     expect(response.status).toBe(422);
 
-    const persisted = await prisma.product.findMany({ where: { slug: 'monitor' } });
+    const persisted = await prisma.product.findMany({
+      where: { siteId: siteA.id, slug: 'cat008-monitor-categoryid-inexistente' },
+    });
     expect(persisted).toHaveLength(0);
   });
 
@@ -232,13 +234,15 @@ describe('POST /admin/sites/:siteSlug/products (e2e)', () => {
       .set('Origin', ADMIN_ORIGIN)
       .send({
         name: 'Webcam',
-        slug: 'webcam',
+        slug: 'cat008-webcam-categoryid-outro-site',
         categoryId: categoryFromSiteB.id,
       });
 
     expect(response.status).toBe(422);
 
-    const persisted = await prisma.product.findMany({ where: { slug: 'webcam' } });
+    const persisted = await prisma.product.findMany({
+      where: { siteId: siteA.id, slug: 'cat008-webcam-categoryid-outro-site' },
+    });
     expect(persisted).toHaveLength(0);
   });
 

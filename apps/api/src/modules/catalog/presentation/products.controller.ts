@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -15,11 +16,14 @@ import type { Request } from 'express';
 import {
   createProductRequestSchema,
   listProductsQuerySchema,
+  productParamsSchema,
   productsSiteParamsSchema,
   type CreateProductRequest,
   type ListProductsQuery,
   type ListProductsResponse,
   type ProductAdmin,
+  type ProductDetailAdmin,
+  type ProductParams,
   type ProductsSiteParams,
 } from '@commerce-platform/contracts';
 import { OriginGuard } from '../../../shared/http/origin.guard';
@@ -28,12 +32,14 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateProductUseCase } from '../application/create-product.use-case';
+import { GetProductUseCase } from '../application/get-product.use-case';
 import { ListProductsUseCase } from '../application/list-products.use-case';
-import { toProductAdmin } from './product.presenter';
+import { toProductAdmin, toProductDetailAdmin } from './product.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe um produto com este slug neste Site.';
 const CATEGORY_NOT_FOUND_MESSAGE =
   'categoryId inválido: a Categoria não existe ou não pertence a este Site.';
+const PRODUCT_NOT_FOUND_MESSAGE = 'Produto não encontrado.';
 
 /**
  * `POST /admin/sites/:siteSlug/products` (CAT-008; CTR-004).
@@ -57,6 +63,7 @@ export class ProductsController {
   constructor(
     private readonly createProductUseCase: CreateProductUseCase,
     private readonly listProductsUseCase: ListProductsUseCase,
+    private readonly getProductUseCase: GetProductUseCase,
   ) {}
 
   @Post()
@@ -129,5 +136,37 @@ export class ProductsController {
       total: result.total,
       totalPages: result.totalPages,
     };
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/products/:id` (CAT-010; CTR-004).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `list()`. `productParamsSchema`
+   * (com `id`), mesmo padrão de `CategoriesController.detail()` (CAT-003).
+   *
+   * `404` genérico para "não existe"/"de outro Site", mesmo critério já
+   * usado em Categoria. Resposta inclui `offers` (ativas e arquivadas,
+   * ordenadas por `createdAt asc, id asc`) — única rota de Produto que
+   * inclui ofertas; criar/listar/arquivar/desarquivar usam `ProductAdmin`
+   * "raso".
+   */
+  @Get(':id')
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async detail(
+    @Param(new ZodValidationPipe(productParamsSchema))
+    params: ProductParams,
+    @Req() req: Request,
+  ): Promise<ProductDetailAdmin> {
+    const product = await this.getProductUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!product) {
+      throw new NotFoundException(PRODUCT_NOT_FOUND_MESSAGE);
+    }
+
+    return toProductDetailAdmin(product);
   }
 }
