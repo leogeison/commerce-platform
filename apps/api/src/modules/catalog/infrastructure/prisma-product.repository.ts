@@ -185,6 +185,42 @@ export class PrismaProductRepository {
       },
     });
   }
+
+  /**
+   * Arquiva um `Product` do Site (CAT-012, operação **interna** — sem
+   * controller/rota HTTP própria; endpoint real é `REV-011`, ainda não
+   * implementado). Mesmo padrão de `PrismaCategoryRepository.archiveBySite`
+   * (CAT-005): `updateMany` condicionado a `archivedAt: null` (idempotente,
+   * não sobrescreve o timestamp original), seguido de `findUnique` na
+   * chave composta `id_siteId` — `null` cobre "não existe"/"de outro Site",
+   * mesmo critério de isolamento já usado em `findOneBySiteWithOffers`.
+   */
+  async archiveBySite(siteId: string, id: string): Promise<Product | null> {
+    await this.prisma.product.updateMany({
+      where: { id, siteId, archivedAt: null },
+      data: { archivedAt: new Date() },
+    });
+
+    return this.prisma.product.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
+
+  /**
+   * Desarquiva um `Product` do Site (CAT-013, operação **interna** — mesmo
+   * critério de `archiveBySite`, invertido). Endpoint real também é
+   * `REV-011`.
+   */
+  async unarchiveBySite(siteId: string, id: string): Promise<Product | null> {
+    await this.prisma.product.updateMany({
+      where: { id, siteId, archivedAt: { not: null } },
+      data: { archivedAt: null },
+    });
+
+    return this.prisma.product.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
 }
 
 /**

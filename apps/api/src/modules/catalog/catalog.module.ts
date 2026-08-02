@@ -4,6 +4,7 @@ import { HttpModule } from '../../shared/http/http.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { ArchiveCategoryUseCase } from './application/archive-category.use-case';
+import { ArchiveProductUseCase } from './application/archive-product.use-case';
 import { CreateCategoryUseCase } from './application/create-category.use-case';
 import { CreateProductUseCase } from './application/create-product.use-case';
 import { DeleteCategoryUseCase } from './application/delete-category.use-case';
@@ -12,6 +13,7 @@ import { GetProductUseCase } from './application/get-product.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
 import { ListProductsUseCase } from './application/list-products.use-case';
 import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-case';
+import { UnarchiveProductUseCase } from './application/unarchive-product.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
 import { PrismaProductRepository } from './infrastructure/prisma-product.repository';
 import { CategoriesController } from './presentation/categories.controller';
@@ -36,10 +38,11 @@ import { ProductsController } from './presentation/products.controller';
  * Nenhum `exports`: nada em `catalog` é consumido por outro módulo ainda
  * (diferente de `SessionAuthGuard`/`SiteAuthorizationGuard`, que existem
  * justamente para serem reaproveitados entre módulos). `DeleteCategoryUseCase`
- * (CAT-007) inclusive: será consumida por `APP-006` (cross-domain) quando
- * essa tarefa existir, mas exportar agora seria antecipar um consumidor que
- * ainda não foi implementado — fica só registrada como provider, exportação
- * entra junto com a tarefa que precisar dela.
+ * (CAT-007), `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013)
+ * inclusive: serão consumidas por `APP-006`/`REV-011` (cross-domain) quando
+ * essas tarefas existirem, mas exportar agora seria antecipar consumidores
+ * que ainda não foram implementados — ficam só registradas como provider,
+ * exportação entra junto com a tarefa que precisar delas.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -56,6 +59,8 @@ import { ProductsController } from './presentation/products.controller';
     CreateProductUseCase,
     ListProductsUseCase,
     GetProductUseCase,
+    ArchiveProductUseCase,
+    UnarchiveProductUseCase,
   ],
 })
 export class CatalogModule {}
