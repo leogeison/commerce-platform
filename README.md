@@ -80,8 +80,8 @@ Fases do `Implementation-Backlog.md`:
 - [x] Fase 2 — Bootstrap da API e Prisma
 - [x] Fase 3 — Contratos Compartilhados
 - [x] Fase 4 — Infraestrutura Transversal da API
-- [ ] Fase 5 — Identity e Autenticação
-- [ ] Fase 6 — Catalog
+- [x] Fase 5 — Identity e Autenticação
+- [x] Fase 6 — Catalog
 - [ ] Fase 7 — Editorial
 - [ ] Fase 8 — Application Cross-Domain
 - [ ] Fase 9 — Tracking
