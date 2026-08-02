@@ -10,6 +10,7 @@ import { CreateCategoryUseCase } from './application/create-category.use-case';
 import { CreateOfferUseCase } from './application/create-offer.use-case';
 import { CreateProductUseCase } from './application/create-product.use-case';
 import { DeleteCategoryUseCase } from './application/delete-category.use-case';
+import { DeleteOfferUseCase } from './application/delete-offer.use-case';
 import { DeleteProductUseCase } from './application/delete-product.use-case';
 import { GetCategoryUseCase } from './application/get-category.use-case';
 import { GetOfferUseCase } from './application/get-offer.use-case';
@@ -46,12 +47,14 @@ import { ProductsController } from './presentation/products.controller';
  * Nenhum `exports`: nada em `catalog` é consumido por outro módulo ainda
  * (diferente de `SessionAuthGuard`/`SiteAuthorizationGuard`, que existem
  * justamente para serem reaproveitados entre módulos). `DeleteCategoryUseCase`
- * (CAT-007), `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013)
- * e `DeleteProductUseCase` (CAT-014) inclusive: serão consumidas por
- * `APP-006`/`REV-011`/`APP-003` (cross-domain) quando essas tarefas
- * existirem, mas exportar agora seria antecipar consumidores que ainda não
- * foram implementados — ficam só registradas como provider, exportação
- * entra junto com a tarefa que precisar delas.
+ * (CAT-007), `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013),
+ * `DeleteProductUseCase` (CAT-014), `ArchiveOfferUseCase`/
+ * `UnarchiveOfferUseCase` (CAT-019/020) e `DeleteOfferUseCase` (CAT-021)
+ * inclusive: serão consumidas por `APP-006`/`REV-011`/`APP-003`/`REV-013`/
+ * `TRK-010` (cross-domain) quando essas tarefas existirem, mas exportar
+ * agora seria antecipar consumidores que ainda não foram implementados —
+ * ficam só registradas como provider, exportação entra junto com a tarefa
+ * que precisar delas.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -77,6 +80,7 @@ import { ProductsController } from './presentation/products.controller';
     GetOfferUseCase,
     ArchiveOfferUseCase,
     UnarchiveOfferUseCase,
+    DeleteOfferUseCase,
   ],
 })
 export class CatalogModule {}

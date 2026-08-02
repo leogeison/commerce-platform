@@ -27,6 +27,11 @@ export type FindManyByProductRepositoryResult =
   | { ok: true; items: Offer[]; total: number }
   | { ok: false; reason: 'PRODUCT_NOT_FOUND' };
 
+export type DeleteOfferRepositoryResult =
+  | { ok: true }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'HAS_DEPENDENTS' };
+
 /**
  * Repository concreto (Prisma) de `Offer` (CAT-015). `PrismaOfferRepository`,
  * mesmo padrão de `PrismaProductRepository`/`PrismaCategoryRepository`:
@@ -213,14 +218,74 @@ export class PrismaOfferRepository {
       where: { id_siteId: { id, siteId } },
     });
   }
+
+  /**
+   * Exclui fisicamente uma `Offer` do Site (CAT-021) — operação **interna**
+   * do Catalog, sem controller/rota HTTP própria; quem chama é `TRK-010`
+   * (cross-domain, fora deste módulo, ainda não implementado), depois de
+   * já ter autorizado a exclusão por conta própria.
+   *
+   * Diferente de `PrismaCategoryRepository.deleteBySite`/
+   * `PrismaProductRepository.deleteBySite` (CAT-007/CAT-014): `Offer` não
+   * tem **nenhuma** relação interna do Catalog que a referencie — a única
+   * FK que aponta para `Offer` no schema é `AffiliateClick.offer`
+   * (`onDelete: Restrict`), que pertence a Tracking. O Catalog não pode
+   * depender de Tracking, então este método nunca importa/menciona
+   * `AffiliateClick`: ele só tenta o `delete` direto pela chave composta
+   * `id_siteId` e traduz o que o Postgres devolver, sem saber (nem
+   * precisar saber) qual tabela originou a violação de integridade
+   * referencial — `P2003` aqui vira o motivo genérico `HAS_DEPENDENTS`
+   * (não um nome específico de Tracking), decisão explícita da CAT-021: o
+   * Catalog trata isso como "existe algum dependente externo", nunca como
+   * "existe um `AffiliateClick`".
+   *
+   * `P2025` (registro não encontrado) → `NOT_FOUND`, mesmo critério de
+   * isolamento já usado em `PrismaProductRepository.deleteBySite` — cobre
+   * tanto `id` inexistente quanto `id` de uma Oferta de outro Site.
+   */
+  async deleteBySite(siteId: string, id: string): Promise<DeleteOfferRepositoryResult> {
+    try {
+      await this.prisma.offer.delete({
+        where: { id_siteId: { id, siteId } },
+      });
+
+      return { ok: true };
+    } catch (err) {
+      if (isRecordNotFound(err)) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isForeignKeyConstraintViolation(err)) {
+        return { ok: false, reason: 'HAS_DEPENDENTS' };
+      }
+
+      throw err;
+    }
+  }
 }
 
-/** `P2003`: violação de foreign key — aqui, `productId` inválido/de outro Site. */
+/**
+ * `P2003`: violação de foreign key. Em `create()`, sempre `productId`
+ * inválido/de outro Site. Em `deleteBySite()`, sempre um dependente
+ * externo ao Catalog (`AffiliateClick`, nunca mencionado aqui) —
+ * traduzido para `HAS_DEPENDENTS`, motivo genérico. Mesmo código,
+ * significado depende de qual método capturou o erro.
+ */
 function isForeignKeyConstraintViolation(err: unknown): boolean {
   return (
     typeof err === 'object' &&
     err !== null &&
     'code' in err &&
     (err as { code?: unknown }).code === 'P2003'
+  );
+}
+
+/** `P2025`: operação (aqui, `delete`) não encontrou o registro pela `where`. */
+function isRecordNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2025'
   );
 }
