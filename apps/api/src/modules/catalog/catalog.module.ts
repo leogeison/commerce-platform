@@ -8,6 +8,7 @@ import { ArchiveProductUseCase } from './application/archive-product.use-case';
 import { CreateCategoryUseCase } from './application/create-category.use-case';
 import { CreateProductUseCase } from './application/create-product.use-case';
 import { DeleteCategoryUseCase } from './application/delete-category.use-case';
+import { DeleteProductUseCase } from './application/delete-product.use-case';
 import { GetCategoryUseCase } from './application/get-category.use-case';
 import { GetProductUseCase } from './application/get-product.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
@@ -39,10 +40,11 @@ import { ProductsController } from './presentation/products.controller';
  * (diferente de `SessionAuthGuard`/`SiteAuthorizationGuard`, que existem
  * justamente para serem reaproveitados entre módulos). `DeleteCategoryUseCase`
  * (CAT-007), `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013)
- * inclusive: serão consumidas por `APP-006`/`REV-011` (cross-domain) quando
- * essas tarefas existirem, mas exportar agora seria antecipar consumidores
- * que ainda não foram implementados — ficam só registradas como provider,
- * exportação entra junto com a tarefa que precisar delas.
+ * e `DeleteProductUseCase` (CAT-014) inclusive: serão consumidas por
+ * `APP-006`/`REV-011`/`APP-003` (cross-domain) quando essas tarefas
+ * existirem, mas exportar agora seria antecipar consumidores que ainda não
+ * foram implementados — ficam só registradas como provider, exportação
+ * entra junto com a tarefa que precisar delas.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -61,6 +63,7 @@ import { ProductsController } from './presentation/products.controller';
     GetProductUseCase,
     ArchiveProductUseCase,
     UnarchiveProductUseCase,
+    DeleteProductUseCase,
   ],
 })
 export class CatalogModule {}

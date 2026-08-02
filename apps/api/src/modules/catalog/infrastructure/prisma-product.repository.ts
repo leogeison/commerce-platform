@@ -16,6 +16,11 @@ export type CreateProductRepositoryResult =
   | { ok: false; reason: 'SLUG_CONFLICT' }
   | { ok: false; reason: 'CATEGORY_NOT_FOUND' };
 
+export type DeleteProductRepositoryResult =
+  | { ok: true }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'HAS_OFFERS' };
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -221,6 +226,48 @@ export class PrismaProductRepository {
       where: { id_siteId: { id, siteId } },
     });
   }
+
+  /**
+   * Exclui fisicamente um `Product` do Site (CAT-014) — operação
+   * **interna** do Catalog, sem controller/rota HTTP própria; quem chama é
+   * `APP-003` (cross-domain, fora deste módulo), depois de já ter
+   * confirmado que não há Artigo vinculado.
+   *
+   * Reativa, sem pré-checagem de Oferta vinculada — mesmo raciocínio já
+   * usado em `PrismaCategoryRepository.deleteBySite` (CAT-007): tenta o
+   * `delete` direto pela chave composta `id_siteId` e traduz o erro do
+   * Postgres/Prisma, evitando corrida entre checar "nenhuma Oferta
+   * vinculada" e uma Oferta ser criada logo depois.
+   *
+   * `Offer.product` é `onDelete: Restrict` no schema — o próprio Postgres
+   * recusa a exclusão se existir Oferta vinculada, traduzido para `P2003`.
+   * `P2025` é "registro não encontrado" — cobre tanto `id` inexistente
+   * quanto `id` de um Produto de outro Site (a chave composta `id_siteId`
+   * nunca bate), mesmo critério de isolamento já usado em
+   * `findOneBySiteWithOffers`.
+   */
+  async deleteBySite(
+    siteId: string,
+    id: string,
+  ): Promise<DeleteProductRepositoryResult> {
+    try {
+      await this.prisma.product.delete({
+        where: { id_siteId: { id, siteId } },
+      });
+
+      return { ok: true };
+    } catch (err) {
+      if (isRecordNotFound(err)) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isForeignKeyConstraintViolation(err)) {
+        return { ok: false, reason: 'HAS_OFFERS' };
+      }
+
+      throw err;
+    }
+  }
 }
 
 /**
@@ -237,12 +284,26 @@ function isUniqueConstraintViolation(err: unknown): boolean {
   );
 }
 
-/** `P2003`: violação de foreign key — aqui, `categoryId` inválido/de outro Site. */
+/**
+ * `P2003`: violação de foreign key — em `create()`, `categoryId`
+ * inválido/de outro Site; em `deleteBySite()`, Oferta(s) ainda vinculada(s).
+ * Mesmo código, significado depende de qual método capturou o erro.
+ */
 function isForeignKeyConstraintViolation(err: unknown): boolean {
   return (
     typeof err === 'object' &&
     err !== null &&
     'code' in err &&
     (err as { code?: unknown }).code === 'P2003'
+  );
+}
+
+/** `P2025`: operação (aqui, `delete`) não encontrou o registro pela `where`. */
+function isRecordNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2025'
   );
 }
