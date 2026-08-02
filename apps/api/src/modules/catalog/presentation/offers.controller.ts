@@ -14,11 +14,13 @@ import type { Request } from 'express';
 import {
   createOfferRequestSchema,
   listOffersQuerySchema,
+  offerParamsSchema,
   offersProductParamsSchema,
   type CreateOfferRequest,
   type ListOffersQuery,
   type ListOffersResponse,
   type OfferAdmin,
+  type OfferParams,
   type OffersProductParams,
 } from '@commerce-platform/contracts';
 import { OriginGuard } from '../../../shared/http/origin.guard';
@@ -27,11 +29,13 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateOfferUseCase } from '../application/create-offer.use-case';
+import { GetOfferUseCase } from '../application/get-offer.use-case';
 import { ListOffersUseCase } from '../application/list-offers.use-case';
 import { toOfferAdmin } from './offer.presenter';
 
 const PRODUCT_NOT_FOUND_MESSAGE =
   'Produto não encontrado: o productId não existe ou não pertence a este Site.';
+const OFFER_NOT_FOUND_MESSAGE = 'Oferta não encontrada.';
 
 /**
  * `POST /admin/sites/:siteSlug/products/:productId/offers` (CAT-015;
@@ -57,6 +61,7 @@ export class OffersController {
   constructor(
     private readonly createOfferUseCase: CreateOfferUseCase,
     private readonly listOffersUseCase: ListOffersUseCase,
+    private readonly getOfferUseCase: GetOfferUseCase,
   ) {}
 
   @Post()
@@ -132,5 +137,39 @@ export class OffersController {
       total: result.total,
       totalPages: result.totalPages,
     };
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/products/:productId/offers/:id` (CAT-017;
+   * CTR-005).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `list()`. `offerParamsSchema`
+   * (com `id`), mesmo padrão de `CategoriesController.detail()`/
+   * `ProductsController.detail()`.
+   *
+   * `404` genérico para "não existe"/"de outro Site"/"de outro Produto"
+   * (sem pré-checagem do Produto) — mesmo critério documentado em
+   * `PrismaOfferRepository.findOneByProductAndSite`. Oferta arquivada
+   * retorna `200` normalmente.
+   */
+  @Get(':id')
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async detail(
+    @Param(new ZodValidationPipe(offerParamsSchema))
+    params: OfferParams,
+    @Req() req: Request,
+  ): Promise<OfferAdmin> {
+    const offer = await this.getOfferUseCase.execute({
+      siteId: req.tenant!.siteId,
+      productId: params.productId,
+      id: params.id,
+    });
+
+    if (!offer) {
+      throw new NotFoundException(OFFER_NOT_FOUND_MESSAGE);
+    }
+
+    return toOfferAdmin(offer);
   }
 }

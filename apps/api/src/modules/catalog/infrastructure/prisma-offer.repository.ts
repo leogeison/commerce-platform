@@ -141,6 +141,36 @@ export class PrismaOfferRepository {
 
     return { ok: true, items, total };
   }
+
+  /**
+   * Busca uma `Offer` por `id`, restrita ao Site e ao Produto (CAT-017).
+   * `Offer` só tem `@@unique([id, siteId])` no schema — sem chave composta
+   * envolvendo `productId` — então uso `findFirst` com os três campos no
+   * `where` (`id`, `siteId`, `productId`) em vez de `findUnique` na chave
+   * composta usada em Categoria/Produto.
+   *
+   * Um único filtro combinado cobre, com o mesmo `null`/`404` genérico,
+   * três casos: `id` inexistente; `id` de uma Oferta de outro Site; `id`
+   * de uma Oferta que existe e pertence a este Site mas está sob outro
+   * Produto (a URL não bate com o recurso). Mesmo critério de "mesmo 404
+   * para não-existe/tenant errado" já usado em `PrismaCategoryRepository.
+   * findOneBySite`/`PrismaProductRepository.findOneBySiteWithOffers`,
+   * estendido aqui para "produto errado" — decisão explícita da CAT-017,
+   * sem pré-checagem do Produto.
+   *
+   * Oferta arquivada é retornada normalmente, sem filtro por `archivedAt`
+   * — mesmo critério de detalhe já usado em Categoria/Produto (arquivamento
+   * nunca é `404` na visão admin).
+   */
+  async findOneByProductAndSite(
+    siteId: string,
+    productId: string,
+    id: string,
+  ): Promise<Offer | null> {
+    return this.prisma.offer.findFirst({
+      where: { id, siteId, productId },
+    });
+  }
 }
 
 /** `P2003`: violação de foreign key — aqui, `productId` inválido/de outro Site. */
