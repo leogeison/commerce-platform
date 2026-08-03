@@ -26,6 +26,11 @@ export interface FindManyBySiteResult {
   total: number;
 }
 
+export type DeleteAuthorRepositoryResult =
+  | { ok: true }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'HAS_ARTICLES' };
+
 /**
  * Nome real, gerado pela migration (`20260728150323_init/migration.sql`),
  * da FK de `Author.userId` para `User.id`. Único jeito confiável de
@@ -191,6 +196,47 @@ export class PrismaAuthorRepository {
     return this.prisma.author.findUnique({
       where: { id_siteId: { id, siteId } },
     });
+  }
+
+  /**
+   * Exclui fisicamente um `Author` do Site (EDT-005). Reativa, sem
+   * pré-checagem de Artigo vinculado — mesmo raciocínio já usado em
+   * `PrismaCategoryRepository.deleteBySite` (CAT-007): tenta o `delete`
+   * direto pela chave composta `id_siteId` e traduz o erro do
+   * Postgres/Prisma, evitando corrida entre checar "nenhum Artigo
+   * vinculado" e um Artigo ser criado logo depois.
+   *
+   * Diferente de `create()` (duas constraints alcançáveis, exigiu
+   * distinguir qual violou), aqui só existe uma FK entrante alcançável por
+   * `delete()`: `Article.author` (`Article_authorId_siteId_fkey`,
+   * `onDelete: Restrict`) — `Author.user`/`Author.site` são FKs *saindo*
+   * de `Author`, nunca bloqueiam a exclusão dele. Por isso qualquer
+   * `P2003` aqui é sempre "Artigo vinculado", sem precisar inspecionar
+   * `meta`/mensagem (mesmo critério de `PrismaCategoryRepository.deleteBySite`
+   * pra `HAS_PRODUCTS`).
+   *
+   * `P2025` é "registro não encontrado" — cobre tanto `id` inexistente
+   * quanto `id` de um Author de outro Site (a chave composta `id_siteId`
+   * nunca bate), mesmo critério de isolamento já usado em `findOneBySite`.
+   */
+  async deleteBySite(siteId: string, id: string): Promise<DeleteAuthorRepositoryResult> {
+    try {
+      await this.prisma.author.delete({
+        where: { id_siteId: { id, siteId } },
+      });
+
+      return { ok: true };
+    } catch (err) {
+      if (isErrorWithCode(err, 'P2025')) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isErrorWithCode(err, 'P2003')) {
+        return { ok: false, reason: 'HAS_ARTICLES' };
+      }
+
+      throw err;
+    }
   }
 }
 

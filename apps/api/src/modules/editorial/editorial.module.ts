@@ -4,6 +4,7 @@ import { HttpModule } from '../../shared/http/http.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { CreateAuthorUseCase } from './application/create-author.use-case';
+import { DeleteAuthorUseCase } from './application/delete-author.use-case';
 import { GetAuthorUseCase } from './application/get-author.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
 import { PrismaAuthorRepository } from './infrastructure/prisma-author.repository';
@@ -26,6 +27,12 @@ import { AuthorsController } from './presentation/authors.controller';
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
   controllers: [AuthorsController],
-  providers: [PrismaAuthorRepository, CreateAuthorUseCase, ListAuthorsUseCase, GetAuthorUseCase],
+  providers: [
+    PrismaAuthorRepository,
+    CreateAuthorUseCase,
+    ListAuthorsUseCase,
+    GetAuthorUseCase,
+    DeleteAuthorUseCase,
+  ],
 })
 export class EditorialModule {}
