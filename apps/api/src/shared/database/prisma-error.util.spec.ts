@@ -1,13 +1,18 @@
-import { readUniqueConstraintFields } from './prisma-author.repository';
+import { readUniqueConstraintFields } from './prisma-error.util';
 
 /**
  * Teste unitário puro (sem Postgres, sem Nest) de `readUniqueConstraintFields`
- * — a função que traduz um `P2002` de `Author` para nomes de coluna,
- * cobrindo especificamente as variações de pontuação já observadas em
- * execuções reais deste projeto contra Postgres real (ver o histórico de
- * decisão em `prisma-author.repository.ts`): primeiro crase pura, depois
- * crase combinada com aspas duplas. Existe para nunca mais depender só de
- * um e2e com banco para pegar uma regressão de parsing.
+ * — a função que traduz um `P2002` para nomes de coluna, cobrindo
+ * especificamente as variações de pontuação já observadas em execuções
+ * reais deste projeto contra Postgres real (ver o histórico de decisão em
+ * `prisma-error.util.ts`): primeiro crase pura, depois crase combinada com
+ * aspas duplas. Existe para nunca mais depender só de um e2e com banco
+ * para pegar uma regressão de parsing.
+ *
+ * Movido de `prisma-author.repository.spec.ts` (EDT-001) pra cá quando a
+ * função ganhou um segundo consumidor real (`PrismaArticleRepository`,
+ * EDT-006) e foi extraída para este util compartilhado — mesmo
+ * comportamento, mesmos casos, só o import mudou.
  */
 describe('readUniqueConstraintFields', () => {
   it('extrai os campos quando a mensagem usa crase e aspas duplas combinadas: (`"siteId"`, `"userId"`)', () => {
