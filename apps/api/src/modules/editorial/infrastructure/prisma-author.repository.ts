@@ -15,6 +15,17 @@ export type CreateAuthorRepositoryResult =
   | { ok: false; reason: 'USER_ALREADY_HAS_AUTHOR' }
   | { ok: false; reason: 'USER_NOT_FOUND' };
 
+export interface FindManyBySiteInput {
+  siteId: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface FindManyBySiteResult {
+  items: Author[];
+  total: number;
+}
+
 /**
  * Nome real, gerado pela migration (`20260728150323_init/migration.sql`),
  * da FK de `Author.userId` para `User.id`. Único jeito confiável de
@@ -136,6 +147,34 @@ export class PrismaAuthorRepository {
 
       throw err;
     }
+  }
+
+  /**
+   * Lista paginada de `Author` de um Site (EDT-002). Mesmo padrão de
+   * `PrismaCategoryRepository.findManyBySite` (CAT-002): `findMany` +
+   * `count` no mesmo `where` via `prisma.$transaction([...])` (mesmo
+   * snapshot consistente entre as duas consultas), ordenação
+   * determinística `name asc, id asc` (mesmo critério de desempate já
+   * usado em Categoria/Produto/Oferta).
+   *
+   * `where` é só `{ siteId }`, sem campo opcional — `EDT-002` ("sem
+   * filtro") não tem nenhum filtro equivalente a `archived`/`categoryId`
+   * de Categoria/Produto: `Author` nem tem `archivedAt` no schema.
+   */
+  async findManyBySite(input: FindManyBySiteInput): Promise<FindManyBySiteResult> {
+    const where = { siteId: input.siteId };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.author.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.author.count({ where }),
+    ]);
+
+    return { items, total };
   }
 }
 
