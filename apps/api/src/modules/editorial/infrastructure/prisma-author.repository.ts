@@ -176,6 +176,22 @@ export class PrismaAuthorRepository {
 
     return { items, total };
   }
+
+  /**
+   * Busca um `Author` por `id`, restrito ao Site (EDT-003). `findUnique`
+   * pela chave composta `id_siteId` (gerada pelo Prisma a partir de
+   * `@@unique([id, siteId])` do schema) — mesmo padrão de
+   * `PrismaCategoryRepository.findOneBySite` (CAT-003). Um `id` real de
+   * Author de outro Site nunca bate nessa chave composta, então retorna
+   * `null` do mesmo jeito que um `id` inexistente — quem chama nunca
+   * distingue os dois casos, sempre um `404` genérico (mesmo raciocínio
+   * de isolamento já usado em Categoria/Produto/Oferta).
+   */
+  async findOneBySite(siteId: string, id: string): Promise<Author | null> {
+    return this.prisma.author.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
 }
 
 function isErrorWithCode(err: unknown, code: string): boolean {

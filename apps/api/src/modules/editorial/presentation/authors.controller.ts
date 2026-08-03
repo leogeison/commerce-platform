@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -13,10 +14,12 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
+  authorParamsSchema,
   authorsSiteParamsSchema,
   createAuthorRequestSchema,
   listAuthorsQuerySchema,
   type AuthorAdmin,
+  type AuthorParams,
   type AuthorsSiteParams,
   type CreateAuthorRequest,
   type ListAuthorsQuery,
@@ -28,12 +31,14 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateAuthorUseCase } from '../application/create-author.use-case';
+import { GetAuthorUseCase } from '../application/get-author.use-case';
 import { ListAuthorsUseCase } from '../application/list-authors.use-case';
 import { toAuthorAdmin } from './author.presenter';
 
 const USER_ALREADY_HAS_AUTHOR_MESSAGE =
   'Este usuário já possui um Author neste Site.';
 const USER_NOT_FOUND_MESSAGE = 'userId inválido: o usuário não existe.';
+const AUTHOR_NOT_FOUND_MESSAGE = 'Autor não encontrado.';
 
 /**
  * `POST /admin/sites/:siteSlug/authors` (EDT-001; CTR-006).
@@ -63,6 +68,7 @@ export class AuthorsController {
   constructor(
     private readonly createAuthorUseCase: CreateAuthorUseCase,
     private readonly listAuthorsUseCase: ListAuthorsUseCase,
+    private readonly getAuthorUseCase: GetAuthorUseCase,
   ) {}
 
   @Post()
@@ -132,5 +138,41 @@ export class AuthorsController {
       total: result.total,
       totalPages: result.totalPages,
     };
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/authors/:id` (EDT-003; CTR-006).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `list()`: `GET` não mutável, sem
+   * `OriginGuard`, leitura mínima da hierarquia.
+   *
+   * `authorParamsSchema` (não `authorsSiteParamsSchema`): a única
+   * diferença entre as duas rotas é o `id` — o pipe já garante `422` para
+   * um `id` que não seja UUID, antes de chegar ao repository.
+   *
+   * `404` genérico para "não existe" e "existe, mas é de outro Site":
+   * `GetAuthorUseCase`/`findOneBySite` já devolvem o mesmo `null` para os
+   * dois casos (mesmo raciocínio de isolamento já usado em
+   * `CategoriesController.detail()`) — o controller nunca tenta distinguir
+   * o que o caso de uso já não distingue.
+   */
+  @Get(':id')
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async detail(
+    @Param(new ZodValidationPipe(authorParamsSchema))
+    params: AuthorParams,
+    @Req() req: Request,
+  ): Promise<AuthorAdmin> {
+    const author = await this.getAuthorUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!author) {
+      throw new NotFoundException(AUTHOR_NOT_FOUND_MESSAGE);
+    }
+
+    return toAuthorAdmin(author);
   }
 }
