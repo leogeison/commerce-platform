@@ -1,4 +1,4 @@
-import type { ArticleAdmin } from '@commerce-platform/contracts';
+import type { ArticleAdmin, ArticleSummaryAdmin } from '@commerce-platform/contracts';
 import type { Article } from '../../../generated/prisma/client';
 
 /**
@@ -20,6 +20,31 @@ export function toArticleAdmin(article: Article): ArticleAdmin {
     metaDescription: article.metaDescription,
     coverImageUrl: article.coverImageUrl,
     bodyMdx: article.bodyMdx,
+    publishedAt: article.publishedAt ? article.publishedAt.toISOString() : null,
+    createdAt: article.createdAt.toISOString(),
+    updatedAt: article.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Converte um `Article` (Prisma) para o formato HTTP resumido
+ * `ArticleSummaryAdmin` (CTR-007, `article-summary.ts`) — usado só pela
+ * listagem (`EDT-007`). Mesmos campos de `toArticleAdmin`, exceto
+ * `bodyMdx` (decisão explícita da CTR-007: listagem nunca traz o corpo do
+ * Artigo).
+ */
+export function toArticleSummaryAdmin(article: Article): ArticleSummaryAdmin {
+  return {
+    id: article.id,
+    siteId: article.siteId,
+    categoryId: article.categoryId,
+    authorId: article.authorId,
+    type: article.type,
+    status: article.status,
+    title: article.title,
+    slug: article.slug,
+    metaDescription: article.metaDescription,
+    coverImageUrl: article.coverImageUrl,
     publishedAt: article.publishedAt ? article.publishedAt.toISOString() : null,
     createdAt: article.createdAt.toISOString(),
     updatedAt: article.updatedAt.toISOString(),

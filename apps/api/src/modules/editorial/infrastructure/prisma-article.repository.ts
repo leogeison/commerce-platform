@@ -5,7 +5,12 @@ import {
   readForeignKeyConstraintName,
   readUniqueConstraintFields,
 } from '../../../shared/database/prisma-error.util';
-import type { Article, ArticleType } from '../../../generated/prisma/client';
+import {
+  Prisma,
+  type Article,
+  type ArticleStatus,
+  type ArticleType,
+} from '../../../generated/prisma/client';
 
 export interface CreateArticleInput {
   siteId: string;
@@ -24,6 +29,23 @@ export type CreateArticleRepositoryResult =
   | { ok: false; reason: 'SLUG_CONFLICT' }
   | { ok: false; reason: 'CATEGORY_NOT_FOUND' }
   | { ok: false; reason: 'AUTHOR_NOT_FOUND' };
+
+export interface FindManyBySiteInput {
+  siteId: string;
+  page: number;
+  pageSize: number;
+  /** `undefined` = sem filtro por status. */
+  status?: ArticleStatus;
+  /** `undefined` = sem filtro por tipo. */
+  type?: ArticleType;
+  /** `undefined` = sem filtro por Categoria. */
+  categoryId?: string;
+}
+
+export interface FindManyBySiteResult {
+  items: Article[];
+  total: number;
+}
 
 /**
  * Nomes reais das duas FKs compostas alcançáveis por `create()`, gerados
@@ -119,5 +141,47 @@ export class PrismaArticleRepository {
 
       throw err;
     }
+  }
+
+  /**
+   * Lista paginada de `Article` de um Site (EDT-007). Mesmo padrão de
+   * `PrismaProductRepository.findManyBySite` (CAT-009): `findMany` +
+   * `count` no mesmo `where` via `prisma.$transaction([...])` (mesmo
+   * snapshot consistente).
+   *
+   * `status`/`type`/`categoryId` ausentes não entram no `where` — sem
+   * filtro. Presentes, filtram exatamente por aquele valor; um
+   * `categoryId` de outro Site simplesmente não bate em nenhum Artigo
+   * deste Site (lista vazia, sem tratamento especial), mesmo raciocínio já
+   * usado no filtro `categoryId` de Produto. Os três filtros combinam com
+   * `AND` implícito do `where` — nenhuma regra de exclusividade entre
+   * eles documentada.
+   *
+   * `orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]` — decisão explícita
+   * desta tarefa (diferente de Categoria/Produto/Autor, que ordenam por
+   * `name asc`): Artigo é conteúdo editorial, não cadastro, e o painel
+   * administrativo prioriza visualizar os itens criados recentemente
+   * primeiro. `id asc` só como desempate determinístico, mesmo critério
+   * das demais listagens.
+   */
+  async findManyBySite(input: FindManyBySiteInput): Promise<FindManyBySiteResult> {
+    const where: Prisma.ArticleWhereInput = {
+      siteId: input.siteId,
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.type === undefined ? {} : { type: input.type }),
+      ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.article.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.article.count({ where }),
+    ]);
+
+    return { items, total };
   }
 }

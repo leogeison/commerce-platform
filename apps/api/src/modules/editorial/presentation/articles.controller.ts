@@ -2,9 +2,11 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UnprocessableEntityException,
   UseGuards,
@@ -13,9 +15,12 @@ import type { Request } from 'express';
 import {
   articlesSiteParamsSchema,
   createArticleRequestSchema,
+  listArticlesQuerySchema,
   type ArticleAdmin,
   type ArticlesSiteParams,
   type CreateArticleRequest,
+  type ListArticlesQuery,
+  type ListArticlesResponse,
 } from '@commerce-platform/contracts';
 import { OriginGuard } from '../../../shared/http/origin.guard';
 import { ZodValidationPipe } from '../../../shared/http/zod-validation.pipe';
@@ -23,7 +28,8 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateArticleUseCase } from '../application/create-article.use-case';
-import { toArticleAdmin } from './article.presenter';
+import { ListArticlesUseCase } from '../application/list-articles.use-case';
+import { toArticleAdmin, toArticleSummaryAdmin } from './article.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe um Artigo com este slug neste Site.';
 const CATEGORY_NOT_FOUND_MESSAGE = 'categoryId inválido: a categoria não existe.';
@@ -51,13 +57,16 @@ const AUTHOR_NOT_FOUND_MESSAGE = 'authorId inválido: o autor não existe.';
  * (referência que não existe, mesmo status já usado em `USER_NOT_FOUND`
  * de `AuthorsController.create()`).
  *
- * Só `EDT-006` implementado neste controller — `EDT-007` (listar),
- * `EDT-008` (detalhar), `EDT-009` (atualizar) e `EDT-010` (vincular
- * Produto) entram junto de suas respectivas tarefas.
+ * `EDT-006`/`EDT-007` implementados neste controller — `EDT-008`
+ * (detalhar), `EDT-009` (atualizar) e `EDT-010` (vincular Produto) entram
+ * junto de suas respectivas tarefas.
  */
 @Controller('admin/sites/:siteSlug/articles')
 export class ArticlesController {
-  constructor(private readonly createArticleUseCase: CreateArticleUseCase) {}
+  constructor(
+    private readonly createArticleUseCase: CreateArticleUseCase,
+    private readonly listArticlesUseCase: ListArticlesUseCase,
+  ) {}
 
   @Post()
   @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
@@ -95,5 +104,50 @@ export class ArticlesController {
     }
 
     return toArticleAdmin(result.article);
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/articles` (EDT-007; CTR-007).
+   *
+   * Só `SessionAuthGuard, SiteAuthorizationGuard` (sem `OriginGuard`): `GET`
+   * não é mutável, mesmo critério já usado em `AuthorsController.list()`.
+   *
+   * `@MinRole('VIEWER')`: a Role mínima da hierarquia — listar é leitura,
+   * mesma regra geral do Architecture.md §16 já aplicada em
+   * Categoria/Produto/Autor.
+   *
+   * `listArticlesQuerySchema` já aplica os defaults de paginação (`page: 1,
+   * pageSize: 20`) e os três filtros opcionais (`status?`, `type?`,
+   * `categoryId?`, Architecture.md §32) antes de chegar aqui.
+   *
+   * Resposta usa `toArticleSummaryAdmin` (sem `bodyMdx`) — decisão
+   * explícita da CTR-007, `articleSummaryAdminSchema`.
+   */
+  @Get()
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async list(
+    @Param(new ZodValidationPipe(articlesSiteParamsSchema))
+    _params: ArticlesSiteParams,
+    @Query(new ZodValidationPipe(listArticlesQuerySchema))
+    query: ListArticlesQuery,
+    @Req() req: Request,
+  ): Promise<ListArticlesResponse> {
+    const result = await this.listArticlesUseCase.execute({
+      siteId: req.tenant!.siteId,
+      page: query.page,
+      pageSize: query.pageSize,
+      status: query.status,
+      type: query.type,
+      categoryId: query.categoryId,
+    });
+
+    return {
+      items: result.items.map(toArticleSummaryAdmin),
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      totalPages: result.totalPages,
+    };
   }
 }
