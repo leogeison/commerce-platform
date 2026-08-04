@@ -6,6 +6,7 @@ import { TenancyModule } from '../tenancy/tenancy.module';
 import { CreateArticleUseCase } from './application/create-article.use-case';
 import { CreateAuthorUseCase } from './application/create-author.use-case';
 import { DeleteAuthorUseCase } from './application/delete-author.use-case';
+import { GetArticleUseCase } from './application/get-article.use-case';
 import { GetAuthorUseCase } from './application/get-author.use-case';
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
@@ -45,6 +46,7 @@ import { AuthorsController } from './presentation/authors.controller';
     PrismaArticleRepository,
     CreateArticleUseCase,
     ListArticlesUseCase,
+    GetArticleUseCase,
   ],
 })
 export class EditorialModule {}

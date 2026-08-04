@@ -184,4 +184,18 @@ export class PrismaArticleRepository {
 
     return { items, total };
   }
+
+  /**
+   * Busca um `Article` por `id`, restrito ao Site (EDT-008). `findUnique`
+   * pela chave composta `id_siteId`, mesmo padrão de
+   * `PrismaAuthorRepository.findOneBySite`/`PrismaCategoryRepository.findOneBySite`
+   * — um `id` real de Artigo de outro Site nunca bate nessa chave, então
+   * retorna `null` do mesmo jeito que um `id` inexistente, mesmo `404`
+   * genérico.
+   */
+  async findOneBySite(siteId: string, id: string): Promise<Article | null> {
+    return this.prisma.article.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
 }

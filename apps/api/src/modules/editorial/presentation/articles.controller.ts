@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -13,10 +14,12 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
+  articleParamsSchema,
   articlesSiteParamsSchema,
   createArticleRequestSchema,
   listArticlesQuerySchema,
   type ArticleAdmin,
+  type ArticleParams,
   type ArticlesSiteParams,
   type CreateArticleRequest,
   type ListArticlesQuery,
@@ -28,12 +31,14 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateArticleUseCase } from '../application/create-article.use-case';
+import { GetArticleUseCase } from '../application/get-article.use-case';
 import { ListArticlesUseCase } from '../application/list-articles.use-case';
 import { toArticleAdmin, toArticleSummaryAdmin } from './article.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe um Artigo com este slug neste Site.';
 const CATEGORY_NOT_FOUND_MESSAGE = 'categoryId inválido: a categoria não existe.';
 const AUTHOR_NOT_FOUND_MESSAGE = 'authorId inválido: o autor não existe.';
+const ARTICLE_NOT_FOUND_MESSAGE = 'Artigo não encontrado.';
 
 /**
  * `POST /admin/sites/:siteSlug/articles` (EDT-006; CTR-007).
@@ -57,15 +62,16 @@ const AUTHOR_NOT_FOUND_MESSAGE = 'authorId inválido: o autor não existe.';
  * (referência que não existe, mesmo status já usado em `USER_NOT_FOUND`
  * de `AuthorsController.create()`).
  *
- * `EDT-006`/`EDT-007` implementados neste controller — `EDT-008`
- * (detalhar), `EDT-009` (atualizar) e `EDT-010` (vincular Produto) entram
- * junto de suas respectivas tarefas.
+ * `EDT-006`/`EDT-007`/`EDT-008` implementados neste controller — `EDT-009`
+ * (atualizar) e `EDT-010` (vincular Produto) entram junto de suas
+ * respectivas tarefas.
  */
 @Controller('admin/sites/:siteSlug/articles')
 export class ArticlesController {
   constructor(
     private readonly createArticleUseCase: CreateArticleUseCase,
     private readonly listArticlesUseCase: ListArticlesUseCase,
+    private readonly getArticleUseCase: GetArticleUseCase,
   ) {}
 
   @Post()
@@ -149,5 +155,44 @@ export class ArticlesController {
       total: result.total,
       totalPages: result.totalPages,
     };
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/articles/:id` (EDT-008; CTR-007).
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `list()`: `GET` não mutável, sem
+   * `OriginGuard`, leitura mínima da hierarquia.
+   *
+   * `articleParamsSchema` (não `articlesSiteParamsSchema`): a única
+   * diferença entre as duas rotas é o `id` — o pipe já garante `422` para
+   * um `id` que não seja UUID, antes de chegar ao repository.
+   *
+   * `404` genérico para "não existe" e "existe, mas é de outro Site":
+   * `GetArticleUseCase`/`findOneBySite` já devolvem o mesmo `null` para os
+   * dois casos (mesmo raciocínio de isolamento já usado em
+   * `AuthorsController.detail()`) — o controller nunca tenta distinguir o
+   * que o caso de uso já não distingue.
+   *
+   * Resposta usa `toArticleAdmin` (completo, com `bodyMdx`) — diferente de
+   * `list()`, que usa o resumo.
+   */
+  @Get(':id')
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async detail(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Req() req: Request,
+  ): Promise<ArticleAdmin> {
+    const article = await this.getArticleUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!article) {
+      throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+    }
+
+    return toArticleAdmin(article);
   }
 }
