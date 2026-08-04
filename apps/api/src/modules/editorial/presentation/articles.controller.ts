@@ -6,6 +6,7 @@ import {
   HttpCode,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -18,12 +19,14 @@ import {
   articlesSiteParamsSchema,
   createArticleRequestSchema,
   listArticlesQuerySchema,
+  updateArticleRequestSchema,
   type ArticleAdmin,
   type ArticleParams,
   type ArticlesSiteParams,
   type CreateArticleRequest,
   type ListArticlesQuery,
   type ListArticlesResponse,
+  type UpdateArticleRequest,
 } from '@commerce-platform/contracts';
 import { OriginGuard } from '../../../shared/http/origin.guard';
 import { ZodValidationPipe } from '../../../shared/http/zod-validation.pipe';
@@ -33,12 +36,14 @@ import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authoriz
 import { CreateArticleUseCase } from '../application/create-article.use-case';
 import { GetArticleUseCase } from '../application/get-article.use-case';
 import { ListArticlesUseCase } from '../application/list-articles.use-case';
+import { UpdateArticleUseCase } from '../application/update-article.use-case';
 import { toArticleAdmin, toArticleSummaryAdmin } from './article.presenter';
 
 const SLUG_CONFLICT_MESSAGE = 'Já existe um Artigo com este slug neste Site.';
 const CATEGORY_NOT_FOUND_MESSAGE = 'categoryId inválido: a categoria não existe.';
 const AUTHOR_NOT_FOUND_MESSAGE = 'authorId inválido: o autor não existe.';
 const ARTICLE_NOT_FOUND_MESSAGE = 'Artigo não encontrado.';
+const ARTICLE_NOT_DRAFT_MESSAGE = 'Somente Artigos em DRAFT podem ser editados.';
 
 /**
  * `POST /admin/sites/:siteSlug/articles` (EDT-006; CTR-007).
@@ -62,9 +67,8 @@ const ARTICLE_NOT_FOUND_MESSAGE = 'Artigo não encontrado.';
  * (referência que não existe, mesmo status já usado em `USER_NOT_FOUND`
  * de `AuthorsController.create()`).
  *
- * `EDT-006`/`EDT-007`/`EDT-008` implementados neste controller — `EDT-009`
- * (atualizar) e `EDT-010` (vincular Produto) entram junto de suas
- * respectivas tarefas.
+ * `EDT-006`/`EDT-007`/`EDT-008`/`EDT-009` implementados neste controller —
+ * `EDT-010` (vincular Produto) entra junto de sua respectiva tarefa.
  */
 @Controller('admin/sites/:siteSlug/articles')
 export class ArticlesController {
@@ -72,6 +76,7 @@ export class ArticlesController {
     private readonly createArticleUseCase: CreateArticleUseCase,
     private readonly listArticlesUseCase: ListArticlesUseCase,
     private readonly getArticleUseCase: GetArticleUseCase,
+    private readonly updateArticleUseCase: UpdateArticleUseCase,
   ) {}
 
   @Post()
@@ -194,5 +199,76 @@ export class ArticlesController {
     }
 
     return toArticleAdmin(article);
+  }
+
+  /**
+   * `PATCH /admin/sites/:siteSlug/articles/:id` (EDT-009; CTR-007).
+   *
+   * Mesma ordem de guards/`@MinRole('EDITOR')` de `create()`: `OriginGuard`
+   * antes de sessão/banco — editar Artigo é escrita de conteúdo, mesma
+   * regra do Architecture.md §16 ("`EDITOR` cria/edita"). Sem
+   * `@HttpCode` explícito: `200` é o default do Nest para um handler sem
+   * decorator de status, mesmo padrão implícito de `create()`
+   * (explicitado lá só porque `POST` default é `201`, diferente de
+   * `PATCH`).
+   *
+   * `updateArticleRequestSchema` já valida a forma e preserva a semântica
+   * tri-state (`undefined`/`null`/valor) dos quatro campos nuláveis —
+   * este controller só repassa `body` para o caso de uso sem tocar nesses
+   * valores (nenhuma normalização que colapse `null` em `undefined`).
+   *
+   * Sem pré-checagem de status/`slug`/`categoryId`/`authorId`: o
+   * repository resolve todos os conflitos de forma reativa (ver
+   * `PrismaArticleRepository.updateBySite`) — este controller só traduz o
+   * resultado tipado para HTTP: `NOT_FOUND` → `404` (mesmo `404` genérico
+   * de `detail()`), `NOT_DRAFT` → `409` (só `DRAFT` é editável,
+   * Architecture.md §14), `SLUG_CONFLICT` → `409` (mesma categoria de
+   * conflito de `create()`), `CATEGORY_NOT_FOUND`/`AUTHOR_NOT_FOUND` →
+   * `422` (mesmo critério de `create()`).
+   */
+  @Patch(':id')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('EDITOR')
+  async update(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Body(new ZodValidationPipe(updateArticleRequestSchema))
+    body: UpdateArticleRequest,
+    @Req() req: Request,
+  ): Promise<ArticleAdmin> {
+    const result = await this.updateArticleUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+      type: body.type,
+      title: body.title,
+      slug: body.slug,
+      categoryId: body.categoryId,
+      authorId: body.authorId,
+      metaDescription: body.metaDescription,
+      coverImageUrl: body.coverImageUrl,
+      bodyMdx: body.bodyMdx,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      if (result.reason === 'NOT_DRAFT') {
+        throw new ConflictException(ARTICLE_NOT_DRAFT_MESSAGE);
+      }
+
+      if (result.reason === 'SLUG_CONFLICT') {
+        throw new ConflictException(SLUG_CONFLICT_MESSAGE);
+      }
+
+      if (result.reason === 'CATEGORY_NOT_FOUND') {
+        throw new UnprocessableEntityException(CATEGORY_NOT_FOUND_MESSAGE);
+      }
+
+      throw new UnprocessableEntityException(AUTHOR_NOT_FOUND_MESSAGE);
+    }
+
+    return toArticleAdmin(result.article);
   }
 }

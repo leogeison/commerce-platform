@@ -10,6 +10,7 @@ import { GetArticleUseCase } from './application/get-article.use-case';
 import { GetAuthorUseCase } from './application/get-author.use-case';
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
+import { UpdateArticleUseCase } from './application/update-article.use-case';
 import { PrismaArticleRepository } from './infrastructure/prisma-article.repository';
 import { PrismaAuthorRepository } from './infrastructure/prisma-author.repository';
 import { ArticlesController } from './presentation/articles.controller';
@@ -47,6 +48,7 @@ import { AuthorsController } from './presentation/authors.controller';
     CreateArticleUseCase,
     ListArticlesUseCase,
     GetArticleUseCase,
+    UpdateArticleUseCase,
   ],
 })
 export class EditorialModule {}

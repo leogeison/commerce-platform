@@ -30,6 +30,31 @@ export type CreateArticleRepositoryResult =
   | { ok: false; reason: 'CATEGORY_NOT_FOUND' }
   | { ok: false; reason: 'AUTHOR_NOT_FOUND' };
 
+export interface UpdateArticleInput {
+  siteId: string;
+  id: string;
+  type?: ArticleType;
+  title?: string;
+  slug?: string;
+  /** `undefined` = não mexer; `null` = limpar; string = definir. */
+  categoryId?: string | null;
+  /** `undefined` = não mexer; `null` = limpar; string = definir. */
+  authorId?: string | null;
+  /** `undefined` = não mexer; `null` = limpar; string = definir. */
+  metaDescription?: string | null;
+  /** `undefined` = não mexer; `null` = limpar; string = definir. */
+  coverImageUrl?: string | null;
+  bodyMdx?: string;
+}
+
+export type UpdateArticleRepositoryResult =
+  | { ok: true; article: Article }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'NOT_DRAFT' }
+  | { ok: false; reason: 'SLUG_CONFLICT' }
+  | { ok: false; reason: 'CATEGORY_NOT_FOUND' }
+  | { ok: false; reason: 'AUTHOR_NOT_FOUND' };
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -197,5 +222,95 @@ export class PrismaArticleRepository {
     return this.prisma.article.findUnique({
       where: { id_siteId: { id, siteId } },
     });
+  }
+
+  /**
+   * Atualiza um `Article` do Site, só permitido em `DRAFT` (EDT-009).
+   *
+   * `updateMany({ where: { id, siteId, status: 'DRAFT' }, ... })` — mesmo
+   * padrão condicional de `PrismaProductRepository.archiveBySite`/
+   * `unarchiveBySite`: a condição de elegibilidade (`status: 'DRAFT'`)
+   * entra no próprio `where` da instrução SQL, avaliada atomicamente pelo
+   * Postgres junto da atualização — sem pré-checagem separada, sem janela
+   * de corrida entre checar o status e escrever.
+   *
+   * Campos tri-state (`categoryId`, `authorId`, `metaDescription`,
+   * `coverImageUrl`) aproveitam o comportamento nativo do Prisma em
+   * `update`/`updateMany`: um valor `undefined` no `data` **não entra** na
+   * instrução SQL (coluna intocada); `null` explícito **limpa** a coluna;
+   * qualquer outro valor a define. Por isso os campos abaixo são passados
+   * exatamente como chegam em `input`, sem nenhum filtro/normalização —
+   * qualquer `...(x === undefined ? {} : {x})` aqui apagaria a distinção
+   * entre "não mexer" e "limpar", que é o requisito central desta tarefa.
+   *
+   * `count === 0` é ambíguo (não existe, é de outro Site, ou existe mas
+   * não está em `DRAFT`) — um `findUnique` de acompanhamento resolve qual
+   * dos três é: `null` → `NOT_FOUND` (mesmo critério de isolamento já
+   * usado em `findOneBySite`); encontrado → `NOT_DRAFT`.
+   *
+   * `P2002`/`P2003` traduzidos exatamente como em `create()` (mesma
+   * verificação exata de campos/constraint) — só podem ocorrer quando a
+   * linha realmente bateu no `where` (`status: 'DRAFT'`) e a escrita foi
+   * de fato tentada.
+   */
+  async updateBySite(input: UpdateArticleInput): Promise<UpdateArticleRepositoryResult> {
+    try {
+      const result = await this.prisma.article.updateMany({
+        where: { id: input.id, siteId: input.siteId, status: 'DRAFT' },
+        data: {
+          type: input.type,
+          title: input.title,
+          slug: input.slug,
+          categoryId: input.categoryId,
+          authorId: input.authorId,
+          metaDescription: input.metaDescription,
+          coverImageUrl: input.coverImageUrl,
+          bodyMdx: input.bodyMdx,
+        },
+      });
+
+      if (result.count === 0) {
+        const existing = await this.prisma.article.findUnique({
+          where: { id_siteId: { id: input.id, siteId: input.siteId } },
+        });
+
+        if (!existing) {
+          return { ok: false, reason: 'NOT_FOUND' };
+        }
+
+        return { ok: false, reason: 'NOT_DRAFT' };
+      }
+
+      const article = await this.prisma.article.findUnique({
+        where: { id_siteId: { id: input.id, siteId: input.siteId } },
+      });
+
+      return { ok: true, article: article! };
+    } catch (err) {
+      if (isErrorWithCode(err, 'P2002')) {
+        const fields = readUniqueConstraintFields(err);
+        if (fields?.length === 2 && fields.includes('siteId') && fields.includes('slug')) {
+          return { ok: false, reason: 'SLUG_CONFLICT' };
+        }
+
+        throw err;
+      }
+
+      if (isErrorWithCode(err, 'P2003')) {
+        const constraintName = readForeignKeyConstraintName(err);
+
+        if (constraintName === CATEGORY_FOREIGN_KEY_CONSTRAINT) {
+          return { ok: false, reason: 'CATEGORY_NOT_FOUND' };
+        }
+
+        if (constraintName === AUTHOR_FOREIGN_KEY_CONSTRAINT) {
+          return { ok: false, reason: 'AUTHOR_NOT_FOUND' };
+        }
+
+        throw err;
+      }
+
+      throw err;
+    }
   }
 }
