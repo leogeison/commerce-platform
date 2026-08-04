@@ -11,3 +11,4 @@ export * from './article-product-params.js';
 export * from './link-article-product-request.js';
 export * from './reorder-article-products-request.js';
 export * from './article-products-response.js';
+export * from './article-health-response.js';

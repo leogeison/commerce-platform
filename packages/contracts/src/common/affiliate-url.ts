@@ -3,11 +3,15 @@ import { z } from 'zod';
 const VALID_PROTOCOLS = new Set(['http:', 'https:']);
 
 /**
- * URL de afiliado (CTR-005) — obrigatória, formato de URL válido,
- * protocolo HTTP ou HTTPS, sem verificação externa automática
- * (Architecture.md, Seção "Oferta"). Extraído para arquivo próprio porque
- * é reaproveitável além do request de criação (ex.: futura atualização de
- * Oferta, CAT-018).
+ * URL de afiliado — obrigatória, formato de URL válido, protocolo HTTP ou
+ * HTTPS, sem verificação externa automática (Architecture.md, Seção
+ * "Oferta"). Vive em `common` (não em `admin/offers`, onde nasceu na
+ * CTR-005) porque tem dois consumidores reais e independentes: o contrato
+ * administrativo de Oferta (`admin/offers`) e o cálculo de saúde do Artigo
+ * (`APP-001`, regra cross-domain "Oferta válida" = ativa + em estoque + URL
+ * HTTP(S) válida) — uma localização neutra evita que `application` (camada
+ * cross-domain da API) precise importar de dentro da superfície `admin/*`
+ * para reaproveitar uma regra de validação pura.
  *
  * `z.string().url()` garante o formato geral de URL; o `.refine` seguinte
  * usa `new URL(value).protocol` para checar o protocolo real — não um

@@ -1,6 +1,6 @@
 import { z } from 'zod';
+import { affiliateUrlSchema } from '../../common/affiliate-url.js';
 import { marketplaceSchema } from '../common/marketplace.js';
-import { affiliateUrlSchema } from './affiliate-url.js';
 import { offerPriceSchema } from './offer-price.js';
 
 /**
