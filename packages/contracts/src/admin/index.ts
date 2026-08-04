@@ -5,3 +5,4 @@ export * from './products/index.js';
 export * from './offers/index.js';
 export * from './authors/index.js';
 export * from './articles/index.js';
+export * from './publication/index.js';
