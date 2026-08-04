@@ -7,3 +7,7 @@ export * from './update-article-request.js';
 export * from './article-params.js';
 export * from './list-articles-query.js';
 export * from './list-articles-response.js';
+export * from './article-product-params.js';
+export * from './link-article-product-request.js';
+export * from './reorder-article-products-request.js';
+export * from './article-products-response.js';
