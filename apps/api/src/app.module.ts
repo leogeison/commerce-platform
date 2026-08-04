@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { HealthController } from './health.controller';
+import { ApplicationModule } from './modules/application/application.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { EditorialModule } from './modules/editorial/editorial.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -17,6 +18,7 @@ import { LoggingModule } from './shared/logging/logging.module';
     TenancyModule,
     CatalogModule,
     EditorialModule,
+    ApplicationModule,
   ],
   controllers: [HealthController],
   providers: [],

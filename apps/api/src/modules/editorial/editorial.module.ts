@@ -38,9 +38,12 @@ import { AuthorsController } from './presentation/authors.controller';
  * entidade do domínio Editorial, sem módulo próprio (mesmo critério de
  * `CatalogModule`, que agrupa Categoria/Produto/Oferta).
  *
- * Nenhum `exports`: nada em `editorial` é consumido por outro módulo
- * ainda — mesmo critério de `CatalogModule` (exportação entra junto com a
- * tarefa que precisar, não antecipada).
+ * `exports: [PrismaArticleRepository, PrismaArticleProductRepository]`
+ * (APP-001) — primeira vez que `editorial` exporta algo: `ApplicationModule`
+ * precisa dos dois para `CalculateArticleHealthUseCase` (ler o Artigo e
+ * seus Produtos vinculados) sem duplicar acesso a dado que já existe
+ * aqui. Nenhum outro provider é exportado — exportação entra junto com a
+ * tarefa que precisar dela, mesmo critério já documentado acima.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -64,5 +67,6 @@ import { AuthorsController } from './presentation/authors.controller';
     RevertArticleToDraftUseCase,
     RestoreArticleToDraftUseCase,
   ],
+  exports: [PrismaArticleRepository, PrismaArticleProductRepository],
 })
 export class EditorialModule {}

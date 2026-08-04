@@ -119,6 +119,24 @@ export class PrismaArticleProductRepository {
   }
 
   /**
+   * Lista os `productId`s vinculados a um Artigo, ordenados por
+   * `position` (APP-001) — mesma ordenação de `currentProductIds`, mas
+   * pública, fora de transação e sem lock: leitura pura para o cálculo de
+   * saúde do Artigo (read model, sem mutação em jogo), diferente dos três
+   * métodos acima, que escrevem e por isso precisam do lock de `Article`
+   * (EDT-010).
+   */
+  async findProductIdsByArticle(siteId: string, articleId: string): Promise<string[]> {
+    const rows = await this.prisma.articleProduct.findMany({
+      where: { siteId, articleId },
+      orderBy: [{ position: 'asc' }, { productId: 'asc' }],
+      select: { productId: true },
+    });
+
+    return rows.map((row) => row.productId);
+  }
+
+  /**
    * Vincula um Produto ao Artigo (EDT-010), sempre no fim da lista.
    *
    * Depois do lock/checagem de `DRAFT`, calcula `nextPosition` via

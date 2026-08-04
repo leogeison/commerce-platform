@@ -262,6 +262,51 @@ export class PrismaOfferRepository {
       throw err;
     }
   }
+
+  /**
+   * Resumo mínimo das Ofertas de um conjunto de Produtos, num Site
+   * (APP-001) — usado pelo cálculo cross-domain de saúde do Artigo para
+   * decidir, por Produto vinculado, se existe ao menos uma Oferta válida.
+   *
+   * Sem paginação, diferente de `findManyByProduct`: aquele método serve a
+   * listagem admin paginada de um único Produto; este é uma leitura
+   * interna, para vários Produtos de uma vez, evitando N+1 (uma consulta
+   * por Produto vinculado ao Artigo). Retorna linhas cruas
+   * (`productId`/`archivedAt`/`inStock`/`affiliateUrl`) — a interpretação
+   * de "Oferta válida" (arquivada = não, em estoque = sim, URL HTTP(S)
+   * válida) fica na camada `application`, não aqui, mesmo critério de
+   * manter regra de negócio fora do repository já seguido no resto do
+   * projeto.
+   *
+   * Sem filtro de `archivedAt`/`inStock` na query: o próprio chamador
+   * precisa ver todas as Ofertas (inclusive as inválidas) para decidir
+   * `NO_OFFERS` (nenhuma linha) vs `NO_VALID_OFFER` (linhas existem, mas
+   * nenhuma válida) — filtrar aqui destruiria essa distinção.
+   *
+   * `productIds` vazio retorna `[]` sem consultar o banco — evita um `IN
+   * ()` vazio (Artigo sem nenhum Produto vinculado, cenário coberto por
+   * `hasAtLeastOneProduct: false`).
+   */
+  async findSummaryByProductIds(
+    siteId: string,
+    productIds: string[],
+  ): Promise<OfferSummaryRow[]> {
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    return this.prisma.offer.findMany({
+      where: { siteId, productId: { in: productIds } },
+      select: { productId: true, archivedAt: true, inStock: true, affiliateUrl: true },
+    });
+  }
+}
+
+export interface OfferSummaryRow {
+  productId: string;
+  archivedAt: Date | null;
+  inStock: boolean;
+  affiliateUrl: string;
 }
 
 /**
