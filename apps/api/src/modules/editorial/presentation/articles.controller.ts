@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   Patch,
@@ -46,6 +47,9 @@ import { GetArticleUseCase } from '../application/get-article.use-case';
 import { LinkArticleProductUseCase } from '../application/link-article-product.use-case';
 import { ListArticlesUseCase } from '../application/list-articles.use-case';
 import { ReorderArticleProductsUseCase } from '../application/reorder-article-products.use-case';
+import { RestoreArticleToDraftUseCase } from '../application/restore-article-to-draft.use-case';
+import { RevertArticleToDraftUseCase } from '../application/revert-article-to-draft.use-case';
+import { SubmitArticleForReviewUseCase } from '../application/submit-article-for-review.use-case';
 import { UnlinkArticleProductUseCase } from '../application/unlink-article-product.use-case';
 import { UpdateArticleUseCase } from '../application/update-article.use-case';
 import { toArticleAdmin, toArticleSummaryAdmin } from './article.presenter';
@@ -60,6 +64,12 @@ const PRODUCT_ALREADY_LINKED_MESSAGE = 'Este Produto já está vinculado a este 
 const PRODUCT_NOT_LINKED_MESSAGE = 'Este Produto não está vinculado a este Artigo.';
 const INVALID_PRODUCT_SET_MESSAGE =
   'productIds precisa conter exatamente o mesmo conjunto de Produtos já vinculados a este Artigo.';
+const SUBMIT_FOR_REVIEW_WRONG_STATUS_MESSAGE =
+  'Somente Artigos em DRAFT podem ser enviados para revisão.';
+const REVERT_TO_DRAFT_WRONG_STATUS_MESSAGE =
+  'Somente Artigos em PENDING_REVIEW podem retornar a DRAFT.';
+const RESTORE_TO_DRAFT_WRONG_STATUS_MESSAGE =
+  'Somente Artigos em ARCHIVED podem ser restaurados a DRAFT.';
 
 /**
  * `POST /admin/sites/:siteSlug/articles` (EDT-006; CTR-007).
@@ -96,6 +106,9 @@ export class ArticlesController {
     private readonly linkArticleProductUseCase: LinkArticleProductUseCase,
     private readonly unlinkArticleProductUseCase: UnlinkArticleProductUseCase,
     private readonly reorderArticleProductsUseCase: ReorderArticleProductsUseCase,
+    private readonly submitArticleForReviewUseCase: SubmitArticleForReviewUseCase,
+    private readonly revertArticleToDraftUseCase: RevertArticleToDraftUseCase,
+    private readonly restoreArticleToDraftUseCase: RestoreArticleToDraftUseCase,
   ) {}
 
   @Post()
@@ -431,5 +444,114 @@ export class ArticlesController {
     }
 
     return { productIds: result.productIds };
+  }
+
+  /**
+   * `POST /admin/sites/:siteSlug/articles/:id/submit-for-review`
+   * (EDT-012; CTR-008) — transição `DRAFT → PENDING_REVIEW`.
+   *
+   * Mesmos guards de `create()`/`update()` (mutável) — `@MinRole('EDITOR')`:
+   * parte do fluxo normal de edição, nunca toca o estado `ARCHIVED`,
+   * mesma Role de criar/editar (Architecture.md §16).
+   *
+   * Transição incondicional (dado o status de origem correto) — sem
+   * checklist de publicação aqui, isso é `APP-002`/`REV-003`, fora do
+   * escopo desta tarefa. `NOT_FOUND` → `404`, `WRONG_STATUS` → `409`.
+   */
+  @Post(':id/submit-for-review')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('EDITOR')
+  @HttpCode(HttpStatus.OK)
+  async submitForReview(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Req() req: Request,
+  ): Promise<ArticleAdmin> {
+    const result = await this.submitArticleForReviewUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      throw new ConflictException(SUBMIT_FOR_REVIEW_WRONG_STATUS_MESSAGE);
+    }
+
+    return toArticleAdmin(result.article);
+  }
+
+  /**
+   * `POST /admin/sites/:siteSlug/articles/:id/revert-to-draft` (EDT-013;
+   * CTR-008) — transição `PENDING_REVIEW → DRAFT`.
+   *
+   * Mesmos guards/`@MinRole('EDITOR')` de `submitForReview()` — mesma
+   * justificativa (fluxo normal de edição, nunca toca `ARCHIVED`).
+   * Incondicional. `NOT_FOUND` → `404`, `WRONG_STATUS` → `409`.
+   */
+  @Post(':id/revert-to-draft')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('EDITOR')
+  @HttpCode(HttpStatus.OK)
+  async revertToDraft(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Req() req: Request,
+  ): Promise<ArticleAdmin> {
+    const result = await this.revertArticleToDraftUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      throw new ConflictException(REVERT_TO_DRAFT_WRONG_STATUS_MESSAGE);
+    }
+
+    return toArticleAdmin(result.article);
+  }
+
+  /**
+   * `POST /admin/sites/:siteSlug/articles/:id/restore-to-draft` (EDT-016;
+   * CTR-008) — transição `ARCHIVED → DRAFT`.
+   *
+   * `@MinRole('OWNER')`, diferente das outras duas transições: sai do
+   * estado `ARCHIVED`, equivalente semanticamente a desarquivar — mesma
+   * Role já exigida para arquivar/desarquivar em Categoria/Produto/Oferta
+   * (Architecture.md §16, "`OWNER` também arquiva/exclui"), não escrita
+   * explicitamente para Artigo mas aplicada aqui por simetria (decisão
+   * explícita desta tarefa).
+   *
+   * Incondicional, sem checklist. `NOT_FOUND` → `404`, `WRONG_STATUS` →
+   * `409`.
+   */
+  @Post(':id/restore-to-draft')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('OWNER')
+  @HttpCode(HttpStatus.OK)
+  async restoreToDraft(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Req() req: Request,
+  ): Promise<ArticleAdmin> {
+    const result = await this.restoreArticleToDraftUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      throw new ConflictException(RESTORE_TO_DRAFT_WRONG_STATUS_MESSAGE);
+    }
+
+    return toArticleAdmin(result.article);
   }
 }

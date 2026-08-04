@@ -55,6 +55,11 @@ export type UpdateArticleRepositoryResult =
   | { ok: false; reason: 'CATEGORY_NOT_FOUND' }
   | { ok: false; reason: 'AUTHOR_NOT_FOUND' };
 
+export type TransitionArticleResult =
+  | { ok: true; article: Article }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'WRONG_STATUS' };
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -312,5 +317,78 @@ export class PrismaArticleRepository {
 
       throw err;
     }
+  }
+
+  /**
+   * `submit-for-review` (EDT-012): `DRAFT → PENDING_REVIEW`. Transição
+   * incondicional, dado o status de origem correto — nenhuma validação de
+   * Categoria/Produto/Oferta/`metaDescription`/capa aqui, essas regras
+   * pertencem exclusivamente ao fluxo de publicação (`APP-002`/`REV-003`,
+   * fora do escopo desta tarefa).
+   */
+  async submitForReview(siteId: string, id: string): Promise<TransitionArticleResult> {
+    return this.transitionStatus(siteId, id, 'DRAFT', 'PENDING_REVIEW');
+  }
+
+  /** `revert-to-draft` (EDT-013): `PENDING_REVIEW → DRAFT`, incondicional. */
+  async revertToDraft(siteId: string, id: string): Promise<TransitionArticleResult> {
+    return this.transitionStatus(siteId, id, 'PENDING_REVIEW', 'DRAFT');
+  }
+
+  /** `restore-to-draft` (EDT-016): `ARCHIVED → DRAFT`, incondicional. */
+  async restoreToDraft(siteId: string, id: string): Promise<TransitionArticleResult> {
+    return this.transitionStatus(siteId, id, 'ARCHIVED', 'DRAFT');
+  }
+
+  /**
+   * Helper privado comum às três transições simples da Fase 7
+   * (`submitForReview`/`revertToDraft`/`restoreToDraft`) — evita
+   * triplicar a mesma lógica.
+   *
+   * Mesmo padrão condicional de `updateBySite` (EDT-009), não o padrão de
+   * transação interativa com `SELECT ... FOR UPDATE` do EDT-010: aqui é
+   * uma única coluna (`status`) atualizada por uma única instrução SQL
+   * (`updateMany` condicionado a `id + siteId + status: from`), atômica
+   * por natureza — o Postgres avalia o `where` e a escrita juntos, sem
+   * janela de corrida, sem precisar de lock explícito nem de múltiplos
+   * passos dentro de uma transação.
+   *
+   * Nunca toca em `publishedAt` — só a marcação interna de publicação
+   * (`EDT-014`, fora do escopo) grava esse campo; as três transições
+   * daqui só mudam `status`.
+   *
+   * `count === 0` é ambíguo (não existe, é de outro Site, ou existe mas
+   * não está no status de origem esperado) — mesmo critério de
+   * `updateBySite`: um `findUnique` de acompanhamento resolve qual dos
+   * dois é.
+   */
+  private async transitionStatus(
+    siteId: string,
+    id: string,
+    from: ArticleStatus,
+    to: ArticleStatus,
+  ): Promise<TransitionArticleResult> {
+    const result = await this.prisma.article.updateMany({
+      where: { id, siteId, status: from },
+      data: { status: to },
+    });
+
+    if (result.count === 0) {
+      const existing = await this.prisma.article.findUnique({
+        where: { id_siteId: { id, siteId } },
+      });
+
+      if (!existing) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      return { ok: false, reason: 'WRONG_STATUS' };
+    }
+
+    const article = await this.prisma.article.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+
+    return { ok: true, article: article! };
   }
 }

@@ -12,6 +12,9 @@ import { LinkArticleProductUseCase } from './application/link-article-product.us
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
 import { ReorderArticleProductsUseCase } from './application/reorder-article-products.use-case';
+import { RestoreArticleToDraftUseCase } from './application/restore-article-to-draft.use-case';
+import { RevertArticleToDraftUseCase } from './application/revert-article-to-draft.use-case';
+import { SubmitArticleForReviewUseCase } from './application/submit-article-for-review.use-case';
 import { UnlinkArticleProductUseCase } from './application/unlink-article-product.use-case';
 import { UpdateArticleUseCase } from './application/update-article.use-case';
 import { PrismaArticleProductRepository } from './infrastructure/prisma-article-product.repository';
@@ -57,6 +60,9 @@ import { AuthorsController } from './presentation/authors.controller';
     LinkArticleProductUseCase,
     UnlinkArticleProductUseCase,
     ReorderArticleProductsUseCase,
+    SubmitArticleForReviewUseCase,
+    RevertArticleToDraftUseCase,
+    RestoreArticleToDraftUseCase,
   ],
 })
 export class EditorialModule {}
