@@ -8,9 +8,13 @@ import { CreateAuthorUseCase } from './application/create-author.use-case';
 import { DeleteAuthorUseCase } from './application/delete-author.use-case';
 import { GetArticleUseCase } from './application/get-article.use-case';
 import { GetAuthorUseCase } from './application/get-author.use-case';
+import { LinkArticleProductUseCase } from './application/link-article-product.use-case';
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
+import { ReorderArticleProductsUseCase } from './application/reorder-article-products.use-case';
+import { UnlinkArticleProductUseCase } from './application/unlink-article-product.use-case';
 import { UpdateArticleUseCase } from './application/update-article.use-case';
+import { PrismaArticleProductRepository } from './infrastructure/prisma-article-product.repository';
 import { PrismaArticleRepository } from './infrastructure/prisma-article.repository';
 import { PrismaAuthorRepository } from './infrastructure/prisma-author.repository';
 import { ArticlesController } from './presentation/articles.controller';
@@ -49,6 +53,10 @@ import { AuthorsController } from './presentation/authors.controller';
     ListArticlesUseCase,
     GetArticleUseCase,
     UpdateArticleUseCase,
+    PrismaArticleProductRepository,
+    LinkArticleProductUseCase,
+    UnlinkArticleProductUseCase,
+    ReorderArticleProductsUseCase,
   ],
 })
 export class EditorialModule {}

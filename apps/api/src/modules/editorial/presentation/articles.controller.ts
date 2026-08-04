@@ -2,6 +2,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
@@ -16,16 +17,23 @@ import {
 import type { Request } from 'express';
 import {
   articleParamsSchema,
+  articleProductParamsSchema,
   articlesSiteParamsSchema,
   createArticleRequestSchema,
+  linkArticleProductRequestSchema,
   listArticlesQuerySchema,
+  reorderArticleProductsRequestSchema,
   updateArticleRequestSchema,
   type ArticleAdmin,
   type ArticleParams,
+  type ArticleProductParams,
+  type ArticleProductsResponse,
   type ArticlesSiteParams,
   type CreateArticleRequest,
+  type LinkArticleProductRequest,
   type ListArticlesQuery,
   type ListArticlesResponse,
+  type ReorderArticleProductsRequest,
   type UpdateArticleRequest,
 } from '@commerce-platform/contracts';
 import { OriginGuard } from '../../../shared/http/origin.guard';
@@ -35,7 +43,10 @@ import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateArticleUseCase } from '../application/create-article.use-case';
 import { GetArticleUseCase } from '../application/get-article.use-case';
+import { LinkArticleProductUseCase } from '../application/link-article-product.use-case';
 import { ListArticlesUseCase } from '../application/list-articles.use-case';
+import { ReorderArticleProductsUseCase } from '../application/reorder-article-products.use-case';
+import { UnlinkArticleProductUseCase } from '../application/unlink-article-product.use-case';
 import { UpdateArticleUseCase } from '../application/update-article.use-case';
 import { toArticleAdmin, toArticleSummaryAdmin } from './article.presenter';
 
@@ -44,6 +55,11 @@ const CATEGORY_NOT_FOUND_MESSAGE = 'categoryId inválido: a categoria não exist
 const AUTHOR_NOT_FOUND_MESSAGE = 'authorId inválido: o autor não existe.';
 const ARTICLE_NOT_FOUND_MESSAGE = 'Artigo não encontrado.';
 const ARTICLE_NOT_DRAFT_MESSAGE = 'Somente Artigos em DRAFT podem ser editados.';
+const PRODUCT_NOT_FOUND_MESSAGE = 'productId inválido: o produto não existe.';
+const PRODUCT_ALREADY_LINKED_MESSAGE = 'Este Produto já está vinculado a este Artigo.';
+const PRODUCT_NOT_LINKED_MESSAGE = 'Este Produto não está vinculado a este Artigo.';
+const INVALID_PRODUCT_SET_MESSAGE =
+  'productIds precisa conter exatamente o mesmo conjunto de Produtos já vinculados a este Artigo.';
 
 /**
  * `POST /admin/sites/:siteSlug/articles` (EDT-006; CTR-007).
@@ -67,8 +83,8 @@ const ARTICLE_NOT_DRAFT_MESSAGE = 'Somente Artigos em DRAFT podem ser editados.'
  * (referência que não existe, mesmo status já usado em `USER_NOT_FOUND`
  * de `AuthorsController.create()`).
  *
- * `EDT-006`/`EDT-007`/`EDT-008`/`EDT-009` implementados neste controller —
- * `EDT-010` (vincular Produto) entra junto de sua respectiva tarefa.
+ * `EDT-006` a `EDT-010` implementados neste controller — nenhuma
+ * transição de estado (`EDT-012` a `EDT-016`) entra aqui.
  */
 @Controller('admin/sites/:siteSlug/articles')
 export class ArticlesController {
@@ -77,6 +93,9 @@ export class ArticlesController {
     private readonly listArticlesUseCase: ListArticlesUseCase,
     private readonly getArticleUseCase: GetArticleUseCase,
     private readonly updateArticleUseCase: UpdateArticleUseCase,
+    private readonly linkArticleProductUseCase: LinkArticleProductUseCase,
+    private readonly unlinkArticleProductUseCase: UnlinkArticleProductUseCase,
+    private readonly reorderArticleProductsUseCase: ReorderArticleProductsUseCase,
   ) {}
 
   @Post()
@@ -270,5 +289,147 @@ export class ArticlesController {
     }
 
     return toArticleAdmin(result.article);
+  }
+
+  /**
+   * `POST /admin/sites/:siteSlug/articles/:id/products` (EDT-010) —
+   * vincula um Produto ao Artigo, sempre no fim da lista.
+   *
+   * Mesma ordem de guards/`@MinRole('EDITOR')` das demais operações
+   * mutáveis deste controller — vincular Produto é edição de conteúdo do
+   * Artigo (Architecture.md §14, "só permitido em `DRAFT`").
+   *
+   * Sem pré-checagem de status/Produto: `PrismaArticleProductRepository.linkProduct`
+   * resolve tudo dentro de uma única transação (lock do Artigo +
+   * `create()` reativo) — este controller só traduz o resultado tipado
+   * para HTTP: `NOT_FOUND` → `404`, `NOT_DRAFT` → `409`, `ALREADY_LINKED`
+   * → `409` (mesma categoria de conflito de unicidade já usada em
+   * `SLUG_CONFLICT`), `PRODUCT_NOT_FOUND` → `422` (mesmo critério de
+   * `CATEGORY_NOT_FOUND`/`AUTHOR_NOT_FOUND`).
+   *
+   * Resposta é a coleção completa e atual (`{ productIds }`), não só o
+   * item vinculado — decisão explícita desta tarefa, mesma resposta nos
+   * três endpoints de `ArticleProduct`.
+   */
+  @Post(':id/products')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('EDITOR')
+  @HttpCode(201)
+  async linkProduct(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Body(new ZodValidationPipe(linkArticleProductRequestSchema))
+    body: LinkArticleProductRequest,
+    @Req() req: Request,
+  ): Promise<ArticleProductsResponse> {
+    const result = await this.linkArticleProductUseCase.execute({
+      siteId: req.tenant!.siteId,
+      articleId: params.id,
+      productId: body.productId,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      if (result.reason === 'NOT_DRAFT') {
+        throw new ConflictException(ARTICLE_NOT_DRAFT_MESSAGE);
+      }
+
+      if (result.reason === 'ALREADY_LINKED') {
+        throw new ConflictException(PRODUCT_ALREADY_LINKED_MESSAGE);
+      }
+
+      throw new UnprocessableEntityException(PRODUCT_NOT_FOUND_MESSAGE);
+    }
+
+    return { productIds: result.productIds };
+  }
+
+  /**
+   * `DELETE /admin/sites/:siteSlug/articles/:id/products/:productId`
+   * (EDT-010) — desvincula um Produto do Artigo, recompactando as
+   * posições restantes.
+   *
+   * Sem `@HttpCode` explícito: `200` é o default do Nest, usado de
+   * propósito (não `204`) porque a resposta traz a coleção atualizada —
+   * diferente de `AuthorsController.delete()` (exclusão física, sem
+   * corpo).
+   *
+   * `NOT_FOUND` → `404` (Artigo), `NOT_DRAFT` → `409`, `NOT_LINKED` →
+   * `404` (Produto real, mas nunca vinculado a este Artigo — tratado como
+   * recurso aninhado não encontrado, mesma categoria de `404` genérico já
+   * usada no projeto, não como sucesso idempotente).
+   */
+  @Delete(':id/products/:productId')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('EDITOR')
+  async unlinkProduct(
+    @Param(new ZodValidationPipe(articleProductParamsSchema))
+    params: ArticleProductParams,
+    @Req() req: Request,
+  ): Promise<ArticleProductsResponse> {
+    const result = await this.unlinkArticleProductUseCase.execute({
+      siteId: req.tenant!.siteId,
+      articleId: params.id,
+      productId: params.productId,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      if (result.reason === 'NOT_DRAFT') {
+        throw new ConflictException(ARTICLE_NOT_DRAFT_MESSAGE);
+      }
+
+      throw new NotFoundException(PRODUCT_NOT_LINKED_MESSAGE);
+    }
+
+    return { productIds: result.productIds };
+  }
+
+  /**
+   * `PATCH /admin/sites/:siteSlug/articles/:id/products/reorder`
+   * (EDT-010) — reordena os Produtos vinculados ao Artigo segundo a lista
+   * completa recebida.
+   *
+   * `reorderArticleProductsRequestSchema` já rejeita `productIds`
+   * duplicados na validação de forma (`422`, antes de chegar aqui) — este
+   * controller só lida com o que depende de estado do banco:
+   * `NOT_FOUND` → `404`, `NOT_DRAFT` → `409`, `INVALID_PRODUCT_SET` →
+   * `422` (conjunto recebido não bate exatamente com o vinculado hoje).
+   */
+  @Patch(':id/products/reorder')
+  @UseGuards(OriginGuard, SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('EDITOR')
+  async reorderProducts(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Body(new ZodValidationPipe(reorderArticleProductsRequestSchema))
+    body: ReorderArticleProductsRequest,
+    @Req() req: Request,
+  ): Promise<ArticleProductsResponse> {
+    const result = await this.reorderArticleProductsUseCase.execute({
+      siteId: req.tenant!.siteId,
+      articleId: params.id,
+      productIds: body.productIds,
+    });
+
+    if (!result.ok) {
+      if (result.reason === 'NOT_FOUND') {
+        throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+      }
+
+      if (result.reason === 'NOT_DRAFT') {
+        throw new ConflictException(ARTICLE_NOT_DRAFT_MESSAGE);
+      }
+
+      throw new UnprocessableEntityException(INVALID_PRODUCT_SET_MESSAGE);
+    }
+
+    return { productIds: result.productIds };
   }
 }
