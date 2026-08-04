@@ -60,6 +60,19 @@ export type TransitionArticleResult =
   | { ok: false; reason: 'NOT_FOUND' }
   | { ok: false; reason: 'WRONG_STATUS' };
 
+/**
+ * Dados extras que uma transição pode gravar além de `status` (EDT-014).
+ * Deliberadamente um tipo próprio, não `Prisma.ArticleUpdateManyMutationInput`
+ * — esse tipo do Prisma aceita qualquer coluna de `Article`, inclusive
+ * `status`, o que permitiria uma transição futura sobrescrever o status
+ * de destino por engano. Só `publishedAt` é aceito hoje; `status` nunca
+ * entra aqui — `transitionStatus` sempre o define por último, a partir do
+ * parâmetro `to`, nunca de `extraData`.
+ */
+export type ArticleTransitionExtraData = {
+  publishedAt?: Date;
+};
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -341,21 +354,38 @@ export class PrismaArticleRepository {
   }
 
   /**
-   * Helper privado comum às três transições simples da Fase 7
-   * (`submitForReview`/`revertToDraft`/`restoreToDraft`) — evita
-   * triplicar a mesma lógica.
+   * `mark-as-published` (EDT-014) — operação INTERNA, sem controller
+   * próprio: só `MarkArticleAsPublishedUseCase` a chama, que por sua vez
+   * só será chamado por `APP-002` (fora do escopo desta tarefa). Grava
+   * `status` e `publishedAt` na mesma instrução `updateMany`, condicionada
+   * a `PENDING_REVIEW` como status de origem — mesma garantia atômica das
+   * três transições acima. Sem nenhuma validação de
+   * Categoria/Produto/Oferta/`metaDescription`/capa aqui: essas regras
+   * pertencem a `APP-002`, que só chama esta operação depois de todas
+   * passarem.
+   */
+  async markAsPublished(siteId: string, id: string): Promise<TransitionArticleResult> {
+    return this.transitionStatus(siteId, id, 'PENDING_REVIEW', 'PUBLISHED', {
+      publishedAt: new Date(),
+    });
+  }
+
+  /**
+   * Helper privado comum às quatro transições da Fase 7/8
+   * (`submitForReview`/`revertToDraft`/`restoreToDraft`/`markAsPublished`)
+   * — evita repetir a mesma lógica.
    *
    * Mesmo padrão condicional de `updateBySite` (EDT-009), não o padrão de
    * transação interativa com `SELECT ... FOR UPDATE` do EDT-010: aqui é
-   * uma única coluna (`status`) atualizada por uma única instrução SQL
-   * (`updateMany` condicionado a `id + siteId + status: from`), atômica
-   * por natureza — o Postgres avalia o `where` e a escrita juntos, sem
-   * janela de corrida, sem precisar de lock explícito nem de múltiplos
-   * passos dentro de uma transação.
+   * uma única instrução SQL (`updateMany` condicionado a `id + siteId +
+   * status: from`), atômica por natureza — o Postgres avalia o `where` e
+   * a escrita juntos, sem janela de corrida, sem precisar de lock
+   * explícito nem de múltiplos passos dentro de uma transação.
    *
-   * Nunca toca em `publishedAt` — só a marcação interna de publicação
-   * (`EDT-014`, fora do escopo) grava esse campo; as três transições
-   * daqui só mudam `status`.
+   * `extraData` (EDT-014) entra **antes** de `status` no spread de `data`
+   * — `status: to` é sempre escrito por último, garantindo que nenhum
+   * `extraData` (hoje só `publishedAt`, ver `ArticleTransitionExtraData`)
+   * possa sobrescrever o status de destino.
    *
    * `count === 0` é ambíguo (não existe, é de outro Site, ou existe mas
    * não está no status de origem esperado) — mesmo critério de
@@ -367,10 +397,11 @@ export class PrismaArticleRepository {
     id: string,
     from: ArticleStatus,
     to: ArticleStatus,
+    extraData: ArticleTransitionExtraData = {},
   ): Promise<TransitionArticleResult> {
     const result = await this.prisma.article.updateMany({
       where: { id, siteId, status: from },
-      data: { status: to },
+      data: { ...extraData, status: to },
     });
 
     if (result.count === 0) {

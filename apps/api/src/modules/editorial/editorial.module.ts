@@ -11,6 +11,7 @@ import { GetAuthorUseCase } from './application/get-author.use-case';
 import { LinkArticleProductUseCase } from './application/link-article-product.use-case';
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
+import { MarkArticleAsPublishedUseCase } from './application/mark-article-as-published.use-case';
 import { ReorderArticleProductsUseCase } from './application/reorder-article-products.use-case';
 import { RestoreArticleToDraftUseCase } from './application/restore-article-to-draft.use-case';
 import { RevertArticleToDraftUseCase } from './application/revert-article-to-draft.use-case';
@@ -38,12 +39,14 @@ import { AuthorsController } from './presentation/authors.controller';
  * entidade do domínio Editorial, sem módulo próprio (mesmo critério de
  * `CatalogModule`, que agrupa Categoria/Produto/Oferta).
  *
- * `exports: [PrismaArticleRepository, PrismaArticleProductRepository]`
- * (APP-001) — primeira vez que `editorial` exporta algo: `ApplicationModule`
- * precisa dos dois para `CalculateArticleHealthUseCase` (ler o Artigo e
- * seus Produtos vinculados) sem duplicar acesso a dado que já existe
- * aqui. Nenhum outro provider é exportado — exportação entra junto com a
- * tarefa que precisar dela, mesmo critério já documentado acima.
+ * `exports: [PrismaArticleRepository, PrismaArticleProductRepository,
+ * MarkArticleAsPublishedUseCase]` — os dois repositórios desde APP-001
+ * (`ApplicationModule` precisa deles para `CalculateArticleHealthUseCase`);
+ * `MarkArticleAsPublishedUseCase` desde EDT-014, exportado por antecipação
+ * explícita (decisão do usuário) para `APP-002` consumir quando existir —
+ * único caso no projeto em que a exportação não espera o consumidor
+ * existir, porque EDT-014 não tem nenhuma outra razão de ser senão ser
+ * chamado por APP-002. Nenhum outro provider é exportado.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -66,7 +69,8 @@ import { AuthorsController } from './presentation/authors.controller';
     SubmitArticleForReviewUseCase,
     RevertArticleToDraftUseCase,
     RestoreArticleToDraftUseCase,
+    MarkArticleAsPublishedUseCase,
   ],
-  exports: [PrismaArticleRepository, PrismaArticleProductRepository],
+  exports: [PrismaArticleRepository, PrismaArticleProductRepository, MarkArticleAsPublishedUseCase],
 })
 export class EditorialModule {}
