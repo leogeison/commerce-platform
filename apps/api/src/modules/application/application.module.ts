@@ -4,6 +4,7 @@ import { EditorialModule } from '../editorial/editorial.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { CalculateArticleHealthUseCase } from './application/calculate-article-health.use-case';
+import { PublishArticleUseCase } from './application/publish-article.use-case';
 import { ArticleHealthController } from './presentation/article-health.controller';
 
 /**
@@ -28,14 +29,21 @@ import { ArticleHealthController } from './presentation/article-health.controlle
  *   `ArticleHealthController` não o usa — `GET` não mutável, mesmo
  *   critério de `ArticlesController.detail()`.
  *
+ * `PublishArticleUseCase` (APP-002) entra como provider — reaproveita
+ * `CalculateArticleHealthUseCase` (já provider deste módulo) e
+ * `MarkArticleAsPublishedUseCase` (exportado por `EditorialModule` desde
+ * EDT-014). Nenhum import novo necessário: tudo que `PublishArticleUseCase`
+ * precisa já estava disponível.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome
- * `CalculateArticleHealthUseCase` nesta tarefa (`APP-002` não é
- * implementado aqui) — mesma convenção já usada em `CatalogModule`/
- * `EditorialModule`.
+ * `CalculateArticleHealthUseCase`/`PublishArticleUseCase` nesta tarefa
+ * (`REV-003`, futuro consumidor de `PublishArticleUseCase`, ainda não
+ * existe) — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
+ * exportação entra junto com a tarefa que precisar dela.
  */
 @Module({
   imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule],
   controllers: [ArticleHealthController],
-  providers: [CalculateArticleHealthUseCase],
+  providers: [CalculateArticleHealthUseCase, PublishArticleUseCase],
 })
 export class ApplicationModule {}
