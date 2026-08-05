@@ -137,6 +137,27 @@ export class PrismaArticleProductRepository {
   }
 
   /**
+   * Existe algum vínculo `ArticleProduct` para este Produto, em qualquer
+   * Artigo, de qualquer status (APP-003) — regra geral: qualquer vínculo
+   * bloqueia exclusão física do Produto, não só vínculo com Artigo
+   * publicado (Architecture.md §12: "Exclusão física só é permitida para
+   * Produtos sem vínculos (Oferta) e sem vínculo com Artigo", sem
+   * qualificar "publicado" — a frase específica sobre "Artigo publicado"
+   * é só o caso mais crítico, não uma regra à parte).
+   *
+   * `findFirst` (não `count`): só precisamos saber se existe ao menos uma
+   * linha, mais barato que contar todas.
+   */
+  async existsByProduct(siteId: string, productId: string): Promise<boolean> {
+    const row = await this.prisma.articleProduct.findFirst({
+      where: { siteId, productId },
+      select: { articleId: true },
+    });
+
+    return row !== null;
+  }
+
+  /**
    * Vincula um Produto ao Artigo (EDT-010), sempre no fim da lista.
    *
    * Depois do lock/checagem de `DRAFT`, calcula `nextPosition` via

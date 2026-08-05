@@ -3,9 +3,12 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { EditorialModule } from '../editorial/editorial.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { HttpModule } from '../../shared/http/http.module';
 import { CalculateArticleHealthUseCase } from './application/calculate-article-health.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
+import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { ArticleHealthController } from './presentation/article-health.controller';
+import { RemoveProductController } from './presentation/remove-product.controller';
 
 /**
  * Primeiro módulo do bounded context `application` (APP-001,
@@ -25,25 +28,28 @@ import { ArticleHealthController } from './presentation/article-health.controlle
  * - **Sem `DatabaseModule`**: `PrismaService` é `@Global()` (DB-012) e,
  *   além disso, nada aqui injeta `PrismaService` diretamente — só os
  *   repositórios já resolvidos via `EditorialModule`/`CatalogModule`.
- * - **Sem `HttpModule`**: só existiria para o `OriginGuard`, e
- *   `ArticleHealthController` não o usa — `GET` não mutável, mesmo
- *   critério de `ArticlesController.detail()`.
+ * - `HttpModule` (APP-003, primeira vez neste módulo): `RemoveProductController`
+ *   usa `OriginGuard` (`DELETE`, mutação) — mesmo motivo documentado em
+ *   `CatalogModule`/`EditorialModule`. `ArticleHealthController` continua
+ *   sem precisar dele (`GET` não mutável).
  *
  * `PublishArticleUseCase` (APP-002) entra como provider — reaproveita
  * `CalculateArticleHealthUseCase` (já provider deste módulo) e
  * `MarkArticleAsPublishedUseCase` (exportado por `EditorialModule` desde
- * EDT-014). Nenhum import novo necessário: tudo que `PublishArticleUseCase`
- * precisa já estava disponível.
+ * EDT-014). `RemoveProductUseCase` (APP-003) reaproveita
+ * `PrismaArticleProductRepository` (já exportado desde APP-001) e
+ * `DeleteProductUseCase` (exportado por `CatalogModule` desde APP-003).
+ * Nenhum import novo de módulo necessário para nenhum dos dois além do
+ * `HttpModule` acima.
  *
  * Nenhum `exports` ainda: nada fora de `application` consome
- * `CalculateArticleHealthUseCase`/`PublishArticleUseCase` nesta tarefa
- * (`REV-003`, futuro consumidor de `PublishArticleUseCase`, ainda não
- * existe) — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
+ * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`
+ * nesta tarefa — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
  * exportação entra junto com a tarefa que precisar dela.
  */
 @Module({
-  imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule],
-  controllers: [ArticleHealthController],
-  providers: [CalculateArticleHealthUseCase, PublishArticleUseCase],
+  imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule, HttpModule],
+  controllers: [ArticleHealthController, RemoveProductController],
+  providers: [CalculateArticleHealthUseCase, PublishArticleUseCase, RemoveProductUseCase],
 })
 export class ApplicationModule {}

@@ -44,21 +44,20 @@ import { ProductsController } from './presentation/products.controller';
  * (os dois últimos desde a CAT-008/CAT-015). `HttpModule` continua
  * necessário pelo `OriginGuard`, mesmo padrão já usado em `IdentityModule`.
  *
- * `exports: [PrismaCategoryRepository, PrismaOfferRepository]` (APP-001) —
- * primeira vez que `catalog` exporta algo: `ApplicationModule` precisa dos
- * dois para `CalculateArticleHealthUseCase` (checar Categoria ativa e
- * Ofertas válidas dos Produtos vinculados ao Artigo). `PrismaProductRepository`
- * segue sem exportar — nada em `application` o consome diretamente ainda
- * (a lista de `productId`s do Artigo vem de `ArticleProduct`, via
- * `editorial`, não de `Product` diretamente). `DeleteCategoryUseCase`
- * (CAT-007), `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013),
- * `DeleteProductUseCase` (CAT-014), `ArchiveOfferUseCase`/
- * `UnarchiveOfferUseCase` (CAT-019/020) e `DeleteOfferUseCase` (CAT-021)
- * inclusive: serão consumidas por `APP-006`/`REV-011`/`APP-003`/`REV-013`/
- * `TRK-010` (cross-domain) quando essas tarefas existirem, mas exportar
- * agora seria antecipar consumidores que ainda não foram implementados —
- * ficam só registradas como provider, exportação entra junto com a tarefa
- * que precisar delas.
+ * `exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase]`
+ * — os dois primeiros desde APP-001 (`ApplicationModule` precisa deles
+ * para `CalculateArticleHealthUseCase`); `DeleteProductUseCase` (CAT-014)
+ * desde APP-003, para `RemoveProductUseCase` delegar a exclusão física
+ * depois de confirmar que não há vínculo com Artigo.
+ * `PrismaProductRepository` segue sem exportar — nada em `application` o
+ * consome diretamente ainda. `DeleteCategoryUseCase` (CAT-007),
+ * `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013),
+ * `ArchiveOfferUseCase`/`UnarchiveOfferUseCase` (CAT-019/020) e
+ * `DeleteOfferUseCase` (CAT-021) inclusive: serão consumidas por
+ * `APP-006`/`REV-011`/`REV-013`/`TRK-010` (cross-domain) quando essas
+ * tarefas existirem, mas exportar agora seria antecipar consumidores que
+ * ainda não foram implementados — ficam só registradas como provider,
+ * exportação entra junto com a tarefa que precisar delas.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -86,6 +85,6 @@ import { ProductsController } from './presentation/products.controller';
     UnarchiveOfferUseCase,
     DeleteOfferUseCase,
   ],
-  exports: [PrismaCategoryRepository, PrismaOfferRepository],
+  exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase],
 })
 export class CatalogModule {}
