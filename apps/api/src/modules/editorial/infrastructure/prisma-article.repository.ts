@@ -371,6 +371,63 @@ export class PrismaArticleRepository {
   }
 
   /**
+   * Artigos publicados que referenciam uma Categoria (APP-005) — usado
+   * para descobrir páginas públicas afetadas quando a Categoria muda
+   * (`REV-005`, Fase 14, ainda não implementado). Filtro obrigatório por
+   * `siteId` + `status: 'PUBLISHED'`: Artigo em `DRAFT`/`PENDING_REVIEW`/
+   * `ARCHIVED` nunca é uma página pública, não há o que revalidar.
+   * `orderBy: { id: 'asc' }` garante resultado determinístico entre
+   * chamadas — sem isso a ordem do `findMany` não é garantida pelo
+   * Postgres.
+   */
+  async findPublishedByCategory(siteId: string, categoryId: string): Promise<Article[]> {
+    return this.prisma.article.findMany({
+      where: { siteId, status: 'PUBLISHED', categoryId },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  /** Artigos publicados que referenciam um Autor (APP-005) — mesmo critério de `findPublishedByCategory`. */
+  async findPublishedByAuthor(siteId: string, authorId: string): Promise<Article[]> {
+    return this.prisma.article.findMany({
+      where: { siteId, status: 'PUBLISHED', authorId },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  /**
+   * Artigos publicados que vinculam um Produto (APP-005), via
+   * `ArticleProduct` — mesmo critério de `findPublishedByCategory`, mas
+   * a referência é indireta (tabela de junção), não uma coluna direta de
+   * `Article`.
+   */
+  async findPublishedByProduct(siteId: string, productId: string): Promise<Article[]> {
+    return this.prisma.article.findMany({
+      where: { siteId, status: 'PUBLISHED', products: { some: { productId } } },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  /**
+   * Artigos publicados afetados por uma Oferta (APP-005) — uma Oferta não
+   * referencia Artigo diretamente; a travessia é `Article → ArticleProduct
+   * → Product → Offer`: qual Produto é dono desta Oferta, e quais Artigos
+   * publicados vinculam esse Produto. Filtro de relação aninhado do
+   * Prisma, uma única consulta — sem resolver `productId` da Oferta numa
+   * chamada separada.
+   */
+  async findPublishedByOffer(siteId: string, offerId: string): Promise<Article[]> {
+    return this.prisma.article.findMany({
+      where: {
+        siteId,
+        status: 'PUBLISHED',
+        products: { some: { product: { offers: { some: { id: offerId } } } } },
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  /**
    * Helper privado comum às quatro transições da Fase 7/8
    * (`submitForReview`/`revertToDraft`/`restoreToDraft`/`markAsPublished`)
    * — evita repetir a mesma lógica.

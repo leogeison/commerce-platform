@@ -5,6 +5,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { HttpModule } from '../../shared/http/http.module';
 import { CalculateArticleHealthUseCase } from './application/calculate-article-health.use-case';
+import { FindAffectedPublishedArticlesUseCase } from './application/find-affected-published-articles.use-case';
 import { PrepareAffiliateRedirectUseCase } from './application/prepare-affiliate-redirect.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
@@ -49,11 +50,16 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * nenhum import novo de módulo. Sem controller: `GET /r/:siteSlug/:offerId`
  * é `TRK-002`, fora do escopo desta tarefa.
  *
+ * `FindAffectedPublishedArticlesUseCase` (APP-005) reaproveita
+ * `PrismaArticleRepository` (já exportado desde APP-001) — nenhum import
+ * novo. Sem controller, sem contrato: consumida só por `REV-005` (Fase
+ * 14), ainda não implementado.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome
  * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
- * `PrepareAffiliateRedirectUseCase` nesta tarefa — mesma convenção já
- * usada em `CatalogModule`/`EditorialModule`, exportação entra junto com
- * a tarefa que precisar dela.
+ * `PrepareAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`
+ * nesta tarefa — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
+ * exportação entra junto com a tarefa que precisar dela.
  */
 @Module({
   imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule, HttpModule],
@@ -63,6 +69,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     PublishArticleUseCase,
     RemoveProductUseCase,
     PrepareAffiliateRedirectUseCase,
+    FindAffectedPublishedArticlesUseCase,
   ],
 })
 export class ApplicationModule {}
