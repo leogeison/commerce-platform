@@ -5,6 +5,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { HttpModule } from '../../shared/http/http.module';
 import { CalculateArticleHealthUseCase } from './application/calculate-article-health.use-case';
+import { PrepareAffiliateRedirectUseCase } from './application/prepare-affiliate-redirect.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { ArticleHealthController } from './presentation/article-health.controller';
@@ -42,14 +43,26 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * Nenhum import novo de módulo necessário para nenhum dos dois além do
  * `HttpModule` acima.
  *
+ * `PrepareAffiliateRedirectUseCase` (APP-004) reaproveita
+ * `PrismaOfferRepository` (Catalog, já exportado desde APP-001) e
+ * `PrismaArticleRepository` (Editorial, já exportado desde APP-001) —
+ * nenhum import novo de módulo. Sem controller: `GET /r/:siteSlug/:offerId`
+ * é `TRK-002`, fora do escopo desta tarefa.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome
- * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`
- * nesta tarefa — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
- * exportação entra junto com a tarefa que precisar dela.
+ * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
+ * `PrepareAffiliateRedirectUseCase` nesta tarefa — mesma convenção já
+ * usada em `CatalogModule`/`EditorialModule`, exportação entra junto com
+ * a tarefa que precisar dela.
  */
 @Module({
   imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule, HttpModule],
   controllers: [ArticleHealthController, RemoveProductController],
-  providers: [CalculateArticleHealthUseCase, PublishArticleUseCase, RemoveProductUseCase],
+  providers: [
+    CalculateArticleHealthUseCase,
+    PublishArticleUseCase,
+    RemoveProductUseCase,
+    PrepareAffiliateRedirectUseCase,
+  ],
 })
 export class ApplicationModule {}

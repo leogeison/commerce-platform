@@ -178,6 +178,26 @@ export class PrismaOfferRepository {
   }
 
   /**
+   * Busca uma `Offer` só por `id` + `siteId`, sem exigir `productId`
+   * (APP-004) — diferente de `findOneByProductAndSite` (CAT-017), que
+   * serve a rota admin aninhada em `/products/:productId/offers/:id`. Aqui
+   * o chamador (o futuro redirect público, `GET /r/:siteSlug/:offerId`)
+   * só tem `offerId`, nunca `productId`. Mesmo padrão de
+   * `PrismaCategoryRepository.findOneBySite`/`PrismaArticleRepository.findOneBySite`:
+   * `findUnique` na chave composta `id_siteId` (`Offer` tem
+   * `@@unique([id, siteId])`), `null` cobre "não existe"/"de outro Site"
+   * com o mesmo resultado genérico. Oferta arquivada é retornada
+   * normalmente, sem filtro — quem decide o que fazer com uma Oferta
+   * arquivada é o caso de uso chamador (`PrepareAffiliateRedirectUseCase`),
+   * não o repository.
+   */
+  async findOneBySite(siteId: string, id: string): Promise<Offer | null> {
+    return this.prisma.offer.findUnique({
+      where: { id_siteId: { id, siteId } },
+    });
+  }
+
+  /**
    * Arquiva uma `Offer` do Site (CAT-019, operação **interna** — sem
    * controller/rota HTTP própria; endpoint real é `REV-013`, ainda não
    * implementado). Mesmo padrão de `PrismaProductRepository.archiveBySite`
