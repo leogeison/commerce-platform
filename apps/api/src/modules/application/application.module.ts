@@ -8,8 +8,10 @@ import { CalculateArticleHealthUseCase } from './application/calculate-article-h
 import { FindAffectedPublishedArticlesUseCase } from './application/find-affected-published-articles.use-case';
 import { PrepareAffiliateRedirectUseCase } from './application/prepare-affiliate-redirect.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
+import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { ArticleHealthController } from './presentation/article-health.controller';
+import { RemoveCategoryController } from './presentation/remove-category.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
 
 /**
@@ -55,21 +57,28 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * novo. Sem controller, sem contrato: consumida só por `REV-005` (Fase
  * 14), ainda não implementado.
  *
+ * `RemoveCategoryUseCase` (APP-006) reaproveita `PrismaArticleRepository`
+ * (Editorial, já exportado desde APP-001) e `DeleteCategoryUseCase`
+ * (Catalog, exportado desde APP-006) — nenhum import novo de módulo,
+ * mesmos moldes exatos de `RemoveProductUseCase`/APP-003.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome
  * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
- * `PrepareAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`
- * nesta tarefa — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
- * exportação entra junto com a tarefa que precisar dela.
+ * `PrepareAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`/
+ * `RemoveCategoryUseCase` nesta tarefa — mesma convenção já usada em
+ * `CatalogModule`/`EditorialModule`, exportação entra junto com a tarefa
+ * que precisar dela.
  */
 @Module({
   imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule, HttpModule],
-  controllers: [ArticleHealthController, RemoveProductController],
+  controllers: [ArticleHealthController, RemoveProductController, RemoveCategoryController],
   providers: [
     CalculateArticleHealthUseCase,
     PublishArticleUseCase,
     RemoveProductUseCase,
     PrepareAffiliateRedirectUseCase,
     FindAffectedPublishedArticlesUseCase,
+    RemoveCategoryUseCase,
   ],
 })
 export class ApplicationModule {}

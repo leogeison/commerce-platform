@@ -44,20 +44,22 @@ import { ProductsController } from './presentation/products.controller';
  * (os dois últimos desde a CAT-008/CAT-015). `HttpModule` continua
  * necessário pelo `OriginGuard`, mesmo padrão já usado em `IdentityModule`.
  *
- * `exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase]`
- * — os dois primeiros desde APP-001 (`ApplicationModule` precisa deles
- * para `CalculateArticleHealthUseCase`); `DeleteProductUseCase` (CAT-014)
- * desde APP-003, para `RemoveProductUseCase` delegar a exclusão física
- * depois de confirmar que não há vínculo com Artigo.
+ * `exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase,
+ * DeleteCategoryUseCase]` — os dois primeiros desde APP-001
+ * (`ApplicationModule` precisa deles para `CalculateArticleHealthUseCase`);
+ * `DeleteProductUseCase` (CAT-014) desde APP-003; `DeleteCategoryUseCase`
+ * (CAT-007) desde APP-006, para `RemoveCategoryUseCase` delegar a
+ * exclusão física depois de confirmar que não há vínculo com Artigo —
+ * mesmo padrão exato de `DeleteProductUseCase`/APP-003.
  * `PrismaProductRepository` segue sem exportar — nada em `application` o
- * consome diretamente ainda. `DeleteCategoryUseCase` (CAT-007),
- * `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013),
- * `ArchiveOfferUseCase`/`UnarchiveOfferUseCase` (CAT-019/020) e
- * `DeleteOfferUseCase` (CAT-021) inclusive: serão consumidas por
- * `APP-006`/`REV-011`/`REV-013`/`TRK-010` (cross-domain) quando essas
- * tarefas existirem, mas exportar agora seria antecipar consumidores que
- * ainda não foram implementados — ficam só registradas como provider,
- * exportação entra junto com a tarefa que precisar delas.
+ * consome diretamente ainda. `ArchiveProductUseCase`/
+ * `UnarchiveProductUseCase` (CAT-012/013), `ArchiveOfferUseCase`/
+ * `UnarchiveOfferUseCase` (CAT-019/020) e `DeleteOfferUseCase` (CAT-021)
+ * inclusive: serão consumidas por `REV-011`/`REV-013`/`TRK-010`
+ * (cross-domain) quando essas tarefas existirem, mas exportar agora seria
+ * antecipar consumidores que ainda não foram implementados — ficam só
+ * registradas como provider, exportação entra junto com a tarefa que
+ * precisar delas.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -85,6 +87,11 @@ import { ProductsController } from './presentation/products.controller';
     UnarchiveOfferUseCase,
     DeleteOfferUseCase,
   ],
-  exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase],
+  exports: [
+    PrismaCategoryRepository,
+    PrismaOfferRepository,
+    DeleteProductUseCase,
+    DeleteCategoryUseCase,
+  ],
 })
 export class CatalogModule {}

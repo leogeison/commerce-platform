@@ -428,6 +428,26 @@ export class PrismaArticleRepository {
   }
 
   /**
+   * Existe algum Artigo referenciando esta Categoria, em qualquer status
+   * (APP-006) — regra geral: qualquer vínculo bloqueia exclusão física da
+   * Categoria, não só Artigo publicado (Architecture.md §12 Categoria:
+   * "Categoria com Produto ou Artigo vinculado não pode ser excluída" —
+   * "vinculado" não é qualificado por status; mesmo critério já usado em
+   * `PrismaArticleProductRepository.existsByProduct`, APP-003).
+   *
+   * `findFirst` (não `count`): só precisamos saber se existe ao menos um
+   * Artigo, mais barato que contar todos.
+   */
+  async existsByCategory(siteId: string, categoryId: string): Promise<boolean> {
+    const article = await this.prisma.article.findFirst({
+      where: { siteId, categoryId },
+      select: { id: true },
+    });
+
+    return article !== null;
+  }
+
+  /**
    * Helper privado comum às quatro transições da Fase 7/8
    * (`submitForReview`/`revertToDraft`/`restoreToDraft`/`markAsPublished`)
    * — evita repetir a mesma lógica.
