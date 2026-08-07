@@ -37,8 +37,7 @@ function assertValidRateLimitOptions(options: RateLimitOptions): void {
  * Sem este decorator numa rota, o `RateLimitGuard` deixa a requisição
  * passar — não há limite configurado, nada a aplicar.
  *
- * Uso (aplicação real fica para quando existir a rota, ex.: login/redirect
- * na Fase 5/9 — fora do escopo desta tarefa):
+ * Uso real (`POST /admin/auth/login`, AUTH-005):
  *
  * ```ts
  * @RateLimit({ limit: 5, windowMs: 60_000 })
@@ -46,6 +45,9 @@ function assertValidRateLimitOptions(options: RateLimitOptions): void {
  * @Post('login')
  * login() { ... }
  * ```
+ *
+ * Segundo uso real: `GET /r/:siteSlug/:offerId` (TRK-007,
+ * `{ limit: 30, windowMs: 60_000 }`).
  */
 export const RateLimit = (options: RateLimitOptions) => {
   assertValidRateLimitOptions(options);

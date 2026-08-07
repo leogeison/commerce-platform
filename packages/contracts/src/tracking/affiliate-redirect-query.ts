@@ -15,10 +15,11 @@ import { z } from 'zod';
  * schema Prisma) — deliberado, não inconsistência. `ZodValidationPipe`
  * (INF-003) valida o objeto de query cru, sem remapear chaves, e estes são
  * os nomes literais que chegam na URL (convenção universal de UTM,
- * Architecture.md). A tradução para os campos `camelCase` do domínio é
- * responsabilidade do caso de uso que persistir o clique (`TRK-004`, ainda
- * não implementado) — este contrato só define a forma do payload de
- * entrada, nunca a regra de negócio (Architecture.md, Seção 28).
+ * Architecture.md). A tradução para os campos `camelCase` do domínio
+ * acontece em `AffiliateRedirectController` (TRK-003), antes de chamar
+ * `HandleAffiliateRedirectUseCase` (TRK-004, já implementada) — este
+ * contrato só define a forma do payload de entrada, nunca a regra de
+ * negócio (Architecture.md, Seção 28).
  *
  * `z.string().optional()`, sem `trim()`/`min(1)`/limite de tamanho — nenhuma
  * dessas regras está documentada em Architecture.md ou

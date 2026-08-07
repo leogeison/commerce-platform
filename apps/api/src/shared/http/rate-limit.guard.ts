@@ -33,8 +33,8 @@ function resolveClientIp(request: Request): string {
  *
  * Não é registrado como `APP_GUARD`: só se aplica onde for anexado
  * explicitamente via `@UseGuards(RateLimitGuard)` numa rota que também
- * tenha `@RateLimit(...)`. Nenhuma rota real usa isso ainda — fora do
- * escopo desta tarefa (login/redirect ficam para a Fase 5/9).
+ * tenha `@RateLimit(...)`. Aplicado em `POST /admin/auth/login` (AUTH-005)
+ * e em `GET /r/:siteSlug/:offerId` (TRK-007).
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {

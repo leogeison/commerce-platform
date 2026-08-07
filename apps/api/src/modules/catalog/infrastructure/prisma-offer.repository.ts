@@ -181,8 +181,8 @@ export class PrismaOfferRepository {
    * Busca uma `Offer` só por `id` + `siteId`, sem exigir `productId`
    * (APP-004) — diferente de `findOneByProductAndSite` (CAT-017), que
    * serve a rota admin aninhada em `/products/:productId/offers/:id`. Aqui
-   * o chamador (o futuro redirect público, `GET /r/:siteSlug/:offerId`)
-   * só tem `offerId`, nunca `productId`. Mesmo padrão de
+   * o chamador (o redirect público, `GET /r/:siteSlug/:offerId`, TRK-002 a
+   * TRK-008) só tem `offerId`, nunca `productId`. Mesmo padrão de
    * `PrismaCategoryRepository.findOneBySite`/`PrismaArticleRepository.findOneBySite`:
    * `findUnique` na chave composta `id_siteId` (`Offer` tem
    * `@@unique([id, siteId])`), `null` cobre "não existe"/"de outro Site"

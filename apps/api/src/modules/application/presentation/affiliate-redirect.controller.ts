@@ -15,6 +15,8 @@ import {
   type AffiliateRedirectParams,
   type AffiliateRedirectQuery,
 } from '@commerce-platform/contracts';
+import { RateLimit } from '../../../shared/http/rate-limit.decorator';
+import { RateLimitGuard } from '../../../shared/http/rate-limit.guard';
 import { ZodValidationPipe } from '../../../shared/http/zod-validation.pipe';
 import { PublicTenantGuard } from '../../tenancy/presentation/public-tenant.guard';
 import '../../tenancy/presentation/tenant-context-request';
@@ -40,7 +42,7 @@ const OFFER_ARCHIVED_HTML = `<!doctype html>
 `;
 
 /**
- * `GET /r/:siteSlug/:offerId` (TRK-002 a TRK-006; Architecture.md, Seção
+ * `GET /r/:siteSlug/:offerId` (TRK-002 a TRK-007; Architecture.md, Seção
  * 20 — Fluxo de Tracking). **Registrado em `ApplicationModule.controllers`
  * a partir desta tarefa** — as cinco anteriores (`TRK-002` a `TRK-005`)
  * construíram este método incrementalmente sem expor a rota, exatamente
@@ -84,6 +86,18 @@ const OFFER_ARCHIVED_HTML = `<!doctype html>
  * affiliate-redirect.e2e-spec.ts`, nascido junto desta tarefa — os specs
  * unitários de `TRK-002` a `TRK-005` continuam válidos, cobrindo
  * delegação/mapeamento isoladamente.
+ *
+ * `RateLimitGuard`/`@RateLimit` (TRK-007, aplicando INF-007 aqui pela
+ * segunda vez depois do login): `{ limit: 30, windowMs: 60_000 }` — bem
+ * mais tolerante que o login (`5/60_000`), porque este endpoint recebe
+ * cliques públicos legítimos em sequência (redes sociais, newsletter, IP
+ * compartilhado por NAT corporativo), não tentativas de senha.
+ * `RateLimitGuard` vem **antes** de `PublicTenantGuard` no `@UseGuards`
+ * (Nest executa a lista em ordem): a checagem em memória é mais barata que
+ * a consulta ao Postgres feita por `PublicTenantGuard`, então um IP acima
+ * do limite é rejeitado com `429` antes de qualquer query — mesmo com
+ * `siteSlug` inexistente. Nenhum `AffiliateClick` é gerado nesse caso,
+ * porque `HandleAffiliateRedirectUseCase` nunca é alcançado.
  */
 @Controller('r')
 export class AffiliateRedirectController {
@@ -92,7 +106,8 @@ export class AffiliateRedirectController {
   ) {}
 
   @Get(':siteSlug/:offerId')
-  @UseGuards(PublicTenantGuard)
+  @UseGuards(RateLimitGuard, PublicTenantGuard)
+  @RateLimit({ limit: 30, windowMs: 60_000 })
   async redirect(
     @Param(new ZodValidationPipe(affiliateRedirectParamsSchema))
     params: AffiliateRedirectParams,

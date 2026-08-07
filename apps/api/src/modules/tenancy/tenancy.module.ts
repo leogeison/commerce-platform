@@ -25,8 +25,9 @@ import { SiteAuthorizationGuard } from './presentation/site-authorization.guard'
  * `PublicTenantGuard` (TRK-002) exportado pelo mesmo motivo, para o
  * caminho público: primeiro consumidor real de `resolvePublicTenantContext`
  * (INF-008), usado por `AffiliateRedirectController`
- * (`modules/application/presentation/`, ainda não registrado em nenhum
- * módulo — ver o próprio arquivo do controller).
+ * (`modules/application/presentation/`, registrado em
+ * `ApplicationModule.controllers` desde TRK-006 — ver o próprio arquivo do
+ * controller).
  */
 @Module({
   imports: [DatabaseModule],

@@ -30,8 +30,9 @@ import { SessionCookieHelper } from './session-cookie.helper';
  * `RateLimitGuard`/`RateLimitStore` (INF-007) seguem o mesmo padrão do
  * `OriginGuard`: providers comuns, exportados, **não** globais — só valem
  * onde forem anexados explicitamente via `@UseGuards(RateLimitGuard)` numa
- * rota que também tenha `@RateLimit(...)`. Nenhuma rota usa isso ainda
- * (fora do escopo desta tarefa; aplicação real é Fase 5/9 — login/redirect).
+ * rota que também tenha `@RateLimit(...)`. Aplicado em `POST
+ * /admin/auth/login` (AUTH-005, `{ limit: 5, windowMs: 60_000 }`) e em `GET
+ * /r/:siteSlug/:offerId` (TRK-007, `{ limit: 30, windowMs: 60_000 }`).
  */
 @Module({
   imports: [AppConfigModule],

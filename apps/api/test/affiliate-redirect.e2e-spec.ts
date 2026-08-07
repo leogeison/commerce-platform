@@ -260,4 +260,28 @@ describe('GET /r/:siteSlug/:offerId (e2e)', () => {
     expect(response.status).toBe(422);
     expect(await findClicksByOffer(offer.id)).toHaveLength(0);
   });
+
+  /**
+   * TRK-007: `RateLimitGuard` (`{ limit: 30, windowMs: 60_000 }`) roda
+   * antes de `PublicTenantGuard` no `@UseGuards`. `siteSlug` inexistente
+   * (com `offerId` em formato UUID válido, para nunca disparar o `422` de
+   * `TRK-001` antes do guard de rate limit) prova as duas coisas ao mesmo
+   * tempo: as primeiras 30 requisições passam pelo rate limit e chegam ao
+   * `PublicTenantGuard` (que rejeita com `404`, Site inexistente); a 31ª já
+   * nem chega lá — `429` do próprio `RateLimitGuard`, antes de qualquer
+   * consulta ao Site.
+   */
+  it('TRK-007: 31ª requisição no mesmo IP responde 429 antes de resolver o Site, sem clique', async () => {
+    const nonexistentSiteSlug = 'trk007-site-inexistente';
+
+    for (let attempt = 1; attempt <= 30; attempt += 1) {
+      const response = await redirectRequest(nonexistentSiteSlug, NONEXISTENT_ID);
+      expect(response.status).toBe(404);
+    }
+
+    const blockedResponse = await redirectRequest(nonexistentSiteSlug, NONEXISTENT_ID);
+
+    expect(blockedResponse.status).toBe(429);
+    expect(await findClicksByOffer(NONEXISTENT_ID)).toHaveLength(0);
+  });
 });
