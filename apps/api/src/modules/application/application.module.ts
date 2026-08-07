@@ -10,10 +10,12 @@ import { FindAffectedPublishedArticlesUseCase } from './application/find-affecte
 import { HandleAffiliateRedirectUseCase } from './application/handle-affiliate-redirect.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
 import { RemoveCategoryUseCase } from './application/remove-category.use-case';
+import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
 import { RemoveCategoryController } from './presentation/remove-category.controller';
+import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
 
 /**
@@ -59,10 +61,12 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * deixar `OFFER_ARCHIVED` sem resposta HTTP válida numa rota já pública
  * (ver o próprio arquivo do controller). `TrackingModule` (import desde
  * `TRK-004`) fornece `AFFILIATE_CLICK_RECORDER`, consumido por
- * `HandleAffiliateRedirectUseCase` para registrar o `AffiliateClick` —
- * direção `Application → Tracking`, nunca o inverso (evita o ciclo que
- * existiria se a futura `TRK-010`, cross-domain Tracking+Catalog, fosse
- * implementada dentro de `TrackingModule` em vez de aqui).
+ * `HandleAffiliateRedirectUseCase` para registrar o `AffiliateClick`, e
+ * `AFFILIATE_CLICK_EXISTENCE_CHECKER` (desde `TRK-010`), consumido por
+ * `RemoveOfferUseCase` para verificar clique antes de excluir — direção
+ * `Application → Tracking` nos dois casos, nunca o inverso (o motivo pelo
+ * qual `RemoveOfferUseCase`, cross-domain Tracking+Catalog, vive aqui, não
+ * dentro de `TrackingModule` nem de `CatalogModule`).
  *
  * `FindAffectedPublishedArticlesUseCase` (APP-005) reaproveita
  * `PrismaArticleRepository` (já exportado desde APP-001) — nenhum import
@@ -74,12 +78,20 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * (Catalog, exportado desde APP-006) — nenhum import novo de módulo,
  * mesmos moldes exatos de `RemoveProductUseCase`/APP-003.
  *
+ * `RemoveOfferUseCase` (TRK-010) reaproveita `PrismaOfferRepository`
+ * (Catalog, já exportado desde APP-001) e `DeleteOfferUseCase` (Catalog,
+ * exportado desde TRK-010) + `AFFILIATE_CLICK_EXISTENCE_CHECKER`
+ * (Tracking, exportado desde TRK-010) — nenhum import novo de módulo.
+ * Mais simples que `RemoveProductUseCase`/`RemoveCategoryUseCase`: `Offer`
+ * só tem uma FK externa possível, então não precisa da reconsulta pós-corrida
+ * que os outros dois fazem (ver o próprio caso de uso).
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome
  * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
  * `HandleAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`/
- * `RemoveCategoryUseCase` nesta tarefa — mesma convenção já usada em
- * `CatalogModule`/`EditorialModule`, exportação entra junto com a tarefa
- * que precisar dela.
+ * `RemoveCategoryUseCase`/`RemoveOfferUseCase` nesta tarefa — mesma
+ * convenção já usada em `CatalogModule`/`EditorialModule`, exportação
+ * entra junto com a tarefa que precisar dela.
  */
 @Module({
   imports: [
@@ -95,6 +107,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     RemoveProductController,
     RemoveCategoryController,
     AffiliateRedirectController,
+    RemoveOfferController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -103,6 +116,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     HandleAffiliateRedirectUseCase,
     FindAffectedPublishedArticlesUseCase,
     RemoveCategoryUseCase,
+    RemoveOfferUseCase,
   ],
 })
 export class ApplicationModule {}

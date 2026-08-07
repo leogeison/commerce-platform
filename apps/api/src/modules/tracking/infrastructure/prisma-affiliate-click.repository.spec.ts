@@ -13,12 +13,13 @@ const INPUT: RecordAffiliateClickInput = {
   userAgent: 'UA-Test/1.0',
 };
 
-function buildRepository() {
+function buildRepository(findFirstResult: { id: string } | null = null) {
   const create = jest.fn().mockResolvedValue(undefined);
-  const prisma = { affiliateClick: { create } } as unknown as PrismaService;
+  const findFirst = jest.fn().mockResolvedValue(findFirstResult);
+  const prisma = { affiliateClick: { create, findFirst } } as unknown as PrismaService;
   const repository = new PrismaAffiliateClickRepository(prisma);
 
-  return { repository, create };
+  return { repository, create, findFirst };
 }
 
 describe('PrismaAffiliateClickRepository', () => {
@@ -57,5 +58,27 @@ describe('PrismaAffiliateClickRepository', () => {
     await repository.record(input);
 
     expect(create).toHaveBeenCalledWith({ data: input });
+  });
+
+  describe('existsForOffer (TRK-010)', () => {
+    it('devolve true quando findFirst encontra um clique', async () => {
+      const { repository, findFirst } = buildRepository({ id: 'click-1' });
+
+      const result = await repository.existsForOffer('site-1', 'offer-1');
+
+      expect(result).toBe(true);
+      expect(findFirst).toHaveBeenCalledWith({
+        where: { siteId: 'site-1', offerId: 'offer-1' },
+        select: { id: true },
+      });
+    });
+
+    it('devolve false quando findFirst não encontra nenhum clique', async () => {
+      const { repository } = buildRepository(null);
+
+      const result = await repository.existsForOffer('site-1', 'offer-1');
+
+      expect(result).toBe(false);
+    });
   });
 });

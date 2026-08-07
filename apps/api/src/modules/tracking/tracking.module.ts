@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../shared/database/database.module';
+import { AFFILIATE_CLICK_EXISTENCE_CHECKER } from './domain/affiliate-click-existence-checker';
 import { AFFILIATE_CLICK_RECORDER } from './domain/affiliate-click-recorder';
 import { PrismaAffiliateClickRepository } from './infrastructure/prisma-affiliate-click.repository';
 
@@ -15,24 +16,33 @@ import { PrismaAffiliateClickRepository } from './infrastructure/prisma-affiliat
  * `PrismaAffiliateClickRepository`) precisa importar `DatabaseModule` pelo
  * menos uma vez; nenhuma convenção nova.
  *
- * `AFFILIATE_CLICK_RECORDER` ligado a `PrismaAffiliateClickRepository` via
- * `useClass` (não `useFactory`, diferente de `PASSWORD_HASHER`/
- * `Argon2PasswordHasher`): `PrismaAffiliateClickRepository` tem uma
- * dependência real de DI (`PrismaService`), então `useClass` deixa o
- * próprio Nest resolver o construtor, em vez de instanciar manualmente.
+ * `PrismaAffiliateClickRepository` registrada uma única vez como provider
+ * "de verdade" (não `useClass` por token), e os dois tokens de porta
+ * (`AFFILIATE_CLICK_RECORDER`, TRK-004; `AFFILIATE_CLICK_EXISTENCE_CHECKER`,
+ * TRK-010) apontam para essa mesma instância via `useExisting` — uma classe,
+ * uma tabela (`AffiliateClick`), duas portas separadas (escrita/leitura,
+ * ver o próprio arquivo de `AffiliateClickExistenceChecker`). `useExisting`
+ * em vez de dois `useClass` independentes: evita o Nest instanciar a classe
+ * duas vezes para a mesma dependência (`PrismaService`) sem necessidade.
  *
- * Só o token é exportado — `PrismaAffiliateClickRepository` nunca é
+ * Só os tokens são exportados — `PrismaAffiliateClickRepository` nunca é
  * injetável fora deste módulo; quem consome (`ApplicationModule`/
- * `HandleAffiliateRedirectUseCase`) depende só de `AffiliateClickRecorder`.
+ * `HandleAffiliateRedirectUseCase`/`RemoveOfferUseCase`) depende só de
+ * `AffiliateClickRecorder`/`AffiliateClickExistenceChecker`.
  */
 @Module({
   imports: [DatabaseModule],
   providers: [
+    PrismaAffiliateClickRepository,
     {
       provide: AFFILIATE_CLICK_RECORDER,
-      useClass: PrismaAffiliateClickRepository,
+      useExisting: PrismaAffiliateClickRepository,
+    },
+    {
+      provide: AFFILIATE_CLICK_EXISTENCE_CHECKER,
+      useExisting: PrismaAffiliateClickRepository,
     },
   ],
-  exports: [AFFILIATE_CLICK_RECORDER],
+  exports: [AFFILIATE_CLICK_RECORDER, AFFILIATE_CLICK_EXISTENCE_CHECKER],
 })
 export class TrackingModule {}

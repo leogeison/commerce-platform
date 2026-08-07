@@ -1,7 +1,4 @@
-import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import request from 'supertest';
-import { App } from 'supertest/types';
 import { CatalogModule } from '../src/modules/catalog/catalog.module';
 import { DeleteOfferUseCase } from '../src/modules/catalog/application/delete-offer.use-case';
 import { PrismaService } from '../src/shared/database/prisma.service';
@@ -20,11 +17,14 @@ import type { Offer, Product, Site } from '../src/generated/prisma/client';
  * do caso de uso, nunca importa `AffiliateClick` do código de produção do
  * Catalog (que segue sem conhecer esse conceito).
  *
- * `app`/`supertest` só entram no último teste, para provar que nenhuma
- * rota HTTP alcança esta exclusão.
+ * Não há mais teste de "nenhuma rota HTTP expõe esta exclusão" aqui: a
+ * TRK-010 criou o caminho HTTP real (`RemoveOfferController`, em
+ * `ApplicationModule`), então essa afirmação deixou de ser verdadeira —
+ * cobertura completa do endpoint (guards, `409`/`404`/`204`, isolamento
+ * entre Sites) está em `remove-offer.e2e-spec.ts`. Esta suíte permanece
+ * focada só no caso de uso interno (CAT-021), sem HTTP.
  */
 describe('DeleteOfferUseCase (CAT-021, operação interna)', () => {
-  let app: INestApplication<App> | undefined;
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let useCase: DeleteOfferUseCase;
@@ -36,9 +36,6 @@ describe('DeleteOfferUseCase (CAT-021, operação interna)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [CatalogModule],
     }).compile();
-
-    app = moduleRef.createNestApplication();
-    await app.init();
 
     prisma = moduleRef.get(PrismaService);
     useCase = moduleRef.get(DeleteOfferUseCase);
@@ -76,11 +73,6 @@ describe('DeleteOfferUseCase (CAT-021, operação interna)', () => {
       where: { site: { slug: { startsWith: 'cat021-' } } },
     });
     await prisma.site.deleteMany({ where: { slug: { startsWith: 'cat021-' } } });
-
-    if (app) {
-      await app.close();
-      app = undefined;
-    }
   });
 
   async function createOffer(site: Site, product: Product): Promise<Offer> {
@@ -144,15 +136,5 @@ describe('DeleteOfferUseCase (CAT-021, operação interna)', () => {
       where: { id: offerFromSiteB.id },
     });
     expect(persisted).not.toBeNull();
-  });
-
-  it('nenhuma rota HTTP expõe exclusão: DELETE .../offers/:id não existe (404)', async () => {
-    const offer = await createOffer(siteA, productA);
-
-    const response = await request(app!.getHttpServer()).delete(
-      `/admin/sites/${siteA.slug}/products/${productA.id}/offers/${offer.id}`,
-    );
-
-    expect(response.status).toBe(404);
   });
 });

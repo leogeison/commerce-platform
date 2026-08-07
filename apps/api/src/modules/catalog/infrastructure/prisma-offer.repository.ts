@@ -242,9 +242,10 @@ export class PrismaOfferRepository {
 
   /**
    * Exclui fisicamente uma `Offer` do Site (CAT-021) — operação **interna**
-   * do Catalog, sem controller/rota HTTP própria; quem chama é `TRK-010`
-   * (cross-domain, fora deste módulo, ainda não implementado), depois de
-   * já ter autorizado a exclusão por conta própria.
+   * do Catalog, sem controller/rota HTTP própria; quem chama é
+   * `RemoveOfferUseCase` (`TRK-010`, cross-domain, fora deste módulo),
+   * depois de já ter confirmado a ausência de `AffiliateClick` por conta
+   * própria.
    *
    * Diferente de `PrismaCategoryRepository.deleteBySite`/
    * `PrismaProductRepository.deleteBySite` (CAT-007/CAT-014): `Offer` não

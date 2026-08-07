@@ -4,9 +4,12 @@ import type {
   AffiliateClickRecorder,
   RecordAffiliateClickInput,
 } from '../domain/affiliate-click-recorder';
+import type { AffiliateClickExistenceChecker } from '../domain/affiliate-click-existence-checker';
 
 /**
- * Implementação concreta (Prisma) de `AffiliateClickRecorder` (TRK-004).
+ * Implementação concreta (Prisma) de `AffiliateClickRecorder` (TRK-004) e,
+ * desde TRK-010, também de `AffiliateClickExistenceChecker` — mesma classe,
+ * mesma tabela (`AffiliateClick`), duas portas separadas (escrita/leitura).
  * `@Injectable()` de verdade — diferente de `Argon2PasswordHasher`
  * (AUTH-002), esta classe depende de `PrismaService` via DI, mesmo padrão
  * de `PrismaOfferRepository`/`PrismaArticleRepository`/`PrismaUserRepository`.
@@ -21,7 +24,9 @@ import type {
  * Sem `clickedAt` no `data`: `@default(now())` no schema.
  */
 @Injectable()
-export class PrismaAffiliateClickRepository implements AffiliateClickRecorder {
+export class PrismaAffiliateClickRepository
+  implements AffiliateClickRecorder, AffiliateClickExistenceChecker
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async record(input: RecordAffiliateClickInput): Promise<void> {
@@ -37,5 +42,19 @@ export class PrismaAffiliateClickRepository implements AffiliateClickRecorder {
         userAgent: input.userAgent,
       },
     });
+  }
+
+  /**
+   * `findFirst` (não `count`): só precisamos saber se existe ao menos um —
+   * `findFirst` para no primeiro resultado, `count` varreria a tabela
+   * inteira para a mesma resposta booleana.
+   */
+  async existsForOffer(siteId: string, offerId: string): Promise<boolean> {
+    const click = await this.prisma.affiliateClick.findFirst({
+      where: { siteId, offerId },
+      select: { id: true },
+    });
+
+    return click !== null;
   }
 }

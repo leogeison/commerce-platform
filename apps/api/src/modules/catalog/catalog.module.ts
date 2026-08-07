@@ -45,21 +45,22 @@ import { ProductsController } from './presentation/products.controller';
  * necessário pelo `OriginGuard`, mesmo padrão já usado em `IdentityModule`.
  *
  * `exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase,
- * DeleteCategoryUseCase]` — os dois primeiros desde APP-001
- * (`ApplicationModule` precisa deles para `CalculateArticleHealthUseCase`);
- * `DeleteProductUseCase` (CAT-014) desde APP-003; `DeleteCategoryUseCase`
- * (CAT-007) desde APP-006, para `RemoveCategoryUseCase` delegar a
- * exclusão física depois de confirmar que não há vínculo com Artigo —
- * mesmo padrão exato de `DeleteProductUseCase`/APP-003.
+ * DeleteCategoryUseCase, DeleteOfferUseCase]` — os dois primeiros desde
+ * APP-001 (`ApplicationModule` precisa deles para
+ * `CalculateArticleHealthUseCase`); `DeleteProductUseCase` (CAT-014) desde
+ * APP-003; `DeleteCategoryUseCase` (CAT-007) desde APP-006;
+ * `DeleteOfferUseCase` (CAT-021) desde TRK-010, para `RemoveOfferUseCase`
+ * delegar a exclusão física depois de confirmar que não há `AffiliateClick`
+ * vinculado — mesmo padrão exato de `DeleteProductUseCase`/APP-003 e
+ * `DeleteCategoryUseCase`/APP-006.
  * `PrismaProductRepository` segue sem exportar — nada em `application` o
  * consome diretamente ainda. `ArchiveProductUseCase`/
- * `UnarchiveProductUseCase` (CAT-012/013), `ArchiveOfferUseCase`/
- * `UnarchiveOfferUseCase` (CAT-019/020) e `DeleteOfferUseCase` (CAT-021)
- * inclusive: serão consumidas por `REV-011`/`REV-013`/`TRK-010`
- * (cross-domain) quando essas tarefas existirem, mas exportar agora seria
- * antecipar consumidores que ainda não foram implementados — ficam só
- * registradas como provider, exportação entra junto com a tarefa que
- * precisar delas.
+ * `UnarchiveProductUseCase` (CAT-012/013) e `ArchiveOfferUseCase`/
+ * `UnarchiveOfferUseCase` (CAT-019/020) seguem sem exportar: serão
+ * consumidas por `REV-011`/`REV-013` quando essas tarefas existirem, mas
+ * exportar agora seria antecipar consumidores que ainda não foram
+ * implementados — ficam só registradas como provider, exportação entra
+ * junto com a tarefa que precisar delas.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -92,6 +93,7 @@ import { ProductsController } from './presentation/products.controller';
     PrismaOfferRepository,
     DeleteProductUseCase,
     DeleteCategoryUseCase,
+    DeleteOfferUseCase,
   ],
 })
 export class CatalogModule {}

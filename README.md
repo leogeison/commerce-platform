@@ -4,7 +4,7 @@ Motor multi-marca de conteúdo e afiliação. A primeira marca é o **FastCompre
 
 ## Status
 
-Fases 1 a 4 do backlog concluídas — monorepo, bootstrap da API com Prisma/PostgreSQL, contratos compartilhados e infraestrutura transversal da API (erros, validação, cookie, CORS, guards e `TenantContext`). Ver [Roadmap](#roadmap).
+Fases 1 a 9 do backlog concluídas — monorepo, bootstrap da API, contratos compartilhados, infraestrutura transversal, Identity/autenticação, Catalog, Editorial, orquestração cross-domain (Application) e Tracking (redirect de afiliado com rate limit e exclusão de Oferta condicionada a clique). Ver [Roadmap](#roadmap).
 
 ## Stack tecnológica
 
@@ -24,9 +24,11 @@ Fases 1 a 4 do backlog concluídas — monorepo, bootstrap da API com Prisma/Pos
   - `ZodValidationPipe` — pipe de validação genérico, reutilizável com qualquer schema Zod (local ou de `packages/contracts`).
   - `SessionCookieHelper` — aplica os atributos de segurança do cookie de sessão (`HttpOnly`, `Secure`, `SameSite=Lax`); a lógica de sessão em si (gerar/validar token) é da Fase 5.
   - `buildCorsOptions` — CORS restrito à origem exata do `apps/admin`.
-  - `OriginGuard` — valida `Origin`/`Referer` em requisições mutáveis (`POST`/`PATCH`/`DELETE`); disponível como provider, ainda não aplicado a nenhuma rota real.
-  - `RateLimitGuard`/`RateLimitStore` — rate limit reutilizável (janela + limite configuráveis via `@RateLimit(...)`), armazenamento em memória por processo; ainda não aplicado a nenhuma rota real.
+  - `OriginGuard` — valida `Origin`/`Referer` em requisições mutáveis (`POST`/`PATCH`/`DELETE`); aplicado a todas as rotas administrativas de escrita (login e exclusão/criação/atualização em Catalog, Editorial e Application).
+  - `RateLimitGuard`/`RateLimitStore` — rate limit reutilizável (janela + limite configuráveis via `@RateLimit(...)`), armazenamento em memória por processo; aplicado ao login (`5/60s`) e ao redirect público de afiliado (`30/60s`).
   - `LoggingModule` — logging estruturado em JSON via `nestjs-pino`, com correlação de `x-request-id` por requisição.
+
+- **Tracking:** `GET /r/:siteSlug/:offerId` é o único redirecionador de link de afiliado — resolve o Site publicamente (sem sessão), registra `AffiliateClick` (UTM, referer, user-agent como telemetria não confiável) e responde `302` para a `affiliateUrl` real (nunca aceita URL da requisição) ou `410` com corpo amigável se a Oferta estiver arquivada. Exclusão física de Oferta (`DELETE /admin/sites/:siteSlug/products/:productId/offers/:id`) é bloqueada com `409` quando existe `AffiliateClick` vinculado — verificação cross-domain feita em `apps/api/src/modules/application`, nunca dentro do Catalog.
 
 ## Estrutura do projeto
 
@@ -82,9 +84,9 @@ Fases do `Implementation-Backlog.md`:
 - [x] Fase 4 — Infraestrutura Transversal da API
 - [x] Fase 5 — Identity e Autenticação
 - [x] Fase 6 — Catalog
-- [ ] Fase 7 — Editorial
-- [ ] Fase 8 — Application Cross-Domain
-- [ ] Fase 9 — Tracking
+- [x] Fase 7 — Editorial
+- [x] Fase 8 — Application Cross-Domain
+- [x] Fase 9 — Tracking
 - [ ] Fase 10 — Uploads
 - [ ] Fase 11 — API Pública
 - [ ] Fase 12 — FastCompre Público
