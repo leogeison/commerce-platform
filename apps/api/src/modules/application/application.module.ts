@@ -3,13 +3,15 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { EditorialModule } from '../editorial/editorial.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { TrackingModule } from '../tracking/tracking.module';
 import { HttpModule } from '../../shared/http/http.module';
 import { CalculateArticleHealthUseCase } from './application/calculate-article-health.use-case';
 import { FindAffectedPublishedArticlesUseCase } from './application/find-affected-published-articles.use-case';
-import { PrepareAffiliateRedirectUseCase } from './application/prepare-affiliate-redirect.use-case';
+import { HandleAffiliateRedirectUseCase } from './application/handle-affiliate-redirect.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
 import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
+import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
 import { RemoveCategoryController } from './presentation/remove-category.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
@@ -46,11 +48,21 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * Nenhum import novo de módulo necessário para nenhum dos dois além do
  * `HttpModule` acima.
  *
- * `PrepareAffiliateRedirectUseCase` (APP-004) reaproveita
+ * `HandleAffiliateRedirectUseCase` (APP-004; renomeada de
+ * `PrepareAffiliateRedirectUseCase` em `TRK-004`, quando passou a também
+ * registrar o `AffiliateClick`, não só validar) reaproveita
  * `PrismaOfferRepository` (Catalog, já exportado desde APP-001) e
- * `PrismaArticleRepository` (Editorial, já exportado desde APP-001) —
- * nenhum import novo de módulo. Sem controller: `GET /r/:siteSlug/:offerId`
- * é `TRK-002`, fora do escopo desta tarefa.
+ * `PrismaArticleRepository` (Editorial, já exportado desde APP-001).
+ * `AffiliateRedirectController` (`GET /r/:siteSlug/:offerId`) entra em
+ * `controllers` só nesta tarefa (`TRK-006`) — `TRK-002` a `TRK-005`
+ * construíram o método incrementalmente sem registrar a rota, para nunca
+ * deixar `OFFER_ARCHIVED` sem resposta HTTP válida numa rota já pública
+ * (ver o próprio arquivo do controller). `TrackingModule` (import desde
+ * `TRK-004`) fornece `AFFILIATE_CLICK_RECORDER`, consumido por
+ * `HandleAffiliateRedirectUseCase` para registrar o `AffiliateClick` —
+ * direção `Application → Tracking`, nunca o inverso (evita o ciclo que
+ * existiria se a futura `TRK-010`, cross-domain Tracking+Catalog, fosse
+ * implementada dentro de `TrackingModule` em vez de aqui).
  *
  * `FindAffectedPublishedArticlesUseCase` (APP-005) reaproveita
  * `PrismaArticleRepository` (já exportado desde APP-001) — nenhum import
@@ -64,19 +76,31 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  *
  * Nenhum `exports` ainda: nada fora de `application` consome
  * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
- * `PrepareAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`/
+ * `HandleAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`/
  * `RemoveCategoryUseCase` nesta tarefa — mesma convenção já usada em
  * `CatalogModule`/`EditorialModule`, exportação entra junto com a tarefa
  * que precisar dela.
  */
 @Module({
-  imports: [IdentityModule, TenancyModule, EditorialModule, CatalogModule, HttpModule],
-  controllers: [ArticleHealthController, RemoveProductController, RemoveCategoryController],
+  imports: [
+    IdentityModule,
+    TenancyModule,
+    EditorialModule,
+    CatalogModule,
+    TrackingModule,
+    HttpModule,
+  ],
+  controllers: [
+    ArticleHealthController,
+    RemoveProductController,
+    RemoveCategoryController,
+    AffiliateRedirectController,
+  ],
   providers: [
     CalculateArticleHealthUseCase,
     PublishArticleUseCase,
     RemoveProductUseCase,
-    PrepareAffiliateRedirectUseCase,
+    HandleAffiliateRedirectUseCase,
     FindAffectedPublishedArticlesUseCase,
     RemoveCategoryUseCase,
   ],

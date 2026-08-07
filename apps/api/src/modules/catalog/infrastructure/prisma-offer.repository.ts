@@ -188,8 +188,9 @@ export class PrismaOfferRepository {
    * `@@unique([id, siteId])`), `null` cobre "não existe"/"de outro Site"
    * com o mesmo resultado genérico. Oferta arquivada é retornada
    * normalmente, sem filtro — quem decide o que fazer com uma Oferta
-   * arquivada é o caso de uso chamador (`PrepareAffiliateRedirectUseCase`),
-   * não o repository.
+   * arquivada é o caso de uso chamador (`HandleAffiliateRedirectUseCase`,
+   * renomeada de `PrepareAffiliateRedirectUseCase` em `TRK-004`), não o
+   * repository.
    */
   async findOneBySite(siteId: string, id: string): Promise<Offer | null> {
     return this.prisma.offer.findUnique({

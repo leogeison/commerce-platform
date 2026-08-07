@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../shared/database/database.module';
+import { PublicTenantGuard } from './presentation/public-tenant.guard';
 import { SiteAuthorizationGuard } from './presentation/site-authorization.guard';
 
 /**
@@ -20,10 +21,16 @@ import { SiteAuthorizationGuard } from './presentation/site-authorization.guard'
  * `SiteAuthorizationGuard` exportado: mesmo motivo da AUTH-006 — precisa
  * ser usável via `@UseGuards(SiteAuthorizationGuard)` em módulos futuros
  * (Catalog/Editorial), não só aqui.
+ *
+ * `PublicTenantGuard` (TRK-002) exportado pelo mesmo motivo, para o
+ * caminho público: primeiro consumidor real de `resolvePublicTenantContext`
+ * (INF-008), usado por `AffiliateRedirectController`
+ * (`modules/application/presentation/`, ainda não registrado em nenhum
+ * módulo — ver o próprio arquivo do controller).
  */
 @Module({
   imports: [DatabaseModule],
-  providers: [SiteAuthorizationGuard],
-  exports: [SiteAuthorizationGuard],
+  providers: [SiteAuthorizationGuard, PublicTenantGuard],
+  exports: [SiteAuthorizationGuard, PublicTenantGuard],
 })
 export class TenancyModule {}
