@@ -8,8 +8,9 @@
  *
  * Constante pura de domínio: nenhuma dependência de `@nestjs/*`, Prisma ou
  * dos contratos HTTP (`@commerce-platform/contracts`) — só a decisão em
- * si, importável tanto pela futura validação (UPL-004/UPL-005) quanto por
- * qualquer teste que precisar dela, sem arrastar nenhuma infraestrutura.
+ * si, importável tanto pela validação (`detectImageMimeType`/UPL-004, e a
+ * checagem de tamanho no controller/UPL-005) quanto por qualquer teste que
+ * precisar dela, sem arrastar nenhuma infraestrutura.
  */
 export const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 

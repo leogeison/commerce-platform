@@ -6,17 +6,23 @@ describe('validateEnv', () => {
     SESSION_SECRET: 'a'.repeat(16),
     REVALIDATION_SECRET: 'b'.repeat(16),
     ADMIN_ORIGIN: 'http://localhost:3001',
+    STORAGE_S3_BUCKET: 'my-bucket',
+    STORAGE_S3_REGION: 'auto',
+    STORAGE_S3_PUBLIC_URL_BASE: 'https://cdn.example.com',
   };
 
-  it('retorna as variáveis quando o ambiente é válido', () => {
-    expect(validateEnv(validEnv)).toEqual(validEnv);
+  it('retorna as variáveis quando o ambiente é válido (STORAGE_S3_FORCE_PATH_STYLE ausente vira false)', () => {
+    expect(validateEnv(validEnv)).toEqual({
+      ...validEnv,
+      STORAGE_S3_FORCE_PATH_STYLE: false,
+    });
   });
 
   it('lança erro claro quando DATABASE_URL está ausente', () => {
     expect(() =>
       validateEnv({
-        SESSION_SECRET: validEnv.SESSION_SECRET,
-        REVALIDATION_SECRET: validEnv.REVALIDATION_SECRET,
+        ...validEnv,
+        DATABASE_URL: undefined,
       }),
     ).toThrow(/DATABASE_URL/);
   });
@@ -30,8 +36,8 @@ describe('validateEnv', () => {
   it('lança erro claro quando REVALIDATION_SECRET está ausente', () => {
     expect(() =>
       validateEnv({
-        DATABASE_URL: validEnv.DATABASE_URL,
-        SESSION_SECRET: validEnv.SESSION_SECRET,
+        ...validEnv,
+        REVALIDATION_SECRET: undefined,
       }),
     ).toThrow(/REVALIDATION_SECRET/);
   });
@@ -44,7 +50,48 @@ describe('validateEnv', () => {
 
   it('lança erro listando todas as variáveis ausentes de uma vez', () => {
     expect(() => validateEnv({})).toThrow(
-      /DATABASE_URL[\s\S]*SESSION_SECRET[\s\S]*REVALIDATION_SECRET[\s\S]*ADMIN_ORIGIN/,
+      /DATABASE_URL[\s\S]*SESSION_SECRET[\s\S]*REVALIDATION_SECRET[\s\S]*ADMIN_ORIGIN[\s\S]*STORAGE_S3_BUCKET[\s\S]*STORAGE_S3_REGION[\s\S]*STORAGE_S3_PUBLIC_URL_BASE/,
     );
+  });
+
+  it('STORAGE_S3_FORCE_PATH_STYLE=true vira boolean true', () => {
+    const result = validateEnv({
+      ...validEnv,
+      STORAGE_S3_FORCE_PATH_STYLE: 'true',
+    });
+
+    expect(result.STORAGE_S3_FORCE_PATH_STYLE).toBe(true);
+  });
+
+  it('credenciais de storage: ambas ausentes é válido (SDK usa a cadeia padrão da AWS)', () => {
+    expect(() => validateEnv(validEnv)).not.toThrow();
+  });
+
+  it('credenciais de storage: ambas presentes é válido', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        STORAGE_S3_ACCESS_KEY_ID: 'access-key',
+        STORAGE_S3_SECRET_ACCESS_KEY: 'secret-key',
+      }),
+    ).not.toThrow();
+  });
+
+  it('credenciais de storage: só STORAGE_S3_ACCESS_KEY_ID presente é inválido', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        STORAGE_S3_ACCESS_KEY_ID: 'access-key',
+      }),
+    ).toThrow(/STORAGE_S3_SECRET_ACCESS_KEY/);
+  });
+
+  it('credenciais de storage: só STORAGE_S3_SECRET_ACCESS_KEY presente é inválido', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        STORAGE_S3_SECRET_ACCESS_KEY: 'secret-key',
+      }),
+    ).toThrow(/STORAGE_S3_ACCESS_KEY_ID/);
   });
 });

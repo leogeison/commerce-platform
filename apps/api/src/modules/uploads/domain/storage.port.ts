@@ -4,8 +4,9 @@ import type { AllowedImageMimeType } from './upload-policy';
  * `StoragePort` (UPL-007; Architecture.md, Seção 29) — interface abstrata
  * para gravar um arquivo e obter a URL pública correspondente, sem
  * presumir nenhum provedor concreto (disco local, S3-compatível,
- * Cloudflare R2, etc.). O adaptador concreto é uma decisão à parte,
- * pendente (UPL-008).
+ * Cloudflare R2, etc.). O adaptador concreto foi decidido separadamente
+ * (UPL-008): `S3StorageAdapter`, via API S3, compatível com qualquer
+ * provedor que fale o protocolo (AWS S3, R2, Spaces, MinIO).
  *
  * Uma única operação (`upload`), não `save()` + `getPublicUrl()`
  * separados: não há entidade `Media` neste projeto (Seção 29) — a URL

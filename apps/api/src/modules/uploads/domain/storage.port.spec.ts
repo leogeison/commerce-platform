@@ -2,9 +2,10 @@ import type { StoragePort, UploadStorageInput } from './storage.port';
 
 /**
  * Fake em memória, existente apenas para provar que `StoragePort` é
- * testável (critério de aceite da UPL-007) — não é um candidato a
- * adaptador de produção (isso é decisão explícita e separada da UPL-008),
- * por isso vive só aqui dentro do spec, não em `infrastructure/`.
+ * testável (critério de aceite da UPL-007) — não é o adaptador de
+ * produção (essa decisão foi tomada separadamente na UPL-008:
+ * `S3StorageAdapter`, em `infrastructure/`), por isso vive só aqui dentro
+ * do spec.
  */
 class InMemoryStoragePort implements StoragePort {
   private readonly stored = new Map<string, { content: Buffer; mimeType: string }>();

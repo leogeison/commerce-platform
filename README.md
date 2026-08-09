@@ -4,7 +4,7 @@ Motor multi-marca de conteúdo e afiliação. A primeira marca é o **FastCompre
 
 ## Status
 
-Fases 1 a 9 do backlog concluídas — monorepo, bootstrap da API, contratos compartilhados, infraestrutura transversal, Identity/autenticação, Catalog, Editorial, orquestração cross-domain (Application) e Tracking (redirect de afiliado com rate limit e exclusão de Oferta condicionada a clique). Ver [Roadmap](#roadmap).
+Fases 1 a 10 do backlog concluídas — monorepo, bootstrap da API, contratos compartilhados, infraestrutura transversal, Identity/autenticação, Catalog, Editorial, orquestração cross-domain (Application), Tracking (redirect de afiliado com rate limit e exclusão de Oferta condicionada a clique) e Uploads (upload de imagem com validação real de MIME/tamanho, nome seguro e armazenamento S3-compatível). Ver [Roadmap](#roadmap).
 
 ## Stack tecnológica
 
@@ -24,11 +24,13 @@ Fases 1 a 9 do backlog concluídas — monorepo, bootstrap da API, contratos com
   - `ZodValidationPipe` — pipe de validação genérico, reutilizável com qualquer schema Zod (local ou de `packages/contracts`).
   - `SessionCookieHelper` — aplica os atributos de segurança do cookie de sessão (`HttpOnly`, `Secure`, `SameSite=Lax`); a lógica de sessão em si (gerar/validar token) é da Fase 5.
   - `buildCorsOptions` — CORS restrito à origem exata do `apps/admin`.
-  - `OriginGuard` — valida `Origin`/`Referer` em requisições mutáveis (`POST`/`PATCH`/`DELETE`); aplicado a todas as rotas administrativas de escrita (login e exclusão/criação/atualização em Catalog, Editorial e Application).
+  - `OriginGuard` — valida `Origin`/`Referer` em requisições mutáveis (`POST`/`PATCH`/`DELETE`); aplicado a todas as rotas administrativas de escrita (login, exclusão/criação/atualização em Catalog, Editorial e Application, e upload de imagem em Uploads).
   - `RateLimitGuard`/`RateLimitStore` — rate limit reutilizável (janela + limite configuráveis via `@RateLimit(...)`), armazenamento em memória por processo; aplicado ao login (`5/60s`) e ao redirect público de afiliado (`30/60s`).
   - `LoggingModule` — logging estruturado em JSON via `nestjs-pino`, com correlação de `x-request-id` por requisição.
 
 - **Tracking:** `GET /r/:siteSlug/:offerId` é o único redirecionador de link de afiliado — resolve o Site publicamente (sem sessão), registra `AffiliateClick` (UTM, referer, user-agent como telemetria não confiável) e responde `302` para a `affiliateUrl` real (nunca aceita URL da requisição) ou `410` com corpo amigável se a Oferta estiver arquivada. Exclusão física de Oferta (`DELETE /admin/sites/:siteSlug/products/:productId/offers/:id`) é bloqueada com `409` quando existe `AffiliateClick` vinculado — verificação cross-domain feita em `apps/api/src/modules/application`, nunca dentro do Catalog.
+
+- **Uploads:** `POST /admin/sites/:siteSlug/uploads/images` é o único endpoint de upload de imagem (Role mínima `EDITOR`), usado por Produto, Artigo (capa) e Autor (avatar). Formato validado por assinatura binária real (magic bytes — JPEG/PNG/WebP), não por extensão ou `Content-Type` declarado; limite de 5 MiB aplicado tanto no parser multipart quanto por checagem defensiva no controller; nome do arquivo sempre gerado pelo servidor (nunca o nome original enviado). Armazenamento desenhado com uma porta explícita (`StoragePort`), implementada por `S3StorageAdapter` (compatível com AWS S3, Cloudflare R2, DigitalOcean Spaces, MinIO). Resposta `{ url }`, sem entidade `Media` — a URL é gravada direto no campo do recurso que a usa.
 
 ## Estrutura do projeto
 
@@ -64,7 +66,7 @@ commerce-platform/
 
 1. **Instalar dependências:** `pnpm install` (na raiz).
 2. **Banco de dados:** `docker compose up -d` sobe um PostgreSQL 16 local (usuário/senha/banco definidos em `docker-compose.yml`).
-3. **Variáveis de ambiente:** copiar `apps/api/.env.example` para `apps/api/.env` e preencher `DATABASE_URL`, `SESSION_SECRET`, `REVALIDATION_SECRET` e `ADMIN_ORIGIN` (os comentários no próprio arquivo explicam cada uma).
+3. **Variáveis de ambiente:** copiar `apps/api/.env.example` para `apps/api/.env` e preencher `DATABASE_URL`, `SESSION_SECRET`, `REVALIDATION_SECRET`, `ADMIN_ORIGIN` e as variáveis de storage `STORAGE_S3_BUCKET`/`STORAGE_S3_REGION`/`STORAGE_S3_PUBLIC_URL_BASE` (obrigatórias) — `STORAGE_S3_ENDPOINT`, `STORAGE_S3_FORCE_PATH_STYLE` e as credenciais `STORAGE_S3_ACCESS_KEY_ID`/`STORAGE_S3_SECRET_ACCESS_KEY` são opcionais, necessárias apenas para provedores S3-compatíveis que não sejam a AWS real (os comentários no próprio arquivo explicam cada uma).
 4. **Cliente Prisma:** `pnpm --filter api exec prisma generate` (necessário sempre que o schema mudar; a pasta gerada não é versionada).
 5. **Rodar a API:** `pnpm dev:api`. Frontends (ainda scaffolds vazios): `pnpm dev:admin` / `pnpm dev:fastcompre`.
 
@@ -87,7 +89,7 @@ Fases do `Implementation-Backlog.md`:
 - [x] Fase 7 — Editorial
 - [x] Fase 8 — Application Cross-Domain
 - [x] Fase 9 — Tracking
-- [ ] Fase 10 — Uploads
+- [x] Fase 10 — Uploads
 - [ ] Fase 11 — API Pública
 - [ ] Fase 12 — FastCompre Público
 - [ ] Fase 13 — Admin
