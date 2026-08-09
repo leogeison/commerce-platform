@@ -1,16 +1,22 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   listPublicArticlesQuerySchema,
+  publicArticleParamsSchema,
   publicArticlesSiteParamsSchema,
   type ListPublicArticlesQuery,
   type ListPublicArticlesResponse,
+  type PublicArticle,
+  type PublicArticleParams,
   type PublicArticlesSiteParams,
 } from '@commerce-platform/contracts';
 import { ZodValidationPipe } from '../../../shared/http/zod-validation.pipe';
 import { PublicTenantGuard } from '../../tenancy/presentation/public-tenant.guard';
+import { GetPublicArticleUseCase } from '../application/get-public-article.use-case';
 import { ListPublicArticlesUseCase } from '../application/list-public-articles.use-case';
-import { toPublicArticleSummary } from './public-article.presenter';
+import { toPublicArticle, toPublicArticleSummary } from './public-article.presenter';
+
+const ARTICLE_NOT_FOUND_MESSAGE = 'Artigo não encontrado.';
 
 /**
  * `GET /public/sites/:siteSlug/articles` (PUB-002; Architecture.md §31).
@@ -29,7 +35,10 @@ import { toPublicArticleSummary } from './public-article.presenter';
  */
 @Controller('public/sites/:siteSlug/articles')
 export class PublicArticlesController {
-  constructor(private readonly listPublicArticlesUseCase: ListPublicArticlesUseCase) {}
+  constructor(
+    private readonly listPublicArticlesUseCase: ListPublicArticlesUseCase,
+    private readonly getPublicArticleUseCase: GetPublicArticleUseCase,
+  ) {}
 
   @Get()
   @UseGuards(PublicTenantGuard)
@@ -55,5 +64,41 @@ export class PublicArticlesController {
       total: result.total,
       totalPages: result.totalPages,
     };
+  }
+
+  /**
+   * `GET /public/sites/:siteSlug/articles/:slug` (PUB-003; Architecture.md
+   * §31).
+   *
+   * Mesmos guards de `list()`: só `PublicTenantGuard`.
+   *
+   * `404` genérico (`ARTICLE_NOT_FOUND_MESSAGE`) para "não existe", "existe
+   * em outro Site" e "existe mas não está `PUBLISHED`" — os três chegam
+   * aqui como o mesmo `null` de `GetPublicArticleUseCase`/
+   * `findOnePublishedBySite`, satisfazendo o critério de aceite da PUB-003
+   * ("404 se não publicado, mesmo que o slug exista em outro status") sem
+   * o controller tentar distinguir o que o caso de uso já não distingue —
+   * mesmo raciocínio de `ArticlesController.detail()` (admin).
+   *
+   * Resposta usa `toPublicArticle` (corpo completo, com `bodyMdx` e
+   * `products`) — diferente de `list()`, que usa o resumo.
+   */
+  @Get(':slug')
+  @UseGuards(PublicTenantGuard)
+  async detail(
+    @Param(new ZodValidationPipe(publicArticleParamsSchema))
+    params: PublicArticleParams,
+    @Req() req: Request,
+  ): Promise<PublicArticle> {
+    const article = await this.getPublicArticleUseCase.execute({
+      siteId: req.tenant!.siteId,
+      slug: params.slug,
+    });
+
+    if (!article) {
+      throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+    }
+
+    return toPublicArticle(article);
   }
 }

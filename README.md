@@ -4,7 +4,7 @@ Motor multi-marca de conteúdo e afiliação. A primeira marca é o **FastCompre
 
 ## Status
 
-Fases 1 a 10 do backlog concluídas — monorepo, bootstrap da API, contratos compartilhados, infraestrutura transversal, Identity/autenticação, Catalog, Editorial, orquestração cross-domain (Application), Tracking (redirect de afiliado com rate limit e exclusão de Oferta condicionada a clique) e Uploads (upload de imagem com validação real de MIME/tamanho, nome seguro e armazenamento S3-compatível). Ver [Roadmap](#roadmap).
+Fases 1 a 11 do backlog concluídas — monorepo, bootstrap da API, contratos compartilhados, infraestrutura transversal, Identity/autenticação, Catalog, Editorial, orquestração cross-domain (Application), Tracking (redirect de afiliado com rate limit e exclusão de Oferta condicionada a clique), Uploads (upload de imagem com validação real de MIME/tamanho, nome seguro e armazenamento S3-compatível) e API Pública (listagem e detalhe de Artigo publicado, Categoria pública, sem sessão nem exposição de campos administrativos). Ver [Roadmap](#roadmap).
 
 ## Stack tecnológica
 
@@ -31,6 +31,8 @@ Fases 1 a 10 do backlog concluídas — monorepo, bootstrap da API, contratos co
 - **Tracking:** `GET /r/:siteSlug/:offerId` é o único redirecionador de link de afiliado — resolve o Site publicamente (sem sessão), registra `AffiliateClick` (UTM, referer, user-agent como telemetria não confiável) e responde `302` para a `affiliateUrl` real (nunca aceita URL da requisição) ou `410` com corpo amigável se a Oferta estiver arquivada. Exclusão física de Oferta (`DELETE /admin/sites/:siteSlug/products/:productId/offers/:id`) é bloqueada com `409` quando existe `AffiliateClick` vinculado — verificação cross-domain feita em `apps/api/src/modules/application`, nunca dentro do Catalog.
 
 - **Uploads:** `POST /admin/sites/:siteSlug/uploads/images` é o único endpoint de upload de imagem (Role mínima `EDITOR`), usado por Produto, Artigo (capa) e Autor (avatar). Formato validado por assinatura binária real (magic bytes — JPEG/PNG/WebP), não por extensão ou `Content-Type` declarado; limite de 5 MiB aplicado tanto no parser multipart quanto por checagem defensiva no controller; nome do arquivo sempre gerado pelo servidor (nunca o nome original enviado). Armazenamento desenhado com uma porta explícita (`StoragePort`), implementada por `S3StorageAdapter` (compatível com AWS S3, Cloudflare R2, DigitalOcean Spaces, MinIO). Resposta `{ url }`, sem entidade `Media` — a URL é gravada direto no campo do recurso que a usa.
+
+- **API Pública:** três endpoints, sem sessão, resolvendo o Site por `siteSlug` (`PublicTenantGuard`) — `GET /public/sites/:siteSlug/articles` (listagem paginada, só Artigo `PUBLISHED`, filtros opcionais de `categorySlug`/`type`), `GET /public/sites/:siteSlug/articles/:slug` (detalhe, com `bodyMdx` e `products[]` → `offers[]` embutidos) e `GET /public/sites/:siteSlug/categories/:slug`. Nenhuma resposta pública expõe `status`, `siteId`, `authorId` ou `affiliateUrl`; todo Artigo público carrega `categorySlug` solto (nunca um objeto Categoria aninhado). Ordenação sempre `publishedAt DESC` com `id ASC` como desempate estável. Dentro do detalhe do Artigo, Ofertas arquivadas nunca aparecem em `offers[]` (evita CTA que sempre responderia `410`); Produtos arquivados continuam em `products[]` (com `offers: []` se todas as Ofertas dele estiverem arquivadas) e Categoria arquivada continua resolvível — arquivamento bloqueia uso administrativo futuro, mas não invalida referências históricas já publicadas.
 
 ## Estrutura do projeto
 
@@ -90,7 +92,7 @@ Fases do `Implementation-Backlog.md`:
 - [x] Fase 8 — Application Cross-Domain
 - [x] Fase 9 — Tracking
 - [x] Fase 10 — Uploads
-- [ ] Fase 11 — API Pública
+- [x] Fase 11 — API Pública
 - [ ] Fase 12 — FastCompre Público
 - [ ] Fase 13 — Admin
 - [ ] Fase 14 — Revalidação

@@ -135,6 +135,35 @@ export class PrismaCategoryRepository {
   }
 
   /**
+   * Busca uma `Category` por `slug`, restrita ao Site (PUB-004; Architecture.md
+   * §31) — leitura pública, sem sessão.
+   *
+   * `findFirst` (não `findUnique`): `Category` não tem `@@unique([id,
+   * slug])`/chave composta por `slug`, só `@@unique([siteId, slug])` —
+   * `findFirst({ where: { siteId, slug } })` é a forma correta de buscar
+   * por essa combinação sem uma chave composta nomeada pelo Prisma (mesmo
+   * raciocínio de `findManyPublishedBySite`, PUB-002, que também usa
+   * `where` livre em vez de `findUnique`).
+   *
+   * Sem filtro de `archivedAt` — decisão explícita da PUB-004: uma
+   * Categoria arquivada continua resolvível pela API pública. Arquivar
+   * impede uso administrativo futuro (novos vínculos, Architecture.md §12),
+   * mas não invalida referências históricas já presentes em Artigo
+   * `PUBLISHED` — se um Artigo público ainda expõe aquele `categorySlug`
+   * (PUB-002/PUB-003, que também não filtram `archivedAt` da Categoria),
+   * este endpoint não pode virar `404` só por causa do arquivamento.
+   *
+   * Um `slug` que existe em outro Site nunca bate no `where` (`siteId`
+   * também exigido) — mesmo `null` genérico de "não existe", quem chama
+   * nunca distingue os dois casos (mesmo critério de `findOneBySite`).
+   */
+  async findOneBySlug(siteId: string, slug: string): Promise<Category | null> {
+    return this.prisma.category.findFirst({
+      where: { siteId, slug },
+    });
+  }
+
+  /**
    * Arquiva uma `Category` do Site (CAT-005). Idempotente sem sobrescrever
    * `archivedAt`: o `updateMany` só afeta a linha quando `id + siteId`
    * batem **e** `archivedAt` ainda é `null` — arquivar uma Categoria já

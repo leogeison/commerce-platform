@@ -15,6 +15,7 @@ import { DeleteProductUseCase } from './application/delete-product.use-case';
 import { GetCategoryUseCase } from './application/get-category.use-case';
 import { GetOfferUseCase } from './application/get-offer.use-case';
 import { GetProductUseCase } from './application/get-product.use-case';
+import { GetPublicCategoryUseCase } from './application/get-public-category.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
 import { ListOffersUseCase } from './application/list-offers.use-case';
 import { ListProductsUseCase } from './application/list-products.use-case';
@@ -27,6 +28,7 @@ import { PrismaProductRepository } from './infrastructure/prisma-product.reposit
 import { CategoriesController } from './presentation/categories.controller';
 import { OffersController } from './presentation/offers.controller';
 import { ProductsController } from './presentation/products.controller';
+import { PublicCategoryController } from './presentation/public-category.controller';
 
 /**
  * Primeiro módulo do domínio `catalog` (CAT-001) — até aqui `catalog` não
@@ -61,15 +63,23 @@ import { ProductsController } from './presentation/products.controller';
  * exportar agora seria antecipar consumidores que ainda não foram
  * implementados — ficam só registradas como provider, exportação entra
  * junto com a tarefa que precisar delas.
+ *
+ * `PublicCategoryController`/`GetPublicCategoryUseCase` (PUB-004): leitura
+ * pública de Categoria entra no mesmo módulo, não um módulo "public"
+ * separado — mesmo raciocínio de `PublicArticlesController` no
+ * `EditorialModule` (PUB-002/PUB-003). Usa `PublicTenantGuard`, já
+ * disponível via `TenancyModule` (importado desde CAT-001); nenhum wiring
+ * novo de módulo necessário. Nenhum export novo.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
-  controllers: [CategoriesController, ProductsController, OffersController],
+  controllers: [CategoriesController, ProductsController, OffersController, PublicCategoryController],
   providers: [
     PrismaCategoryRepository,
     CreateCategoryUseCase,
     ListCategoriesUseCase,
     GetCategoryUseCase,
+    GetPublicCategoryUseCase,
     ArchiveCategoryUseCase,
     UnarchiveCategoryUseCase,
     DeleteCategoryUseCase,

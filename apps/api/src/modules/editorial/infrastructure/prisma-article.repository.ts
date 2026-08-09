@@ -118,6 +118,31 @@ export interface FindManyPublishedBySiteResult {
 }
 
 /**
+ * Uma linha de `ArticleProduct` (join), com o `Product` completo e suas
+ * Ofertas já filtradas — usada só pelo detalhe público (PUB-003). O `Offer[]`
+ * aqui já vem sem as arquivadas (`archivedAt: null` no `where` da consulta,
+ * não um filtro aplicado depois em memória) — decisão explícita da PUB-003:
+ * a API pública nunca expõe uma Oferta cujo link de afiliado sempre
+ * responderia `410 Gone` (TRK-006).
+ */
+export type PublishedArticleProductWithOffers = Prisma.ArticleProductGetPayload<{
+  include: { product: { include: { offers: true } } };
+}>;
+
+/**
+ * Um Artigo publicado com `category` (para `categorySlug`) e `products`
+ * (join `ArticleProduct`, já ordenado por `position` e com Ofertas
+ * filtradas) — usado só pelo detalhe público (PUB-003). Mesma disciplina de
+ * `PublishedArticleWithCategorySlug`: o tipo reflete a relação Prisma como
+ * ela é (nulável), quem consome trata ausência de `category` como
+ * inconsistência real, nunca mascara com fallback.
+ */
+export type PublishedArticleWithProducts = Article & {
+  category: { slug: string } | null;
+  products: PublishedArticleProductWithOffers[];
+};
+
+/**
  * Nomes reais das duas FKs compostas alcançáveis por `create()`, gerados
  * pela migration (`20260728150323_init/migration.sql`). `Article` é a
  * primeira entidade do projeto com duas FKs opcionais reachable no mesmo
@@ -302,6 +327,55 @@ export class PrismaArticleRepository {
     ]);
 
     return { items, total };
+  }
+
+  /**
+   * Busca um Artigo publicado por `slug`, restrito ao Site, com Categoria e
+   * Produtos/Ofertas embutidos (PUB-003; Architecture.md §31).
+   *
+   * `status: 'PUBLISHED'` fixo no `where` — mesmo critério de
+   * `findManyPublishedBySite`: um `slug` que existe em `DRAFT`/
+   * `PENDING_REVIEW`/`ARCHIVED` neste Site, ou que existe em outro Site,
+   * simplesmente não bate na consulta, mesmo `null` genérico (quem decide
+   * que `null` vira `404` é o controller).
+   *
+   * `products: { orderBy: { position: 'asc' }, include: { product: {
+   * include: { offers: { where: { archivedAt: null } } } } } }` —
+   * `position` é o campo de `ArticleProduct` criado exatamente para
+   * ordenar a exibição dentro do Artigo (EDT-010). O `where: { archivedAt:
+   * null }` dentro de `offers` filtra na própria consulta, não em memória
+   * depois — decisão explícita da PUB-003 (ver
+   * `PublishedArticleProductWithOffers`). Produto arquivado **não** é
+   * filtrado aqui: continua aparecendo em `products`, mesmo decisão
+   * explícita da PUB-003 (Architecture.md §12, "Artigos existentes
+   * preservam a referência e o histórico"); se todas as Ofertas dele
+   * estiverem arquivadas, o Produto aparece com `offers: []`.
+   *
+   * Ofertas ordenadas só por `id asc` — nenhum critério funcional de
+   * ordenação de Oferta (ex.: preço) está documentado na Architecture, e a
+   * PUB-003 decidiu explicitamente não inventar um (não usa `createdAt`).
+   * `id asc` é só o desempate determinístico já usado em toda listagem do
+   * projeto quando não há critério de negócio definido — sem ele a ordem
+   * devolvida pelo Postgres não seria garantida entre chamadas.
+   */
+  async findOnePublishedBySite(
+    siteId: string,
+    slug: string,
+  ): Promise<PublishedArticleWithProducts | null> {
+    return this.prisma.article.findFirst({
+      where: { siteId, slug, status: 'PUBLISHED' },
+      include: {
+        category: { select: { slug: true } },
+        products: {
+          orderBy: { position: 'asc' },
+          include: {
+            product: {
+              include: { offers: { where: { archivedAt: null }, orderBy: { id: 'asc' } } },
+            },
+          },
+        },
+      },
+    });
   }
 
   /**

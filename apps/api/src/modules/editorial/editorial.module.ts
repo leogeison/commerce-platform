@@ -8,6 +8,7 @@ import { CreateAuthorUseCase } from './application/create-author.use-case';
 import { DeleteAuthorUseCase } from './application/delete-author.use-case';
 import { GetArticleUseCase } from './application/get-article.use-case';
 import { GetAuthorUseCase } from './application/get-author.use-case';
+import { GetPublicArticleUseCase } from './application/get-public-article.use-case';
 import { LinkArticleProductUseCase } from './application/link-article-product.use-case';
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
@@ -50,13 +51,13 @@ import { PublicArticlesController } from './presentation/public-articles.control
  * existir, porque EDT-014 não tem nenhuma outra razão de ser senão ser
  * chamado por APP-002. Nenhum outro provider é exportado.
  *
- * `PublicArticlesController`/`ListPublicArticlesUseCase` (PUB-002): leitura
- * pública de Artigo entra no mesmo módulo, não um módulo "public" separado
- * — `Article` já é dono deste domínio, mesmo raciocínio de manter
- * `ArticlesController` (admin) aqui. Usa `PublicTenantGuard`, já exportado
- * por `TenancyModule` (importado desde EDT-001); nenhum wiring novo de
- * módulo necessário. Nenhum export novo — nenhum outro módulo consome
- * esses dois providers.
+ * `PublicArticlesController`/`ListPublicArticlesUseCase` (PUB-002) e
+ * `GetPublicArticleUseCase` (PUB-003): leitura pública de Artigo entra no
+ * mesmo módulo, não um módulo "public" separado — `Article` já é dono
+ * deste domínio, mesmo raciocínio de manter `ArticlesController` (admin)
+ * aqui. Usa `PublicTenantGuard`, já exportado por `TenancyModule`
+ * (importado desde EDT-001); nenhum wiring novo de módulo necessário.
+ * Nenhum export novo — nenhum outro módulo consome esses providers.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -71,6 +72,7 @@ import { PublicArticlesController } from './presentation/public-articles.control
     CreateArticleUseCase,
     ListArticlesUseCase,
     ListPublicArticlesUseCase,
+    GetPublicArticleUseCase,
     GetArticleUseCase,
     UpdateArticleUseCase,
     PrismaArticleProductRepository,
