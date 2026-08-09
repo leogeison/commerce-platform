@@ -24,6 +24,7 @@
     "bootstrap:admin": "node -r tsconfig-paths/register -r ts-node/register scripts/bootstrap-admin.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
     "@commerce-platform/contracts": "workspace:*",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
