@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { articleTypeSchema } from './article-type.js';
+import { articleTypeSchema } from '../../common/article-type.js';
 
 /**
  * Corpo de `PATCH /admin/sites/:siteSlug/articles/:id` (`EDT-009` —

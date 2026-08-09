@@ -5,11 +5,11 @@ import { z } from 'zod';
  * `apps/api/prisma/schema.prisma`). Os quatro valores abaixo são os
  * exatamente definidos lá — nenhum inventado aqui.
  *
- * Fica em `admin/common/`, não em `admin/products/` nem `admin/offers/`,
- * porque é reaproveitado por mais de uma superfície administrativa:
- * `productOfferSummarySchema` (CTR-004, resumo de Oferta no detalhe de
- * Produto) e a futura CTR-005 (`admin/offers`, contrato completo de
- * Oferta) — nenhuma das duas duplica o enum, as duas importam daqui.
+ * Movido de `admin/common/` para cá na PUB-001 (CTR-010): passou a ter
+ * consumidor real fora da superfície `admin` (`public/articles`, via
+ * `publicOfferSchema`), então a dependência correta é
+ * `admin → common ← public`, nunca `public → admin`. Mesma forma e mesmo
+ * nome exportado de antes — só o local mudou.
  */
 export const marketplaceSchema = z.enum([
   'MERCADO_LIVRE',

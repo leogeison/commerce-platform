@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { marketplaceSchema } from '../common/marketplace.js';
+import { marketplaceSchema } from '../../common/marketplace.js';
 
 /**
  * Resumo de `Offer` embutido no detalhe de Produto (CAT-010: "detalhar
@@ -9,8 +9,9 @@ import { marketplaceSchema } from '../common/marketplace.js';
  * necessários para um resumo, sem inventar nada além do que está lá:
  * `id`, `marketplace`, `price`, `currency`, `inStock`, `archivedAt`.
  *
- * `marketplace` reaproveita `marketplaceSchema` de `admin/common/` — não
- * duplica o enum; a CTR-005 também vai importar de lá.
+ * `marketplace` reaproveita `marketplaceSchema` de `common/` (PUB-001
+ * moveu para lá, já que `public/articles` também passou a precisar do
+ * mesmo enum) — não duplica.
  *
  * `price` como `z.string()`, nunca `number` — `Offer.price` é `Decimal`
  * no Postgres (`@db.Decimal(10, 2)`), e `Decimal` do Prisma não deve virar

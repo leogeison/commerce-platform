@@ -1,4 +1,3 @@
-export * from './article-type.js';
 export * from './article-status.js';
 export * from './article.js';
 export * from './article-summary.js';

@@ -90,6 +90,33 @@ export interface FindManyBySiteResult {
   total: number;
 }
 
+export interface FindManyPublishedBySiteInput {
+  siteId: string;
+  page: number;
+  pageSize: number;
+  /** `undefined` = sem filtro por Categoria. */
+  categorySlug?: string;
+  /** `undefined` = sem filtro por tipo. */
+  type?: ArticleType;
+}
+
+/**
+ * `category` sempre presente para um Artigo `PUBLISHED` — invariante
+ * garantida pelo fluxo de publicação (Architecture.md §33: `categoryId`
+ * passa a ser obrigatório no momento da publicação), não reforçada aqui.
+ * O tipo reflete a relação Prisma como ela é (nulável no schema), mas quem
+ * consome este resultado (o presenter público) trata a ausência como uma
+ * inconsistência real a ser reportada, nunca mascarada com fallback.
+ */
+export type PublishedArticleWithCategorySlug = Article & {
+  category: { slug: string } | null;
+};
+
+export interface FindManyPublishedBySiteResult {
+  items: PublishedArticleWithCategorySlug[];
+  total: number;
+}
+
 /**
  * Nomes reais das duas FKs compostas alcançáveis por `create()`, gerados
  * pela migration (`20260728150323_init/migration.sql`). `Article` é a
@@ -219,6 +246,55 @@ export class PrismaArticleRepository {
       this.prisma.article.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.article.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  /**
+   * Lista paginada de Artigos publicados de um Site (PUB-002; Architecture.md
+   * §31) — leitura pública, sem sessão.
+   *
+   * `status: 'PUBLISHED'` fixo no `where`, nunca parametrizável — é
+   * exatamente isso que torna esta consulta "pública" (diferente de
+   * `findManyBySite`, cujo `status` é filtro opcional do lado admin).
+   *
+   * `categorySlug` filtrado via relação Prisma direta (`category: { slug:
+   * ... } }`), sem resolver `categoryId` numa consulta separada antes —
+   * uma única consulta, sem janela entre resolver o slug e usá-lo.
+   *
+   * `include: { category: { select: { slug: true } } }` — é como a
+   * resposta pública obtém `categorySlug` sem uma segunda consulta por
+   * Artigo (Architecture.md §31: "todo endpoint público retorna
+   * `categorySlug` junto do artigo").
+   *
+   * `orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }]` — Architecture.md
+   * §31 ("Home pública ordena por `publishedAt DESC`... desempate
+   * secundário estável"); não existe endpoint de Home separado no
+   * backlog, `WEB-002` (Fase 12) consome esta mesma listagem, então a
+   * ordenação vale para ela como um todo, não um caso especial.
+   */
+  async findManyPublishedBySite(
+    input: FindManyPublishedBySiteInput,
+  ): Promise<FindManyPublishedBySiteResult> {
+    const where: Prisma.ArticleWhereInput = {
+      siteId: input.siteId,
+      status: 'PUBLISHED',
+      ...(input.type === undefined ? {} : { type: input.type }),
+      ...(input.categorySlug === undefined
+        ? {}
+        : { category: { slug: input.categorySlug } }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.article.findMany({
+        where,
+        include: { category: { select: { slug: true } } },
+        orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
         skip: (input.page - 1) * input.pageSize,
         take: input.pageSize,
       }),

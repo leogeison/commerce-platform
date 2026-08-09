@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { articleStatusSchema } from './article-status.js';
-import { articleTypeSchema } from './article-type.js';
+import { articleTypeSchema } from '../../common/article-type.js';
 
 /**
  * Representação completa de `Article` na superfície administrativa

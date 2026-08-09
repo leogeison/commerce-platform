@@ -11,6 +11,7 @@ import { GetAuthorUseCase } from './application/get-author.use-case';
 import { LinkArticleProductUseCase } from './application/link-article-product.use-case';
 import { ListArticlesUseCase } from './application/list-articles.use-case';
 import { ListAuthorsUseCase } from './application/list-authors.use-case';
+import { ListPublicArticlesUseCase } from './application/list-public-articles.use-case';
 import { MarkArticleAsPublishedUseCase } from './application/mark-article-as-published.use-case';
 import { ReorderArticleProductsUseCase } from './application/reorder-article-products.use-case';
 import { RestoreArticleToDraftUseCase } from './application/restore-article-to-draft.use-case';
@@ -23,6 +24,7 @@ import { PrismaArticleRepository } from './infrastructure/prisma-article.reposit
 import { PrismaAuthorRepository } from './infrastructure/prisma-author.repository';
 import { ArticlesController } from './presentation/articles.controller';
 import { AuthorsController } from './presentation/authors.controller';
+import { PublicArticlesController } from './presentation/public-articles.controller';
 
 /**
  * Primeiro módulo do domínio `editorial` (EDT-001) — até aqui `editorial`
@@ -47,10 +49,18 @@ import { AuthorsController } from './presentation/authors.controller';
  * único caso no projeto em que a exportação não espera o consumidor
  * existir, porque EDT-014 não tem nenhuma outra razão de ser senão ser
  * chamado por APP-002. Nenhum outro provider é exportado.
+ *
+ * `PublicArticlesController`/`ListPublicArticlesUseCase` (PUB-002): leitura
+ * pública de Artigo entra no mesmo módulo, não um módulo "public" separado
+ * — `Article` já é dono deste domínio, mesmo raciocínio de manter
+ * `ArticlesController` (admin) aqui. Usa `PublicTenantGuard`, já exportado
+ * por `TenancyModule` (importado desde EDT-001); nenhum wiring novo de
+ * módulo necessário. Nenhum export novo — nenhum outro módulo consome
+ * esses dois providers.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
-  controllers: [AuthorsController, ArticlesController],
+  controllers: [AuthorsController, ArticlesController, PublicArticlesController],
   providers: [
     PrismaAuthorRepository,
     CreateAuthorUseCase,
@@ -60,6 +70,7 @@ import { AuthorsController } from './presentation/authors.controller';
     PrismaArticleRepository,
     CreateArticleUseCase,
     ListArticlesUseCase,
+    ListPublicArticlesUseCase,
     GetArticleUseCase,
     UpdateArticleUseCase,
     PrismaArticleProductRepository,
