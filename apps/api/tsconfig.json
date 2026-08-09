@@ -7,6 +7,6 @@
     "removeComments": true,
     "outDir": "./dist",
     "incremental": true,
-    "types": ["node", "jest"]
+    "types": ["node", "jest", "multer"]
   }
 }
