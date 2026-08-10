@@ -14,10 +14,16 @@ describe('ArticlePage', () => {
     jest.resetModules();
   });
 
-  async function renderArticleWith(article: PublicArticle | null): Promise<string> {
+  async function renderArticleWith(
+    article: PublicArticle | null,
+    requestedCategorySlug = 'fones-bluetooth',
+  ): Promise<string> {
     jest.doMock('next/navigation', () => ({
       notFound: jest.fn(() => {
         throw new Error('NEXT_NOT_FOUND');
+      }),
+      permanentRedirect: jest.fn((url: string) => {
+        throw new Error(`NEXT_REDIRECT:${url}`);
       }),
     }));
     jest.doMock('../../../lib/public-api/client', () => ({
@@ -36,7 +42,7 @@ describe('ArticlePage', () => {
     const { default: ArticlePage } = await import('./page');
     const html = renderToStaticMarkup(
       await ArticlePage({
-        params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        params: Promise.resolve({ categorySlug: requestedCategorySlug, articleSlug: 'melhor-fone' }),
       }),
     );
     return html;
@@ -130,6 +136,27 @@ describe('ArticlePage', () => {
 
   it('chama notFound() quando o artigo não existe', async () => {
     await expect(renderArticleWith(null)).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+
+  it('chama permanentRedirect() para a URL canônica quando o categorySlug da URL diverge do real', async () => {
+    const article: PublicArticle = {
+      id: '11111111-1111-4111-8111-111111111111',
+      categorySlug: 'fones-bluetooth',
+      type: 'COMPARISON',
+      title: 'Melhor fone bluetooth 2026',
+      slug: 'melhor-fone',
+      metaDescription: 'Comparativo dos melhores fones.',
+      coverImageUrl: null,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+      bodyMdx: '# Introdução',
+      products: [],
+    };
+
+    // Requisição veio com "categoria-errada", mas o Artigo pertence de
+    // verdade a "fones-bluetooth".
+    await expect(renderArticleWith(article, 'categoria-errada')).rejects.toThrow(
+      'NEXT_REDIRECT:/fones-bluetooth/melhor-fone',
+    );
   });
 });
 

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { getPublicArticle } from '@/lib/public-api/client';
 import { compileArticleBody } from './compile-article-body';
 
@@ -39,12 +39,23 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
 }
 
 export default async function ArticlePage({ params }: ArticlePageProps) {
-  const { articleSlug } = await params;
+  const { categorySlug, articleSlug } = await params;
 
   const article = await getPublicArticle(articleSlug);
 
   if (!article) {
     notFound();
+  }
+
+  // URL canônica de Artigo é `/:categorySlug/:articleSlug` (Architecture.md
+  // §33) — `Article.categoryId` pode mudar depois da publicação, então a
+  // URL recebida pode divergir da categoria real sem o Artigo deixar de
+  // existir. `permanentRedirect()` (App Router) emite 308, não 301: é o
+  // mecanismo nativo de redirect permanente do Next.js e preserva a
+  // intenção arquitetural (autoridade de SEO) sem precisar de
+  // Middleware/Proxy só para forçar o código 301 literal.
+  if (article.categorySlug !== categorySlug) {
+    permanentRedirect(`/${article.categorySlug}/${articleSlug}`);
   }
 
   // `bodyMdx` é tratado como Markdown restrito (ver compile-article-body.ts)
