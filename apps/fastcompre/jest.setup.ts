@@ -9,3 +9,4 @@
  */
 process.env.SITE_SLUG = 'test-site';
 process.env.API_URL = 'http://localhost:3000';
+process.env.SITE_URL = 'http://localhost:3001';
