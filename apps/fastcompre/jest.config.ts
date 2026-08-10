@@ -13,7 +13,7 @@ const createJestConfig = nextJest({ dir: '.' });
 const customJestConfig: Config = {
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/jest.setup.ts'],
-  testMatch: ['<rootDir>/src/**/*.spec.ts'],
+  testMatch: ['<rootDir>/src/**/*.spec.{ts,tsx}'],
 };
 
 export default createJestConfig(customJestConfig);

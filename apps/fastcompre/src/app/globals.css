@@ -1,9 +1,11 @@
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
+@import "tailwindcss";
 
+/*
+ * O Preflight do Tailwind (importado acima) já reseta `box-sizing`,
+ * `margin` e `padding` universalmente — não repetimos isso aqui.
+ * `height: 100%` não é coberto pelo Preflight (é decisão de layout do
+ * projeto, não reset genérico), por isso permanece.
+ */
 html,
 body {
   height: 100%;

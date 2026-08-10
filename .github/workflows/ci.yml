@@ -42,3 +42,14 @@ jobs:
 
       - name: Build
         run: pnpm build
+        env:
+          # apps/fastcompre valida SITE_SLUG/API_URL assim que seu módulo de
+          # config é importado — e `next build` importa esse módulo na
+          # etapa de coleta de dados da rota, mesmo sem prerenderizar nada
+          # de fato. As páginas que consultam a API adiam esse fetch para o
+          # momento da requisição real, então nenhuma chamada de rede
+          # acontece durante o build; os valores abaixo só precisam
+          # satisfazer o schema de validação, não apontar para um endereço
+          # acessível.
+          SITE_SLUG: 'fastcompre'
+          API_URL: 'http://127.0.0.1:9999'
