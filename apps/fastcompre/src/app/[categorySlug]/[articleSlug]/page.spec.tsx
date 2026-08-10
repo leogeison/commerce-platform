@@ -132,3 +132,62 @@ describe('ArticlePage', () => {
     await expect(renderArticleWith(null)).rejects.toThrow('NEXT_NOT_FOUND');
   });
 });
+
+describe('generateMetadata', () => {
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  const baseArticle: PublicArticle = {
+    id: '11111111-1111-4111-8111-111111111111',
+    categorySlug: 'fones-bluetooth',
+    type: 'COMPARISON',
+    title: 'Melhor fone bluetooth 2026',
+    slug: 'melhor-fone',
+    metaDescription: 'Comparativo dos melhores fones.',
+    coverImageUrl: null,
+    publishedAt: '2026-01-01T00:00:00.000Z',
+    bodyMdx: '# Introdução',
+    products: [],
+  };
+
+  async function generateMetadataWith(article: PublicArticle | null) {
+    jest.doMock('next/navigation', () => ({
+      notFound: jest.fn(() => {
+        throw new Error('NEXT_NOT_FOUND');
+      }),
+    }));
+    jest.doMock('../../../lib/public-api/client', () => ({
+      getPublicArticle: jest.fn(() => Promise.resolve(article)),
+    }));
+    // `page.tsx` importa `./compile-article-body` estaticamente, que por sua
+    // vez importa `@mdx-js/mdx` (ESM puro) — precisa ficar mockado aqui
+    // também, mesmo `generateMetadata` nunca chamando essa função.
+    jest.doMock('./compile-article-body', () => ({
+      compileArticleBody: jest.fn(),
+    }));
+
+    const { generateMetadata } = await import('./page');
+    return generateMetadata({
+      params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+    });
+  }
+
+  it('retorna title e description quando metaDescription está preenchida', async () => {
+    const metadata = await generateMetadataWith(baseArticle);
+
+    expect(metadata.title).toBe('Melhor fone bluetooth 2026 | FastCompre');
+    expect(metadata.description).toBe('Comparativo dos melhores fones.');
+  });
+
+  it('omite a chave description quando metaDescription é null', async () => {
+    const metadata = await generateMetadataWith({ ...baseArticle, metaDescription: null });
+
+    expect(metadata.title).toBe('Melhor fone bluetooth 2026 | FastCompre');
+    expect('description' in metadata).toBe(false);
+  });
+
+  it('chama notFound() quando o artigo não existe', async () => {
+    await expect(generateMetadataWith(null)).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+});

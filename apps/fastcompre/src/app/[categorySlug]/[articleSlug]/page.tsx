@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getPublicArticle } from '@/lib/public-api/client';
 import { compileArticleBody } from './compile-article-body';
@@ -12,6 +13,29 @@ export const fetchCache = 'force-cache';
 
 interface ArticlePageProps {
   params: Promise<{ categorySlug: string; articleSlug: string }>;
+}
+
+/**
+ * `getPublicArticle(articleSlug)` aqui é o mesmo `fetch()` chamado pelo
+ * componente da página — o Next deduplica automaticamente `fetch()`
+ * idênticos dentro do mesmo request (memoização de requisição), então isso
+ * não é uma segunda chamada real à API. `description` só entra no retorno
+ * quando `article.metaDescription` está preenchida: omitir a chave (em vez
+ * de mandar `description: undefined`) deixa o merge raso de metadata do
+ * Next herdar o `description` estático do `layout.tsx` nesse caso.
+ */
+export async function generateMetadata({ params }: ArticlePageProps): Promise<Metadata> {
+  const { articleSlug } = await params;
+  const article = await getPublicArticle(articleSlug);
+
+  if (!article) {
+    notFound();
+  }
+
+  return {
+    title: `${article.title} | FastCompre`,
+    ...(article.metaDescription ? { description: article.metaDescription } : {}),
+  };
 }
 
 export default async function ArticlePage({ params }: ArticlePageProps) {
