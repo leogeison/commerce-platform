@@ -132,6 +132,69 @@ describe('ArticlePage', () => {
     expect(html.match(/Temporariamente indisponível/g)).toHaveLength(2);
     // Uma oferta indisponível em Fone A + uma em Fone B.
     expect(html.match(/\(indisponível\)/g)).toHaveLength(2);
+
+    // Oferta em estoque (Fone A, offerId 333...3) vira link para o
+    // endpoint de redirect (WEB-009), com o offerId e o articleId corretos
+    // e `rel="sponsored nofollow"`. `env.SITE_SLUG`/`env.AFFILIATE_REDIRECT_URL`
+    // vêm fixados por `jest.setup.ts` ('test-site' / 'http://localhost:3000').
+    expect(html).toContain(
+      'href="http://localhost:3000/r/test-site/33333333-3333-4333-8333-333333333333' +
+        '?articleId=11111111-1111-4111-8111-111111111111"',
+    );
+    expect(html).toContain('rel="sponsored nofollow"');
+
+    // Ofertas fora de estoque (Fone A, offerId 444...4; Fone B, offerId
+    // 666...6) permanecem visíveis, mas nunca viram link.
+    expect(html).not.toContain('href="http://localhost:3000/r/test-site/44444444-4444-4444-8444-444444444444');
+    expect(html).not.toContain('href="http://localhost:3000/r/test-site/66666666-6666-4666-8666-666666666666');
+  });
+
+  it('gera hrefs distintos para múltiplas ofertas em estoque do mesmo produto', async () => {
+    const html = await renderArticleWith({
+      id: '11111111-1111-4111-8111-111111111111',
+      categorySlug: 'fones-bluetooth',
+      type: 'COMPARISON',
+      title: 'Melhor fone bluetooth 2026',
+      slug: 'melhor-fone',
+      metaDescription: null,
+      coverImageUrl: null,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+      bodyMdx: '# Introdução',
+      products: [
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          name: 'Fone A',
+          description: null,
+          imageUrl: null,
+          position: 0,
+          offers: [
+            {
+              id: '33333333-3333-4333-8333-333333333333',
+              marketplace: 'AMAZON_BR',
+              price: '199.90',
+              currency: 'BRL',
+              inStock: true,
+            },
+            {
+              id: '99999999-9999-4999-8999-999999999999',
+              marketplace: 'MERCADO_LIVRE',
+              price: '189.90',
+              currency: 'BRL',
+              inStock: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(html).toContain(
+      'href="http://localhost:3000/r/test-site/33333333-3333-4333-8333-333333333333' +
+        '?articleId=11111111-1111-4111-8111-111111111111"',
+    );
+    expect(html).toContain(
+      'href="http://localhost:3000/r/test-site/99999999-9999-4999-8999-999999999999' +
+        '?articleId=11111111-1111-4111-8111-111111111111"',
+    );
   });
 
   it('chama notFound() quando o artigo não existe', async () => {

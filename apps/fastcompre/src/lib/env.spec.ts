@@ -31,10 +31,11 @@ describe('env', () => {
     process.env = ORIGINAL_ENV;
   });
 
-  it('expõe SITE_SLUG, API_URL e SITE_URL quando todas estão presentes e válidas', async () => {
+  it('expõe SITE_SLUG, API_URL, SITE_URL e AFFILIATE_REDIRECT_URL quando todas estão presentes e válidas', async () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     const { env } = await import('./env');
 
@@ -42,6 +43,7 @@ describe('env', () => {
       SITE_SLUG: 'fastcompre',
       API_URL: 'http://localhost:3000',
       SITE_URL: 'http://localhost:3001',
+      AFFILIATE_REDIRECT_URL: 'http://localhost:3000',
     });
   });
 
@@ -49,6 +51,7 @@ describe('env', () => {
     delete process.env.SITE_SLUG;
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -57,6 +60,7 @@ describe('env', () => {
     process.env.SITE_SLUG = '';
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -65,6 +69,7 @@ describe('env', () => {
     process.env.SITE_SLUG = 'fastcompre';
     delete process.env.API_URL;
     process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -73,6 +78,7 @@ describe('env', () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'not-a-url';
     process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -81,6 +87,7 @@ describe('env', () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'http://localhost:3000';
     delete process.env.SITE_URL;
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -89,6 +96,7 @@ describe('env', () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'not-a-url';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -97,6 +105,7 @@ describe('env', () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'https://fastcompre.com.br/base';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -105,9 +114,37 @@ describe('env', () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'https://fastcompre.com.br/';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
 
     const { env } = await import('./env');
 
     expect(env.SITE_URL).toBe('https://fastcompre.com.br/');
+  });
+
+  it('lança erro quando AFFILIATE_REDIRECT_URL está ausente', async () => {
+    process.env.SITE_SLUG = 'fastcompre';
+    process.env.API_URL = 'http://localhost:3000';
+    process.env.SITE_URL = 'http://localhost:3001';
+    delete process.env.AFFILIATE_REDIRECT_URL;
+
+    await expect(import('./env')).rejects.toThrow();
+  });
+
+  it('lança erro quando AFFILIATE_REDIRECT_URL não é uma URL válida', async () => {
+    process.env.SITE_SLUG = 'fastcompre';
+    process.env.API_URL = 'http://localhost:3000';
+    process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'not-a-url';
+
+    await expect(import('./env')).rejects.toThrow();
+  });
+
+  it('lança erro quando AFFILIATE_REDIRECT_URL tem path além da origem', async () => {
+    process.env.SITE_SLUG = 'fastcompre';
+    process.env.API_URL = 'http://localhost:3000';
+    process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'https://fastcompre.com.br/base';
+
+    await expect(import('./env')).rejects.toThrow();
   });
 });
