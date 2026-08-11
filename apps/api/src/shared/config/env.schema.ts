@@ -1,6 +1,29 @@
 import { z } from 'zod';
 
 /**
+ * Restringe uma URL a só sua origem (`protocol://host[:port]`, com `/`
+ * final opcional) — usada por toda variável de ambiente que vira a base de
+ * um `new URL(path, valor)`. Sem essa restrição, um valor com path (ex.:
+ * `https://exemplo.com/base`) faria esse path desaparecer silenciosamente
+ * na resolução do `new URL()`, em vez de gerar um erro claro na validação.
+ * Implementação local a este arquivo — mesma necessidade já resolvida de
+ * forma equivalente (mas separadamente) do lado do FastCompre.
+ */
+function originUrlSchema(message: string) {
+  return z.string().url(message).refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        return url.pathname === '/' && url.search === '' && url.hash === '';
+      } catch {
+        return false;
+      }
+    },
+    { message },
+  );
+}
+
+/**
  * Variáveis de ambiente obrigatórias da API nesta fase do projeto.
  *
  * Escopo da DB-002: apenas DATABASE_URL, segredo de sessão e segredo de
@@ -26,6 +49,14 @@ export const envSchema = z
     // (INF-005). CORS de rotas públicas, mais permissivo, é tratado à parte
     // quando existir.
     ADMIN_ORIGIN: z.string().url('ADMIN_ORIGIN deve ser uma URL válida'),
+    // Origem do deployment FastCompre chamado pelo adapter de revalidação
+    // (Seção 21 do Architecture.md) — POST {REVALIDATION_TARGET_URL}/api/internal/revalidate.
+    // Necessária para a API subir, mesmo antes de qualquer módulo consumir
+    // o adapter de revalidação: `envSchema` valida todas as variáveis
+    // declaradas de uma vez, não só as já usadas por algum provider ativo.
+    REVALIDATION_TARGET_URL: originUrlSchema(
+      'REVALIDATION_TARGET_URL deve ser só a origem (protocol://host[:port]), sem path/query/hash.',
+    ),
     // Storage S3-compatível (UPL-008/UPL-009; Architecture.md, Seção 29) —
     // não presume nenhum provedor específico (AWS S3, R2, Spaces, MinIO
     // servem igualmente, desde que configurados aqui).

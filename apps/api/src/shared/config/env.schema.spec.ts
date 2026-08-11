@@ -6,6 +6,7 @@ describe('validateEnv', () => {
     SESSION_SECRET: 'a'.repeat(16),
     REVALIDATION_SECRET: 'b'.repeat(16),
     ADMIN_ORIGIN: 'http://localhost:3001',
+    REVALIDATION_TARGET_URL: 'http://localhost:3001',
     STORAGE_S3_BUCKET: 'my-bucket',
     STORAGE_S3_REGION: 'auto',
     STORAGE_S3_PUBLIC_URL_BASE: 'https://cdn.example.com',
@@ -48,9 +49,39 @@ describe('validateEnv', () => {
     ).toThrow(/ADMIN_ORIGIN/);
   });
 
+  it('lança erro claro quando REVALIDATION_TARGET_URL está ausente', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, REVALIDATION_TARGET_URL: undefined }),
+    ).toThrow(/REVALIDATION_TARGET_URL/);
+  });
+
+  it('lança erro claro quando REVALIDATION_TARGET_URL não é uma URL válida', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, REVALIDATION_TARGET_URL: 'nao-e-uma-url' }),
+    ).toThrow(/REVALIDATION_TARGET_URL/);
+  });
+
+  it('lança erro claro quando REVALIDATION_TARGET_URL tem path além da origem', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        REVALIDATION_TARGET_URL: 'https://fastcompre.example.com/base',
+      }),
+    ).toThrow(/REVALIDATION_TARGET_URL/);
+  });
+
+  it('aceita REVALIDATION_TARGET_URL com barra final (equivalente à origem sem barra)', () => {
+    const result = validateEnv({
+      ...validEnv,
+      REVALIDATION_TARGET_URL: 'https://fastcompre.example.com/',
+    });
+
+    expect(result.REVALIDATION_TARGET_URL).toBe('https://fastcompre.example.com/');
+  });
+
   it('lança erro listando todas as variáveis ausentes de uma vez', () => {
     expect(() => validateEnv({})).toThrow(
-      /DATABASE_URL[\s\S]*SESSION_SECRET[\s\S]*REVALIDATION_SECRET[\s\S]*ADMIN_ORIGIN[\s\S]*STORAGE_S3_BUCKET[\s\S]*STORAGE_S3_REGION[\s\S]*STORAGE_S3_PUBLIC_URL_BASE/,
+      /DATABASE_URL[\s\S]*SESSION_SECRET[\s\S]*REVALIDATION_SECRET[\s\S]*ADMIN_ORIGIN[\s\S]*REVALIDATION_TARGET_URL[\s\S]*STORAGE_S3_BUCKET[\s\S]*STORAGE_S3_REGION[\s\S]*STORAGE_S3_PUBLIC_URL_BASE/,
     );
   });
 
