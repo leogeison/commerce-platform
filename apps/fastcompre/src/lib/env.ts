@@ -70,6 +70,14 @@ const envSchema = z.object({
   AFFILIATE_REDIRECT_URL: originUrlSchema(
     'AFFILIATE_REDIRECT_URL deve ser só a origem (protocol://host[:port]), sem path/query/hash.',
   ),
+  /**
+   * Segredo compartilhado que autentica chamadas servidor-a-servidor ao
+   * endpoint interno de revalidação — nunca uma sessão de usuário, já que
+   * quem chama é a própria API, não um navegador. Mínimo de 16 caracteres,
+   * mesma exigência já aplicada a todo segredo do projeto (evita um valor
+   * curto o suficiente para ser adivinhado por força bruta).
+   */
+  REVALIDATION_SECRET: z.string().min(16),
 });
 
 export const env = envSchema.parse({
@@ -77,4 +85,5 @@ export const env = envSchema.parse({
   API_URL: process.env.API_URL,
   SITE_URL: process.env.SITE_URL,
   AFFILIATE_REDIRECT_URL: process.env.AFFILIATE_REDIRECT_URL,
+  REVALIDATION_SECRET: process.env.REVALIDATION_SECRET,
 });

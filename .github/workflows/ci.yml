@@ -55,3 +55,4 @@ jobs:
           API_URL: 'http://127.0.0.1:9999'
           SITE_URL: 'https://fastcompre.invalid'
           AFFILIATE_REDIRECT_URL: 'https://fastcompre.invalid'
+          REVALIDATION_SECRET: 'fastcompre-invalid-ci-secret-000'

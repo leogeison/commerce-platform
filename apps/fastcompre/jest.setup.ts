@@ -11,3 +11,4 @@ process.env.SITE_SLUG = 'test-site';
 process.env.API_URL = 'http://localhost:3000';
 process.env.SITE_URL = 'http://localhost:3001';
 process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+process.env.REVALIDATION_SECRET = 'test-revalidation-secret-value';

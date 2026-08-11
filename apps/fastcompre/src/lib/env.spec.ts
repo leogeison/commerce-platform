@@ -31,11 +31,12 @@ describe('env', () => {
     process.env = ORIGINAL_ENV;
   });
 
-  it('expõe SITE_SLUG, API_URL, SITE_URL e AFFILIATE_REDIRECT_URL quando todas estão presentes e válidas', async () => {
+  it('expõe SITE_SLUG, API_URL, SITE_URL, AFFILIATE_REDIRECT_URL e REVALIDATION_SECRET quando todas estão presentes e válidas', async () => {
     process.env.SITE_SLUG = 'fastcompre';
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     const { env } = await import('./env');
 
@@ -44,6 +45,7 @@ describe('env', () => {
       API_URL: 'http://localhost:3000',
       SITE_URL: 'http://localhost:3001',
       AFFILIATE_REDIRECT_URL: 'http://localhost:3000',
+      REVALIDATION_SECRET: 'a-secret-with-16-chars-or-more',
     });
   });
 
@@ -52,6 +54,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -61,6 +64,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -70,6 +74,7 @@ describe('env', () => {
     delete process.env.API_URL;
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -79,6 +84,7 @@ describe('env', () => {
     process.env.API_URL = 'not-a-url';
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -88,6 +94,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     delete process.env.SITE_URL;
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -97,6 +104,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'not-a-url';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -106,6 +114,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'https://fastcompre.com.br/base';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -115,6 +124,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'https://fastcompre.com.br/';
     process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     const { env } = await import('./env');
 
@@ -126,6 +136,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
     delete process.env.AFFILIATE_REDIRECT_URL;
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -135,6 +146,7 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'not-a-url';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
 
     await expect(import('./env')).rejects.toThrow();
   });
@@ -144,6 +156,27 @@ describe('env', () => {
     process.env.API_URL = 'http://localhost:3000';
     process.env.SITE_URL = 'http://localhost:3001';
     process.env.AFFILIATE_REDIRECT_URL = 'https://fastcompre.com.br/base';
+    process.env.REVALIDATION_SECRET = 'a-secret-with-16-chars-or-more';
+
+    await expect(import('./env')).rejects.toThrow();
+  });
+
+  it('lança erro quando REVALIDATION_SECRET está ausente', async () => {
+    process.env.SITE_SLUG = 'fastcompre';
+    process.env.API_URL = 'http://localhost:3000';
+    process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    delete process.env.REVALIDATION_SECRET;
+
+    await expect(import('./env')).rejects.toThrow();
+  });
+
+  it('lança erro quando REVALIDATION_SECRET tem menos de 16 caracteres', async () => {
+    process.env.SITE_SLUG = 'fastcompre';
+    process.env.API_URL = 'http://localhost:3000';
+    process.env.SITE_URL = 'http://localhost:3001';
+    process.env.AFFILIATE_REDIRECT_URL = 'http://localhost:3000';
+    process.env.REVALIDATION_SECRET = 'short-secret';
 
     await expect(import('./env')).rejects.toThrow();
   });
