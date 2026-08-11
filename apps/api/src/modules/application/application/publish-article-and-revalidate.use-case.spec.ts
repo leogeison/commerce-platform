@@ -1,0 +1,76 @@
+import { PublishArticleAndRevalidateUseCase } from './publish-article-and-revalidate.use-case';
+import type { PublishArticleUseCase, PublishArticleResult } from './publish-article.use-case';
+import type { RevalidationPort } from '../../revalidation/domain/revalidation.port';
+import type { Article } from '../../../generated/prisma/client';
+
+describe('PublishArticleAndRevalidateUseCase', () => {
+  function build(publishResult: PublishArticleResult) {
+    const publishArticleUseCase = {
+      execute: jest.fn().mockResolvedValue(publishResult),
+    } as unknown as jest.Mocked<PublishArticleUseCase>;
+
+    const revalidationPort: jest.Mocked<RevalidationPort> = {
+      revalidate: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const useCase = new PublishArticleAndRevalidateUseCase(
+      publishArticleUseCase,
+      revalidationPort,
+    );
+
+    return { useCase, publishArticleUseCase, revalidationPort };
+  }
+
+  const input = { siteId: 'site-1', siteSlug: 'fastcompre', articleId: 'article-1' };
+
+  it('artigo não encontrado: não chama revalidação, devolve o resultado como veio', async () => {
+    const { useCase, revalidationPort } = build({ ok: false, reason: 'NOT_FOUND' });
+
+    const result = await useCase.execute(input);
+
+    expect(result).toEqual({ ok: false, reason: 'NOT_FOUND' });
+    expect(revalidationPort.revalidate).not.toHaveBeenCalled();
+  });
+
+  it('condições de publicação não atendidas: não chama revalidação, devolve o resultado como veio', async () => {
+    const { useCase, revalidationPort } = build({
+      ok: false,
+      reason: 'VALIDATION_FAILED',
+      issues: ['WRONG_STATUS'],
+    });
+
+    const result = await useCase.execute(input);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'VALIDATION_FAILED',
+      issues: ['WRONG_STATUS'],
+    });
+    expect(revalidationPort.revalidate).not.toHaveBeenCalled();
+  });
+
+  it('publicação bem-sucedida com revalidação bem-sucedida: chama a porta com siteSlug/articleSlug e devolve o artigo publicado', async () => {
+    const article = { id: 'article-1', slug: 'artigo-publicado' } as Article;
+    const { useCase, revalidationPort } = build({ ok: true, article });
+
+    const result = await useCase.execute(input);
+
+    expect(result).toEqual({ ok: true, article });
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidationPort.revalidate).toHaveBeenCalledWith({
+      siteSlug: 'fastcompre',
+      articleSlug: 'artigo-publicado',
+    });
+  });
+
+  it('publicação bem-sucedida com revalidação falhando: ainda devolve sucesso, sem propagar o erro', async () => {
+    const article = { id: 'article-1', slug: 'artigo-publicado' } as Article;
+    const { useCase, revalidationPort } = build({ ok: true, article });
+    revalidationPort.revalidate.mockRejectedValue(new Error('revalidação indisponível'));
+
+    const result = await useCase.execute(input);
+
+    expect(result).toEqual({ ok: true, article });
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+  });
+});

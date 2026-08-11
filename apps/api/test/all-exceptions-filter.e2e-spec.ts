@@ -22,6 +22,17 @@ class TestErrorsController {
   throwHttpException(): never {
     throw new HttpException('recurso não encontrado', HttpStatus.NOT_FOUND);
   }
+
+  @Get('http-exception-with-details')
+  throwHttpExceptionWithDetails(): never {
+    throw new HttpException(
+      {
+        message: 'validação falhou',
+        details: { issues: ['CAMPO_A_INVALIDO', 'CAMPO_B_INVALIDO'] },
+      },
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
 }
 
 describe('AllExceptionsFilter (e2e)', () => {
@@ -73,6 +84,21 @@ describe('AllExceptionsFilter (e2e)', () => {
       code: 'NOT_FOUND',
       error: 'HttpException',
       message: 'recurso não encontrado',
+    });
+  });
+
+  it('HttpException com `details` no corpo encaminha `details` no ApiError', async () => {
+    const response = await request(app!.getHttpServer()).get(
+      '/test-errors/http-exception-with-details',
+    );
+
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({
+      statusCode: 422,
+      code: 'UNPROCESSABLE_ENTITY',
+      error: 'HttpException',
+      message: 'validação falhou',
+      details: { issues: ['CAMPO_A_INVALIDO', 'CAMPO_B_INVALIDO'] },
     });
   });
 });

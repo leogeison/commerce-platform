@@ -33,11 +33,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const statusCode = exception.getStatus();
+      const details = this.extractDetails(exception);
       const apiError: ApiError = {
         statusCode,
         code: HttpStatus[statusCode] ?? 'HTTP_ERROR',
         error: exception.name,
         message: this.extractMessage(exception),
+        ...(details !== undefined ? { details } : {}),
       };
 
       response.status(statusCode).json(apiError);
@@ -70,5 +72,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     return maybeMessage ?? exception.message;
+  }
+
+  private extractDetails(exception: HttpException): unknown {
+    const body = exception.getResponse();
+
+    return typeof body === 'string' ? undefined : (body as { details?: unknown }).details;
   }
 }

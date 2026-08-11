@@ -40,3 +40,11 @@ process.env.ADMIN_ORIGIN ??= 'http://localhost:3001';
 process.env.STORAGE_S3_BUCKET ??= 'e2e-test-bucket';
 process.env.STORAGE_S3_REGION ??= 'auto';
 process.env.STORAGE_S3_PUBLIC_URL_BASE ??= 'https://e2e-test.example.com';
+
+// REVALIDATION_TARGET_URL é obrigatória em `envSchema`, validada globalmente
+// via `AppConfigModule` (importado por `HttpModule`, que praticamente todo
+// módulo importa) — mesmo motivo do bloco STORAGE_S3_* acima: sem fallback
+// aqui, toda a suíte e2e falharia na subida do Nest, não só os specs de
+// Revalidação. Nenhum destes specs chama a URL de verdade — os que
+// exercitam publicação sobrescrevem `REVALIDATION_PORT` por um fake.
+process.env.REVALIDATION_TARGET_URL ??= 'http://localhost:3001';

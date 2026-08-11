@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
 import { EditorialModule } from '../editorial/editorial.module';
 import { IdentityModule } from '../identity/identity.module';
+import { RevalidationModule } from '../revalidation/revalidation.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { HttpModule } from '../../shared/http/http.module';
@@ -9,11 +10,13 @@ import { CalculateArticleHealthUseCase } from './application/calculate-article-h
 import { FindAffectedPublishedArticlesUseCase } from './application/find-affected-published-articles.use-case';
 import { HandleAffiliateRedirectUseCase } from './application/handle-affiliate-redirect.use-case';
 import { PublishArticleUseCase } from './application/publish-article.use-case';
+import { PublishArticleAndRevalidateUseCase } from './application/publish-article-and-revalidate.use-case';
 import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
+import { PublishArticleController } from './presentation/publish-article.controller';
 import { RemoveCategoryController } from './presentation/remove-category.controller';
 import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
@@ -86,12 +89,21 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * só tem uma FK externa possível, então não precisa da reconsulta pós-corrida
  * que os outros dois fazem (ver o próprio caso de uso).
  *
+ * `PublishArticleAndRevalidateUseCase` (REV-003) é o único caminho HTTP
+ * que persiste `PUBLISHED`: publica via `PublishArticleUseCase` (já
+ * provider deste módulo) e, em caso de sucesso, revalida via
+ * `RevalidationPort` (`RevalidationModule`, import novo nesta tarefa).
+ * `PublishArticleController` (`POST .../articles/:id/publish`) é seu
+ * único consumidor HTTP — `PublishArticleUseCase` nunca é injetado
+ * diretamente por nenhum controller, então não existe caminho alternativo
+ * para persistir `PUBLISHED` sem revalidar.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome
  * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
  * `HandleAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`/
- * `RemoveCategoryUseCase`/`RemoveOfferUseCase` nesta tarefa — mesma
- * convenção já usada em `CatalogModule`/`EditorialModule`, exportação
- * entra junto com a tarefa que precisar dela.
+ * `RemoveCategoryUseCase`/`RemoveOfferUseCase`/`PublishArticleAndRevalidateUseCase`
+ * nesta tarefa — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
+ * exportação entra junto com a tarefa que precisar dela.
  */
 @Module({
   imports: [
@@ -100,6 +112,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     EditorialModule,
     CatalogModule,
     TrackingModule,
+    RevalidationModule,
     HttpModule,
   ],
   controllers: [
@@ -108,6 +121,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     RemoveCategoryController,
     AffiliateRedirectController,
     RemoveOfferController,
+    PublishArticleController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -117,6 +131,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     FindAffectedPublishedArticlesUseCase,
     RemoveCategoryUseCase,
     RemoveOfferUseCase,
+    PublishArticleAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}

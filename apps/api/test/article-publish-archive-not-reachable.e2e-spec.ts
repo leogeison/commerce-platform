@@ -21,26 +21,28 @@ const SESSION_SECRET = process.env.SESSION_SECRET!;
 const USER_EMAIL = 'edt018-user@test.com';
 
 /**
- * EDT-014 (`mark-as-published`) e EDT-015 (`PUBLISHED → ARCHIVED`) são
- * operações INTERNAS (Implementation-Backlog.md, EDT-012 a EDT-016): a
- * única forma de publicar é `POST /publish → REV-003 → APP-002 →
- * EDT-014 → REV-002`, e a única forma de arquivar é `POST /archive →
- * REV-004 → EDT-015 → REV-002` — ambas orquestradas apenas na Fase 14.
- * `ArticlesController` nunca registrou rotas `publish`/`archive`, então
- * este teste fecha literalmente o critério de EDT-012 a EDT-016
- * ("teste garantindo que EDT-014 e EDT-015 não são alcançáveis via rota
- * HTTP direta"), exigido como parte do marco EDT-018.
+ * EDT-015 (`PUBLISHED → ARCHIVED`) é uma operação INTERNA
+ * (Implementation-Backlog.md, EDT-012 a EDT-016): a única forma de
+ * arquivar é `POST /archive → REV-004 → EDT-015 → REV-002`, orquestrada
+ * apenas quando REV-004 existir. `ArticlesController` nunca registrou uma
+ * rota `archive`, então este teste fecha literalmente o critério de
+ * EDT-012 a EDT-016 ("teste garantindo que EDT-015 não é alcançável via
+ * rota HTTP direta"), exigido como parte do marco EDT-018.
+ *
+ * A operação irmã, EDT-014 (`mark-as-published`), tinha o mesmo teste
+ * aqui; ele foi removido porque deixou de ser verdade — `POST /publish`
+ * agora existe (REV-003, `publish-article.e2e-spec.ts`), que prova o
+ * caminho HTTP correto e único até EDT-014.
  *
  * Sessão válida, membership válida (`OWNER`, a Role mais alta), Origin
  * válida e Artigo em status compatível com a operação que a rota
- * *teria* realizado se existisse (`PENDING_REVIEW` para "publish",
- * `PUBLISHED` para "archive") — tudo isso elimina qualquer explicação
- * alternativa para o `404`: ele só pode vir da ausência da rota em si
- * (`Cannot POST ...`), nunca de autenticação, autorização, Origin ou
- * status de origem. Exige Postgres real (mesmo requisito dos demais e2e
- * do projeto).
+ * *teria* realizado se existisse (`PUBLISHED` para "archive") — tudo
+ * isso elimina qualquer explicação alternativa para o `404`: ele só pode
+ * vir da ausência da rota em si (`Cannot POST ...`), nunca de
+ * autenticação, autorização, Origin ou status de origem. Exige Postgres
+ * real (mesmo requisito dos demais e2e do projeto).
  */
-describe('Operações internas EDT-014/EDT-015 não expostas via HTTP direta (e2e, dedicado — EDT-018)', () => {
+describe('Operação interna EDT-015 não exposta via HTTP direta (e2e, dedicado — EDT-018)', () => {
   let app: INestApplication<App> | undefined;
   let prisma: PrismaService;
   let user: User | undefined;
@@ -117,21 +119,6 @@ describe('Operações internas EDT-014/EDT-015 não expostas via HTTP direta (e2
       data: { siteId: siteA.id, title: `Artigo ${slug}`, slug, type: ArticleType.REVIEW, status },
     });
   }
-
-  it('POST /articles/:id/publish com Artigo em PENDING_REVIEW: 404 (rota inexistente)', async () => {
-    const article = await createArticle('artigo-publish-inexistente', ArticleStatus.PENDING_REVIEW);
-
-    const response = await request(app!.getHttpServer())
-      .post(`/admin/sites/${siteA.slug}/articles/${article.id}/publish`)
-      .set('Cookie', cookieHeader())
-      .set('Origin', ADMIN_ORIGIN);
-
-    expect(response.status).toBe(404);
-
-    const persisted = await prisma.article.findUnique({ where: { id: article.id } });
-    expect(persisted?.status).toBe('PENDING_REVIEW');
-    expect(persisted?.publishedAt).toBeNull();
-  });
 
   it('POST /articles/:id/archive com Artigo em PUBLISHED: 404 (rota inexistente)', async () => {
     const article = await createArticle('artigo-archive-inexistente', ArticleStatus.PUBLISHED);
