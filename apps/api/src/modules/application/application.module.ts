@@ -19,6 +19,7 @@ import { RevalidateAffectedArticlesUseCase } from './application/revalidate-affe
 import { UpdateCategoryAndRevalidateUseCase } from './application/update-category-and-revalidate.use-case';
 import { UpdateProductAndRevalidateUseCase } from './application/update-product-and-revalidate.use-case';
 import { ProductArchiveAndRevalidateUseCase } from './application/product-archive-and-revalidate.use-case';
+import { UpdateOfferAndRevalidateUseCase } from './application/update-offer-and-revalidate.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
@@ -28,6 +29,7 @@ import { RemoveCategoryController } from './presentation/remove-category.control
 import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
 import { UpdateCategoryController } from './presentation/update-category.controller';
+import { UpdateOfferController } from './presentation/update-offer.controller';
 import { UpdateProductController } from './presentation/update-product.controller';
 
 /**
@@ -172,6 +174,19 @@ import { UpdateProductController } from './presentation/update-product.controlle
  * própria, pela mesma razão dos demais orquestradores baseados em
  * `RevalidateAffectedArticlesUseCase`.
  *
+ * `UpdateOfferAndRevalidateUseCase` (REV-012) é, pelo mesmo critério dos
+ * demais orquestradores de atualização, o único caminho HTTP que persiste
+ * alterações de `Offer`: atualiza via `UpdateOfferUseCase` (exportado por
+ * `CatalogModule` desde CAT-018) e, em caso de sucesso, aciona
+ * `RevalidateAffectedArticlesUseCase.revalidateForOffer` (já provider deste
+ * módulo). `UpdateOfferController`
+ * (`PATCH .../products/:productId/offers/:id`) é seu único consumidor HTTP
+ * — `UpdateOfferUseCase` nunca é injetado diretamente por nenhum
+ * controller. Sem `try/catch`/`Logger` própria, pela mesma razão dos
+ * demais orquestradores baseados em `RevalidateAffectedArticlesUseCase`.
+ * Nenhuma abstração nova compartilhada com os outros orquestradores de
+ * atualização — cada um mantém sua própria classe.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome os providers
  * deste módulo — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
  * exportação entra junto com a tarefa que precisar dela.
@@ -197,6 +212,7 @@ import { UpdateProductController } from './presentation/update-product.controlle
     UpdateCategoryController,
     UpdateProductController,
     ProductArchiveController,
+    UpdateOfferController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -212,6 +228,7 @@ import { UpdateProductController } from './presentation/update-product.controlle
     UpdateCategoryAndRevalidateUseCase,
     UpdateProductAndRevalidateUseCase,
     ProductArchiveAndRevalidateUseCase,
+    UpdateOfferAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}

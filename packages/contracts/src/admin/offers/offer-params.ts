@@ -24,15 +24,9 @@ export const offersProductParamsSchema = z.object({
 export type OffersProductParams = z.infer<typeof offersProductParamsSchema>;
 
 /**
- * `GET /admin/sites/:siteSlug/products/:productId/offers/:id` e
- * `DELETE /admin/sites/:siteSlug/products/:productId/offers/:id`
- * (`RemoveOfferController`, TRK-010 — reaproveita este mesmo contrato, sem
- * nenhum campo novo).
- *
- * `CAT-018`/`CAT-019`/`CAT-020` (atualizar, arquivar, desarquivar)
- * continuam sem contrato de parâmetros próprio — mesma decisão já tomada
- * para `CAT-011` a `CAT-013` na CTR-004: operações internas, sem rota HTTP
- * direta ainda (endpoint real é `REV-013`, Fase 14, não implementado).
+ * Parâmetros compartilhados pelas rotas administrativas de Oferta
+ * aninhadas em Produto, identificadas por `:siteSlug`, `:productId` e
+ * `:id`.
  */
 export const offerParamsSchema = z.object({
   siteSlug: z.string().min(1),

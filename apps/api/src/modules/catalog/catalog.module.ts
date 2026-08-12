@@ -23,6 +23,7 @@ import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-c
 import { UnarchiveOfferUseCase } from './application/unarchive-offer.use-case';
 import { UnarchiveProductUseCase } from './application/unarchive-product.use-case';
 import { UpdateCategoryUseCase } from './application/update-category.use-case';
+import { UpdateOfferUseCase } from './application/update-offer.use-case';
 import { UpdateProductUseCase } from './application/update-product.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
 import { PrismaOfferRepository } from './infrastructure/prisma-offer.repository';
@@ -67,11 +68,14 @@ import { PublicCategoryController } from './presentation/public-category.control
  * exclusivamente por `ProductArchiveAndRevalidateUseCase` em
  * `ApplicationModule` (REV-011). `PrismaProductRepository` segue sem
  * exportar — nada em `application` o consome diretamente ainda.
- * `ArchiveOfferUseCase`/`UnarchiveOfferUseCase` (CAT-019/020) seguem sem
- * exportar: serão consumidas por `REV-013` quando essa tarefa existir, mas
- * exportar agora seria antecipar um consumidor que ainda não foi
- * implementado — ficam só registradas como provider, exportação entra
- * junto com a tarefa que precisar delas.
+ * `UpdateOfferUseCase` (CAT-018) também exportado, mesmo critério de
+ * `UpdateCategoryUseCase`/`UpdateProductUseCase`: sem controller próprio,
+ * chamado exclusivamente por `UpdateOfferAndRevalidateUseCase` em
+ * `ApplicationModule` (REV-012). `ArchiveOfferUseCase`/`UnarchiveOfferUseCase`
+ * (CAT-019/020) seguem sem exportar: serão consumidas por `REV-013` quando
+ * essa tarefa existir, mas exportar agora seria antecipar um consumidor
+ * que ainda não foi implementado — ficam só registradas como provider,
+ * exportação entra junto com a tarefa que precisar delas.
  *
  * `PublicCategoryController`/`GetPublicCategoryUseCase` (PUB-004): leitura
  * pública de Categoria entra no mesmo módulo, não um módulo "public"
@@ -108,6 +112,7 @@ import { PublicCategoryController } from './presentation/public-category.control
     ArchiveOfferUseCase,
     UnarchiveOfferUseCase,
     DeleteOfferUseCase,
+    UpdateOfferUseCase,
   ],
   exports: [
     PrismaCategoryRepository,
@@ -119,6 +124,7 @@ import { PublicCategoryController } from './presentation/public-category.control
     UpdateProductUseCase,
     ArchiveProductUseCase,
     UnarchiveProductUseCase,
+    UpdateOfferUseCase,
   ],
 })
 export class CatalogModule {}

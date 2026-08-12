@@ -27,6 +27,21 @@ export type FindManyByProductRepositoryResult =
   | { ok: true; items: Offer[]; total: number }
   | { ok: false; reason: 'PRODUCT_NOT_FOUND' };
 
+export interface UpdateOfferInput {
+  siteId: string;
+  productId: string;
+  id: string;
+  marketplace?: Marketplace;
+  price?: string;
+  currency?: string;
+  affiliateUrl?: string;
+  inStock?: boolean;
+}
+
+export type UpdateOfferRepositoryResult =
+  | { ok: true; offer: Offer }
+  | { ok: false; reason: 'NOT_FOUND' };
+
 export type DeleteOfferRepositoryResult =
   | { ok: true }
   | { ok: false; reason: 'NOT_FOUND' }
@@ -196,6 +211,71 @@ export class PrismaOfferRepository {
     return this.prisma.offer.findUnique({
       where: { id_siteId: { id, siteId } },
     });
+  }
+
+  /**
+   * Atualiza uma `Offer` do Site, restrita ao Produto informado (CAT-018) —
+   * operação INTERNA, sem controller próprio: só `UpdateOfferUseCase` a
+   * chama, que por sua vez só é chamado pelo orquestrador HTTP-facing que
+   * também aciona a coordenação de revalidação (REV-012).
+   *
+   * `where` combina a chave composta única `id_siteId` com `productId` como
+   * filtro adicional — o tipo gerado pelo Prisma para `OfferWhereUniqueInput`
+   * aceita esse campo extra junto do identificador único, então o Prisma
+   * monta uma única instrução `UPDATE ... WHERE id = ? AND siteId = ? AND
+   * productId = ?`. Isso garante, numa única operação atômica, a invariante
+   * de identidade da rota aninhada (`/products/:productId/offers/:id`):
+   * `id`, `siteId` e `productId` precisam corresponder simultaneamente, ou
+   * nenhuma linha é afetada. Diferente de `findOneByProductAndSite`
+   * (CAT-017, leitura pura via `findFirst`) e de `archiveBySite`/
+   * `unarchiveBySite` (que ignoram `productId` de propósito — sem parâmetro
+   * de rota "produto errado" a distinguir nessas duas operações): aqui a
+   * própria URL do PATCH identifica a Oferta como pertencente àquele
+   * Produto, então um `productId` divergente deve se comportar como
+   * "recurso não encontrado", nunca aplicar a alteração num Produto errado.
+   *
+   * `P2025` (nenhuma linha bateu nas três condições) → `NOT_FOUND` — cobre
+   * "não existe", "de outro Site" e "de outro Produto" com o mesmo
+   * resultado genérico, reaproveitando `isRecordNotFound` (já usado em
+   * `deleteBySite`).
+   *
+   * Nenhum outro erro de domínio é alcançável aqui: nenhum dos campos
+   * editáveis (`marketplace`, `price`, `currency`, `affiliateUrl`,
+   * `inStock`) é relacional nem tem constraint de unicidade de negócio —
+   * `productId` só aparece no `where`, nunca no `data`, então a FK
+   * `Offer.product` nunca é tocada por este método.
+   *
+   * Campos ausentes (`undefined`) não entram na instrução SQL — coluna
+   * intocada; nenhum é `.nullable()` no contrato, então não há semântica
+   * tri-state a aplicar aqui (diferente de `PrismaProductRepository.updateBySite`).
+   * `archivedAt` nunca entra no `data`, então seu valor é sempre
+   * preservado — Oferta arquivada é atualizável normalmente, sem filtro de
+   * estado no `where`, mesmo critério de `PrismaProductRepository.updateBySite`.
+   */
+  async updateBySite(input: UpdateOfferInput): Promise<UpdateOfferRepositoryResult> {
+    try {
+      const offer = await this.prisma.offer.update({
+        where: {
+          id_siteId: { id: input.id, siteId: input.siteId },
+          productId: input.productId,
+        },
+        data: {
+          marketplace: input.marketplace,
+          price: input.price,
+          currency: input.currency,
+          affiliateUrl: input.affiliateUrl,
+          inStock: input.inStock,
+        },
+      });
+
+      return { ok: true, offer };
+    } catch (err) {
+      if (isRecordNotFound(err)) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      throw err;
+    }
   }
 
   /**
