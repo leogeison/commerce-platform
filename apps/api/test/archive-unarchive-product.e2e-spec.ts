@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import request from 'supertest';
 import { App } from 'supertest/types';
 import { CatalogModule } from '../src/modules/catalog/catalog.module';
 import { ArchiveProductUseCase } from '../src/modules/catalog/application/archive-product.use-case';
@@ -11,13 +10,10 @@ import type { Product, Site } from '../src/generated/prisma/client';
 /**
  * `ArchiveProductUseCase`/`UnarchiveProductUseCase` (e2e, CAT-012/CAT-013)
  * — operações **internas** do Catalog, sem controller/rota HTTP própria
- * (endpoint real é `REV-011`, ainda não implementado). Mesmo padrão de
- * `delete-category.e2e-spec.ts`: chama os casos de uso diretamente (sem
- * HTTP), com Postgres real (mesmo requisito de `database.e2e-spec.ts`).
- *
- * `app`/`supertest` só entram no teste final, para provar que nenhuma rota
- * HTTP alcança arquivar/desarquivar Produto — diferente de Categoria
- * (CAT-005/006), onde essas rotas existem de verdade.
+ * (endpoint real é `REV-011`, ver `archive-unarchive-product-revalidation.e2e-spec.ts`).
+ * Mesmo padrão de `delete-category.e2e-spec.ts`: chama os casos de uso
+ * diretamente (sem HTTP), com Postgres real (mesmo requisito de
+ * `database.e2e-spec.ts`).
  */
 describe('ArchiveProductUseCase / UnarchiveProductUseCase (CAT-012/CAT-013, operação interna)', () => {
   let app: INestApplication<App> | undefined;
@@ -170,19 +166,5 @@ describe('ArchiveProductUseCase / UnarchiveProductUseCase (CAT-012/CAT-013, oper
       });
       expect(persisted.archivedAt).not.toBeNull();
     });
-  });
-
-  it('nenhuma rota HTTP expõe arquivar/desarquivar Produto: 404 (diferente de Categoria)', async () => {
-    const product = await createProduct(siteA, 'Moda', 'moda');
-
-    const archiveResponse = await request(app!.getHttpServer()).post(
-      `/admin/sites/${siteA.slug}/products/${product.id}/archive`,
-    );
-    const unarchiveResponse = await request(app!.getHttpServer()).post(
-      `/admin/sites/${siteA.slug}/products/${product.id}/unarchive`,
-    );
-
-    expect(archiveResponse.status).toBe(404);
-    expect(unarchiveResponse.status).toBe(404);
   });
 });

@@ -18,10 +18,12 @@ import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { RevalidateAffectedArticlesUseCase } from './application/revalidate-affected-articles.use-case';
 import { UpdateCategoryAndRevalidateUseCase } from './application/update-category-and-revalidate.use-case';
 import { UpdateProductAndRevalidateUseCase } from './application/update-product-and-revalidate.use-case';
+import { ProductArchiveAndRevalidateUseCase } from './application/product-archive-and-revalidate.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
 import { PublishArticleController } from './presentation/publish-article.controller';
+import { ProductArchiveController } from './presentation/product-archive.controller';
 import { RemoveCategoryController } from './presentation/remove-category.controller';
 import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
@@ -153,6 +155,23 @@ import { UpdateProductController } from './presentation/update-product.controlle
  * nova compartilhada entre os dois orquestradores de atualização — cada um
  * mantém sua própria classe.
  *
+ * `ProductArchiveAndRevalidateUseCase` (REV-011) é, pelo mesmo critério dos
+ * dois orquestradores de atualização, o único caminho HTTP que persiste
+ * `archivedAt` de `Product`, nos dois sentidos: `archive()` chama
+ * `ArchiveProductUseCase` (CAT-012), `unarchive()` chama
+ * `UnarchiveProductUseCase` (CAT-013) — ambos exportados por `CatalogModule`
+ * desde REV-011 — e, em caso de sucesso (`Product` não nulo, incluindo o
+ * sucesso idempotente de arquivar um Produto já arquivado ou desarquivar um
+ * já ativo), aciona `RevalidateAffectedArticlesUseCase.revalidateForProduct`
+ * (já provider deste módulo). `ProductArchiveController`
+ * (`POST .../products/:id/archive` e `/unarchive`) é seu único consumidor
+ * HTTP — nem `ArchiveProductUseCase` nem `UnarchiveProductUseCase` são
+ * injetados diretamente por nenhum controller. Uma única classe cobre os
+ * dois endpoints (mesma tarefa de backlog), mas os dois métodos permanecem
+ * explícitos, sem despacho genérico entre eles. Sem `try/catch`/`Logger`
+ * própria, pela mesma razão dos demais orquestradores baseados em
+ * `RevalidateAffectedArticlesUseCase`.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome os providers
  * deste módulo — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
  * exportação entra junto com a tarefa que precisar dela.
@@ -177,6 +196,7 @@ import { UpdateProductController } from './presentation/update-product.controlle
     ArchiveArticleController,
     UpdateCategoryController,
     UpdateProductController,
+    ProductArchiveController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -191,6 +211,7 @@ import { UpdateProductController } from './presentation/update-product.controlle
     RevalidateAffectedArticlesUseCase,
     UpdateCategoryAndRevalidateUseCase,
     UpdateProductAndRevalidateUseCase,
+    ProductArchiveAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}

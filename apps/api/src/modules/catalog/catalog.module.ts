@@ -62,13 +62,15 @@ import { PublicCategoryController } from './presentation/public-category.control
  * ser chamado pelos orquestradores HTTP-facing de atualização em
  * `ApplicationModule` (REV-009/REV-010) — mesmo critério de
  * `MarkArticleAsPublishedUseCase`/`ArchiveArticleUseCase` em `EditorialModule`.
- * `PrismaProductRepository` segue sem exportar — nada em `application` o
- * consome diretamente ainda. `ArchiveProductUseCase`/
- * `UnarchiveProductUseCase` (CAT-012/013) e `ArchiveOfferUseCase`/
- * `UnarchiveOfferUseCase` (CAT-019/020) seguem sem exportar: serão
- * consumidas por `REV-011`/`REV-013` quando essas tarefas existirem, mas
- * exportar agora seria antecipar consumidores que ainda não foram
- * implementados — ficam só registradas como provider, exportação entra
+ * `ArchiveProductUseCase`/`UnarchiveProductUseCase` (CAT-012/013) agora
+ * também exportados, pelo mesmo critério: sem controller próprio, chamados
+ * exclusivamente por `ProductArchiveAndRevalidateUseCase` em
+ * `ApplicationModule` (REV-011). `PrismaProductRepository` segue sem
+ * exportar — nada em `application` o consome diretamente ainda.
+ * `ArchiveOfferUseCase`/`UnarchiveOfferUseCase` (CAT-019/020) seguem sem
+ * exportar: serão consumidas por `REV-013` quando essa tarefa existir, mas
+ * exportar agora seria antecipar um consumidor que ainda não foi
+ * implementado — ficam só registradas como provider, exportação entra
  * junto com a tarefa que precisar delas.
  *
  * `PublicCategoryController`/`GetPublicCategoryUseCase` (PUB-004): leitura
@@ -115,6 +117,8 @@ import { PublicCategoryController } from './presentation/public-category.control
     DeleteOfferUseCase,
     UpdateCategoryUseCase,
     UpdateProductUseCase,
+    ArchiveProductUseCase,
+    UnarchiveProductUseCase,
   ],
 })
 export class CatalogModule {}
