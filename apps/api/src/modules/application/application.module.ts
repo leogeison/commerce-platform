@@ -15,6 +15,7 @@ import { PublishArticleAndRevalidateUseCase } from './application/publish-articl
 import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
+import { RevalidateAffectedArticlesUseCase } from './application/revalidate-affected-articles.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
@@ -75,8 +76,19 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  *
  * `FindAffectedPublishedArticlesUseCase` (APP-005) reaproveita
  * `PrismaArticleRepository` (já exportado desde APP-001) — nenhum import
- * novo. Sem controller, sem contrato: consumida só por `REV-005` (Fase
- * 14), ainda não implementado.
+ * novo. Sem controller, sem contrato: consumida por
+ * `RevalidateAffectedArticlesUseCase`.
+ *
+ * `RevalidateAffectedArticlesUseCase` é o mecanismo de coordenação
+ * reutilizável para os futuros orquestradores HTTP-facing de Categoria/
+ * Produto/Oferta/Autor (`REV-009` a `REV-014`, nenhum implementado ainda):
+ * descobre Artigos publicados afetados via `FindAffectedPublishedArticlesUseCase`
+ * (já provider deste módulo) e tenta revalidar cada um via `RevalidationPort`
+ * (`RevalidationModule`). Sem controller, sem contrato próprio — não é um
+ * endpoint em si. Como a mudança de origem já está persistida por quem
+ * chama antes desta classe rodar, nenhuma falha (descoberta ou revalidação)
+ * propaga; tudo é capturado e logado. Nenhum `exports` ainda: nenhum dos
+ * seis futuros orquestradores existe para consumi-la de outro módulo.
  *
  * `RemoveCategoryUseCase` (APP-006) reaproveita `PrismaArticleRepository`
  * (Editorial, já exportado desde APP-001) e `DeleteCategoryUseCase`
@@ -144,6 +156,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     RemoveOfferUseCase,
     PublishArticleAndRevalidateUseCase,
     ArchiveArticleAndRevalidateUseCase,
+    RevalidateAffectedArticlesUseCase,
   ],
 })
 export class ApplicationModule {}
