@@ -17,6 +17,18 @@ export type DeleteCategoryRepositoryResult =
   | { ok: false; reason: 'NOT_FOUND' }
   | { ok: false; reason: 'HAS_PRODUCTS' };
 
+export interface UpdateCategoryInput {
+  siteId: string;
+  id: string;
+  name?: string;
+  slug?: string;
+}
+
+export type UpdateCategoryRepositoryResult =
+  | { ok: true; category: Category }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'SLUG_CONFLICT' };
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -161,6 +173,51 @@ export class PrismaCategoryRepository {
     return this.prisma.category.findFirst({
       where: { siteId, slug },
     });
+  }
+
+  /**
+   * Atualiza uma `Category` do Site (CAT-004) — operação INTERNA, sem
+   * controller próprio: só `UpdateCategoryUseCase` a chama, que por sua vez
+   * só é chamado pelo orquestrador HTTP-facing que também aciona a
+   * coordenação de revalidação (REV-009).
+   *
+   * `prisma.category.update` direto pela chave composta `id_siteId`, sem
+   * `updateMany`-condicionado: diferente de `Article`, `Category` não tem
+   * máquina de estados nem regra de "só editável em tal status" — a única
+   * condição de elegibilidade é a própria identidade (`id + siteId`).
+   * Categoria arquivada é atualizável normalmente: nenhum filtro de
+   * `archivedAt` no `where`, e como `archivedAt` nunca entra no `data`
+   * abaixo, seu valor é sempre preservado, arquivada ou não.
+   *
+   * Mesma estratégia reativa de `create()`/`deleteBySite()`: tenta a
+   * escrita direto e traduz o erro do Postgres/Prisma, em vez de checar e
+   * escrever em dois passos. `P2025` (a chave composta não bateu — Categoria
+   * inexistente ou de outro Site, mesmo critério de isolamento de
+   * `findOneBySite`/`deleteBySite`) → `NOT_FOUND`. `P2002` (`@@unique([siteId,
+   * slug])`) → `SLUG_CONFLICT`, mesma tradução de `create()`.
+   */
+  async updateBySite(input: UpdateCategoryInput): Promise<UpdateCategoryRepositoryResult> {
+    try {
+      const category = await this.prisma.category.update({
+        where: { id_siteId: { id: input.id, siteId: input.siteId } },
+        data: {
+          name: input.name,
+          slug: input.slug,
+        },
+      });
+
+      return { ok: true, category };
+    } catch (err) {
+      if (isRecordNotFound(err)) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isUniqueConstraintViolation(err)) {
+        return { ok: false, reason: 'SLUG_CONFLICT' };
+      }
+
+      throw err;
+    }
   }
 
   /**

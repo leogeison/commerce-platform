@@ -16,6 +16,7 @@ import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { RevalidateAffectedArticlesUseCase } from './application/revalidate-affected-articles.use-case';
+import { UpdateCategoryAndRevalidateUseCase } from './application/update-category-and-revalidate.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
@@ -23,6 +24,7 @@ import { PublishArticleController } from './presentation/publish-article.control
 import { RemoveCategoryController } from './presentation/remove-category.controller';
 import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
+import { UpdateCategoryController } from './presentation/update-category.controller';
 
 /**
  * Primeiro módulo do bounded context `application` (APP-001,
@@ -80,15 +82,29 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * `RevalidateAffectedArticlesUseCase`.
  *
  * `RevalidateAffectedArticlesUseCase` é o mecanismo de coordenação
- * reutilizável para os futuros orquestradores HTTP-facing de Categoria/
- * Produto/Oferta/Autor (`REV-009` a `REV-014`, nenhum implementado ainda):
+ * reutilizável para os orquestradores HTTP-facing de Categoria/Produto/
+ * Oferta/Autor (`REV-009` a `REV-014`, só `REV-009` implementada até aqui):
  * descobre Artigos publicados afetados via `FindAffectedPublishedArticlesUseCase`
  * (já provider deste módulo) e tenta revalidar cada um via `RevalidationPort`
  * (`RevalidationModule`). Sem controller, sem contrato próprio — não é um
  * endpoint em si. Como a mudança de origem já está persistida por quem
  * chama antes desta classe rodar, nenhuma falha (descoberta ou revalidação)
- * propaga; tudo é capturado e logado. Nenhum `exports` ainda: nenhum dos
- * seis futuros orquestradores existe para consumi-la de outro módulo.
+ * propaga; tudo é capturado e logado. Nenhum `exports` ainda: nenhum
+ * consumidor fora deste módulo.
+ *
+ * `UpdateCategoryAndRevalidateUseCase` (REV-009) é o único caminho HTTP que
+ * persiste alterações de `Category`: atualiza via `UpdateCategoryUseCase`
+ * (exportado por `CatalogModule`) e, em caso de sucesso, aciona
+ * `RevalidateAffectedArticlesUseCase.revalidateForCategory` (já provider
+ * deste módulo). `UpdateCategoryController`
+ * (`PATCH .../categories/:id`) é seu único consumidor HTTP —
+ * `UpdateCategoryUseCase` nunca é injetado diretamente por nenhum
+ * controller. Diferente de `PublishArticleAndRevalidateUseCase`/
+ * `ArchiveArticleAndRevalidateUseCase` (que chamam `RevalidationPort`
+ * diretamente e por isso têm `try/catch`/`Logger` próprios),
+ * `UpdateCategoryAndRevalidateUseCase` não precisa de nenhum dos dois —
+ * `RevalidateAffectedArticlesUseCase` já garante que nunca propaga e já
+ * loga internamente.
  *
  * `RemoveCategoryUseCase` (APP-006) reaproveita `PrismaArticleRepository`
  * (Editorial, já exportado desde APP-001) e `DeleteCategoryUseCase`
@@ -145,6 +161,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     RemoveOfferController,
     PublishArticleController,
     ArchiveArticleController,
+    UpdateCategoryController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -157,6 +174,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     PublishArticleAndRevalidateUseCase,
     ArchiveArticleAndRevalidateUseCase,
     RevalidateAffectedArticlesUseCase,
+    UpdateCategoryAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}
