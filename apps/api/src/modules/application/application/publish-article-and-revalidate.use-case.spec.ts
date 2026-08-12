@@ -1,9 +1,20 @@
+import { Logger } from '@nestjs/common';
 import { PublishArticleAndRevalidateUseCase } from './publish-article-and-revalidate.use-case';
 import type { PublishArticleUseCase, PublishArticleResult } from './publish-article.use-case';
 import type { RevalidationPort } from '../../revalidation/domain/revalidation.port';
 import type { Article } from '../../../generated/prisma/client';
 
 describe('PublishArticleAndRevalidateUseCase', () => {
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
   function build(publishResult: PublishArticleResult) {
     const publishArticleUseCase = {
       execute: jest.fn().mockResolvedValue(publishResult),
@@ -72,5 +83,25 @@ describe('PublishArticleAndRevalidateUseCase', () => {
 
     expect(result).toEqual({ ok: true, article });
     expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('publicação bem-sucedida com revalidação falhando: loga em nível error com o payload estruturado exigido por REV-015 (Architecture.md §21)', async () => {
+    const article = { id: 'article-1', slug: 'artigo-publicado' } as Article;
+    const { useCase, revalidationPort } = build({ ok: true, article });
+    revalidationPort.revalidate.mockRejectedValue(new Error('revalidação indisponível'));
+
+    await useCase.execute(input);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      {
+        siteId: 'site-1',
+        resource: 'article',
+        resourceId: 'article-1',
+        affectedArticleIds: ['article-1'],
+        error: 'revalidação indisponível',
+      },
+      'Falha ao revalidar cache após publicar Artigo.',
+    );
   });
 });

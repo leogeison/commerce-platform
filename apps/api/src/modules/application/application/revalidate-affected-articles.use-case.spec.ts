@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { RevalidateAffectedArticlesUseCase } from './revalidate-affected-articles.use-case';
 import type { FindAffectedPublishedArticlesUseCase } from './find-affected-published-articles.use-case';
 import type { RevalidationPort } from '../../revalidation/domain/revalidation.port';
@@ -24,6 +25,16 @@ function build() {
 }
 
 describe('RevalidateAffectedArticlesUseCase', () => {
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
   describe('revalidateForCategory', () => {
     const input = { siteId: 'site-1', siteSlug: 'fastcompre', categoryId: 'category-1' };
 
@@ -87,6 +98,37 @@ describe('RevalidateAffectedArticlesUseCase', () => {
       });
     });
 
+    it('falha isolada de revalidação de um Artigo: loga em nível error com affectedArticleIds contendo somente o Artigo daquela tentativa (REV-015, Architecture.md §21)', async () => {
+      const articleA = { id: 'article-a', slug: 'artigo-a' } as Article;
+      const articleB = { id: 'article-b', slug: 'artigo-b' } as Article;
+      const articleC = { id: 'article-c', slug: 'artigo-c' } as Article;
+      const { useCase, findAffectedPublishedArticlesUseCase, revalidationPort } = build();
+      findAffectedPublishedArticlesUseCase.findByCategory.mockResolvedValue([
+        articleA,
+        articleB,
+        articleC,
+      ]);
+      revalidationPort.revalidate.mockImplementation(async ({ articleSlug }) => {
+        if (articleSlug === 'artigo-b') {
+          throw new Error('revalidação indisponível');
+        }
+      });
+
+      await useCase.revalidateForCategory(input);
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          siteId: 'site-1',
+          resource: 'category',
+          resourceId: 'category-1',
+          affectedArticleIds: ['article-b'],
+          error: 'revalidação indisponível',
+        },
+        'Falha ao revalidar cache após alteração em dependência do Artigo.',
+      );
+    });
+
     it('falha na descoberta via APP-005: nenhuma chamada de revalidação, não propaga, resolve normalmente', async () => {
       const { useCase, findAffectedPublishedArticlesUseCase, revalidationPort } = build();
       findAffectedPublishedArticlesUseCase.findByCategory.mockRejectedValue(
@@ -96,6 +138,26 @@ describe('RevalidateAffectedArticlesUseCase', () => {
       await expect(useCase.revalidateForCategory(input)).resolves.toBeUndefined();
 
       expect(revalidationPort.revalidate).not.toHaveBeenCalled();
+    });
+
+    it('falha na descoberta via APP-005: loga em nível error sem affectedArticleIds — Artigos afetados são desconhecidos, não uma lista vazia (REV-015, Architecture.md §21)', async () => {
+      const { useCase, findAffectedPublishedArticlesUseCase } = build();
+      findAffectedPublishedArticlesUseCase.findByCategory.mockRejectedValue(
+        new Error('Postgres indisponível'),
+      );
+
+      await useCase.revalidateForCategory(input);
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          siteId: 'site-1',
+          resource: 'category',
+          resourceId: 'category-1',
+          error: 'Postgres indisponível',
+        },
+        'Falha ao descobrir Artigos publicados afetados para revalidação.',
+      );
     });
   });
 
