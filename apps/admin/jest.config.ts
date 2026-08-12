@@ -3,15 +3,17 @@ import nextJest from 'next/jest.js';
 
 // `next/jest` gera a config integrada ao pipeline SWC do próprio Next.js —
 // mesmo critério de `apps/fastcompre/jest.config.ts` (evita adicionar
-// `ts-jest`/Babel como dependência extra só para esta tarefa).
+// `ts-jest`/Babel como dependência extra).
 const createJestConfig = nextJest({ dir: '.' });
 
-// Mínimo necessário para testes unitários de `apps/admin/src/lib` (ADM-001)
-// — sem infraestrutura de teste de componente/UI (sem jsdom, sem Testing
-// Library), fora do escopo desta tarefa: nenhum componente React envolvido.
+// `testEnvironment: 'jsdom'` (ADM-002) — trocado de `'node'` (ADM-001)
+// porque `login-form.spec.tsx` renderiza componentes React reais via
+// `@testing-library/react`. Config única, sem múltiplos projects Jest:
+// os specs de `lib/` (ADM-001, sem DOM) continuam rodando normalmente sob
+// `jsdom` — não dependem de nenhuma API exclusiva de `node`.
 const customJestConfig: Config = {
-  testEnvironment: 'node',
-  setupFiles: ['<rootDir>/jest.setup.ts'],
+  testEnvironment: 'jsdom',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testMatch: ['<rootDir>/src/**/*.spec.{ts,tsx}'],
 };
 
