@@ -3,6 +3,7 @@ import { DatabaseModule } from '../../shared/database/database.module';
 import { HttpModule } from '../../shared/http/http.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { ArchiveArticleUseCase } from './application/archive-article.use-case';
 import { CreateArticleUseCase } from './application/create-article.use-case';
 import { CreateAuthorUseCase } from './application/create-author.use-case';
 import { DeleteAuthorUseCase } from './application/delete-author.use-case';
@@ -43,13 +44,13 @@ import { PublicArticlesController } from './presentation/public-articles.control
  * `CatalogModule`, que agrupa Categoria/Produto/Oferta).
  *
  * `exports: [PrismaArticleRepository, PrismaArticleProductRepository,
- * MarkArticleAsPublishedUseCase]` — os dois repositórios desde APP-001
- * (`ApplicationModule` precisa deles para `CalculateArticleHealthUseCase`);
- * `MarkArticleAsPublishedUseCase` desde EDT-014, exportado por antecipação
- * explícita (decisão do usuário) para `APP-002` consumir quando existir —
- * único caso no projeto em que a exportação não espera o consumidor
- * existir, porque EDT-014 não tem nenhuma outra razão de ser senão ser
- * chamado por APP-002. Nenhum outro provider é exportado.
+ * MarkArticleAsPublishedUseCase, ArchiveArticleUseCase]` — os dois
+ * repositórios exportados porque `ApplicationModule` precisa deles para
+ * `CalculateArticleHealthUseCase`. `MarkArticleAsPublishedUseCase` e
+ * `ArchiveArticleUseCase` são exportados por antecipação explícita (decisão
+ * do usuário): nenhum dos dois tem controller próprio nem qualquer razão de
+ * existir senão ser chamado pelos orquestradores HTTP-facing de publicação e
+ * arquivamento em `ApplicationModule`. Nenhum outro provider é exportado.
  *
  * `PublicArticlesController`/`ListPublicArticlesUseCase` (PUB-002) e
  * `GetPublicArticleUseCase` (PUB-003): leitura pública de Artigo entra no
@@ -83,7 +84,13 @@ import { PublicArticlesController } from './presentation/public-articles.control
     RevertArticleToDraftUseCase,
     RestoreArticleToDraftUseCase,
     MarkArticleAsPublishedUseCase,
+    ArchiveArticleUseCase,
   ],
-  exports: [PrismaArticleRepository, PrismaArticleProductRepository, MarkArticleAsPublishedUseCase],
+  exports: [
+    PrismaArticleRepository,
+    PrismaArticleProductRepository,
+    MarkArticleAsPublishedUseCase,
+    ArchiveArticleUseCase,
+  ],
 })
 export class EditorialModule {}

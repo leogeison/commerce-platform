@@ -6,6 +6,7 @@ import { RevalidationModule } from '../revalidation/revalidation.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { HttpModule } from '../../shared/http/http.module';
+import { ArchiveArticleAndRevalidateUseCase } from './application/archive-article-and-revalidate.use-case';
 import { CalculateArticleHealthUseCase } from './application/calculate-article-health.use-case';
 import { FindAffectedPublishedArticlesUseCase } from './application/find-affected-published-articles.use-case';
 import { HandleAffiliateRedirectUseCase } from './application/handle-affiliate-redirect.use-case';
@@ -15,6 +16,7 @@ import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
+import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
 import { PublishArticleController } from './presentation/publish-article.controller';
 import { RemoveCategoryController } from './presentation/remove-category.controller';
@@ -89,20 +91,28 @@ import { RemoveProductController } from './presentation/remove-product.controlle
  * só tem uma FK externa possível, então não precisa da reconsulta pós-corrida
  * que os outros dois fazem (ver o próprio caso de uso).
  *
- * `PublishArticleAndRevalidateUseCase` (REV-003) é o único caminho HTTP
- * que persiste `PUBLISHED`: publica via `PublishArticleUseCase` (já
- * provider deste módulo) e, em caso de sucesso, revalida via
- * `RevalidationPort` (`RevalidationModule`, import novo nesta tarefa).
- * `PublishArticleController` (`POST .../articles/:id/publish`) é seu
- * único consumidor HTTP — `PublishArticleUseCase` nunca é injetado
- * diretamente por nenhum controller, então não existe caminho alternativo
- * para persistir `PUBLISHED` sem revalidar.
+ * `PublishArticleAndRevalidateUseCase` é o único caminho HTTP que persiste
+ * `PUBLISHED`: publica via `PublishArticleUseCase` (já provider deste
+ * módulo) e, em caso de sucesso, revalida via `RevalidationPort`
+ * (`RevalidationModule`). `PublishArticleController`
+ * (`POST .../articles/:id/publish`) é seu único consumidor HTTP —
+ * `PublishArticleUseCase` nunca é injetado diretamente por nenhum
+ * controller, então não existe caminho alternativo para persistir
+ * `PUBLISHED` sem revalidar.
  *
- * Nenhum `exports` ainda: nada fora de `application` consome
- * `CalculateArticleHealthUseCase`/`PublishArticleUseCase`/`RemoveProductUseCase`/
- * `HandleAffiliateRedirectUseCase`/`FindAffectedPublishedArticlesUseCase`/
- * `RemoveCategoryUseCase`/`RemoveOfferUseCase`/`PublishArticleAndRevalidateUseCase`
- * nesta tarefa — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
+ * `ArchiveArticleAndRevalidateUseCase` é, pelo mesmo critério, o único
+ * caminho HTTP que persiste `ARCHIVED`: arquiva via `ArchiveArticleUseCase`
+ * (exportado por `EditorialModule`) e, em caso de sucesso, revalida via
+ * `RevalidationPort`. `ArchiveArticleController`
+ * (`POST .../articles/:id/archive`) é seu único consumidor HTTP —
+ * `ArchiveArticleUseCase` nunca é injetado diretamente por nenhum
+ * controller. Nenhuma abstração nova é compartilhada entre os dois
+ * orquestradores de revalidação — cada um mantém sua própria classe,
+ * injeta `RevalidationPort` independentemente e loga sua própria falha; o
+ * paralelismo entre eles é só de padrão, não de código.
+ *
+ * Nenhum `exports` ainda: nada fora de `application` consome os providers
+ * deste módulo — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
  * exportação entra junto com a tarefa que precisar dela.
  */
 @Module({
@@ -122,6 +132,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     AffiliateRedirectController,
     RemoveOfferController,
     PublishArticleController,
+    ArchiveArticleController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -132,6 +143,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
     RemoveCategoryUseCase,
     RemoveOfferUseCase,
     PublishArticleAndRevalidateUseCase,
+    ArchiveArticleAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}

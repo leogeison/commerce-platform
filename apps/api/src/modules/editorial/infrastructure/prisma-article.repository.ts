@@ -521,6 +521,20 @@ export class PrismaArticleRepository {
   }
 
   /**
+   * `archive` — operação INTERNA, sem controller próprio: só
+   * `ArchiveArticleUseCase` a chama, que por sua vez só é chamado pelo
+   * orquestrador HTTP-facing que também aciona a revalidação. `PUBLISHED →
+   * ARCHIVED`, incondicional dado o status de origem correto. Sem
+   * `extraData`: `Article` não tem coluna própria para "quando foi
+   * arquivado", e `publishedAt` precisa permanecer intocado — como esta
+   * chamada não passa `extraData`, a coluna nunca entra na instrução
+   * `updateMany`, preservando o valor já gravado.
+   */
+  async archive(siteId: string, id: string): Promise<TransitionArticleResult> {
+    return this.transitionStatus(siteId, id, 'PUBLISHED', 'ARCHIVED');
+  }
+
+  /**
    * Artigos publicados que referenciam uma Categoria (APP-005) — usado
    * para descobrir páginas públicas afetadas quando a Categoria muda
    * (`REV-005`, Fase 14, ainda não implementado). Filtro obrigatório por
