@@ -72,10 +72,9 @@ import { PublicCategoryController } from './presentation/public-category.control
  * `UpdateCategoryUseCase`/`UpdateProductUseCase`: sem controller próprio,
  * chamado exclusivamente por `UpdateOfferAndRevalidateUseCase` em
  * `ApplicationModule` (REV-012). `ArchiveOfferUseCase`/`UnarchiveOfferUseCase`
- * (CAT-019/020) seguem sem exportar: serão consumidas por `REV-013` quando
- * essa tarefa existir, mas exportar agora seria antecipar um consumidor
- * que ainda não foi implementado — ficam só registradas como provider,
- * exportação entra junto com a tarefa que precisar delas.
+ * (CAT-019/020) agora também exportados, pelo mesmo critério: sem
+ * controller próprio, chamados exclusivamente por
+ * `OfferArchiveAndRevalidateUseCase` em `ApplicationModule` (REV-013).
  *
  * `PublicCategoryController`/`GetPublicCategoryUseCase` (PUB-004): leitura
  * pública de Categoria entra no mesmo módulo, não um módulo "public"
@@ -125,6 +124,8 @@ import { PublicCategoryController } from './presentation/public-category.control
     ArchiveProductUseCase,
     UnarchiveProductUseCase,
     UpdateOfferUseCase,
+    ArchiveOfferUseCase,
+    UnarchiveOfferUseCase,
   ],
 })
 export class CatalogModule {}

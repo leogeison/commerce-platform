@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import request from 'supertest';
 import { App } from 'supertest/types';
 import { CatalogModule } from '../src/modules/catalog/catalog.module';
 import { ArchiveOfferUseCase } from '../src/modules/catalog/application/archive-offer.use-case';
@@ -12,13 +11,15 @@ import type { Offer, Product, Site } from '../src/generated/prisma/client';
 /**
  * `ArchiveOfferUseCase`/`UnarchiveOfferUseCase` (e2e, CAT-019/CAT-020) —
  * operações **internas** do Catalog, sem controller/rota HTTP própria
- * (endpoint real é `REV-013`, ainda não implementado). Mesmo padrão de
- * `archive-unarchive-product.e2e-spec.ts`: chama os casos de uso
- * diretamente (sem HTTP), com Postgres real (mesmo requisito de
+ * (endpoint real é `REV-013`, ver `offer-archive-and-revalidate.e2e-spec.ts`).
+ * Mesmo padrão de `archive-unarchive-product.e2e-spec.ts`: chama os casos
+ * de uso diretamente (sem HTTP), com Postgres real (mesmo requisito de
  * `database.e2e-spec.ts`).
  *
- * `app`/`supertest` só entram no teste final, para provar que nenhuma rota
- * HTTP alcança arquivar/desarquivar Oferta.
+ * `productId` faz parte da identidade contextual das duas operações — a
+ * mesma decisão já tomada para `UpdateOfferUseCase` (CAT-018): a Oferta só
+ * é encontrada quando `id`, `siteId` e `productId` correspondem
+ * simultaneamente.
  */
 describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operação interna)', () => {
   let app: INestApplication<App> | undefined;
@@ -29,6 +30,7 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
   let siteA: Site;
   let siteB: Site;
   let productA: Product;
+  let otherProductA: Product;
 
   beforeEach(async () => {
     moduleRef = await Test.createTestingModule({
@@ -61,6 +63,9 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
 
     productA = await prisma.product.create({
       data: { siteId: siteA.id, name: 'Fone Bluetooth', slug: 'fone-bluetooth' },
+    });
+    otherProductA = await prisma.product.create({
+      data: { siteId: siteA.id, name: 'Outro Produto', slug: 'outro-produto' },
     });
   });
 
@@ -96,7 +101,11 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
     it('arquiva uma Oferta ativa: archivedAt preenchido', async () => {
       const offer = await createOffer(siteA, productA);
 
-      const result = await archiveUseCase.execute({ siteId: siteA.id, id: offer.id });
+      const result = await archiveUseCase.execute({
+        siteId: siteA.id,
+        productId: productA.id,
+        id: offer.id,
+      });
 
       expect(result).not.toBeNull();
       expect(result?.archivedAt).not.toBeNull();
@@ -105,8 +114,16 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
     it('idempotente: arquivar duas vezes mantém o mesmo archivedAt', async () => {
       const offer = await createOffer(siteA, productA);
 
-      const first = await archiveUseCase.execute({ siteId: siteA.id, id: offer.id });
-      const second = await archiveUseCase.execute({ siteId: siteA.id, id: offer.id });
+      const first = await archiveUseCase.execute({
+        siteId: siteA.id,
+        productId: productA.id,
+        id: offer.id,
+      });
+      const second = await archiveUseCase.execute({
+        siteId: siteA.id,
+        productId: productA.id,
+        id: offer.id,
+      });
 
       expect(second?.archivedAt?.getTime()).toBe(first?.archivedAt?.getTime());
     });
@@ -114,6 +131,7 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
     it('id inexistente no próprio Site: null', async () => {
       const result = await archiveUseCase.execute({
         siteId: siteA.id,
+        productId: productA.id,
         id: '00000000-0000-0000-0000-000000000000',
       });
 
@@ -128,6 +146,7 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
 
       const result = await archiveUseCase.execute({
         siteId: siteA.id,
+        productId: productFromSiteB.id,
         id: offerFromSiteB.id,
       });
 
@@ -138,13 +157,33 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
       });
       expect(persisted.archivedAt).toBeNull();
     });
+
+    it('id de Oferta real do mesmo Site mas de outro Produto: null (identidade contextual), Oferta original inalterada', async () => {
+      const offer = await createOffer(siteA, productA);
+
+      const result = await archiveUseCase.execute({
+        siteId: siteA.id,
+        productId: otherProductA.id,
+        id: offer.id,
+      });
+
+      expect(result).toBeNull();
+
+      const persisted = await prisma.offer.findUniqueOrThrow({ where: { id: offer.id } });
+      expect(persisted.archivedAt).toBeNull();
+      expect(persisted.productId).toBe(productA.id);
+    });
   });
 
   describe('unarchive', () => {
     it('desarquiva uma Oferta arquivada: archivedAt: null', async () => {
       const offer = await createOffer(siteA, productA, true);
 
-      const result = await unarchiveUseCase.execute({ siteId: siteA.id, id: offer.id });
+      const result = await unarchiveUseCase.execute({
+        siteId: siteA.id,
+        productId: productA.id,
+        id: offer.id,
+      });
 
       expect(result).not.toBeNull();
       expect(result?.archivedAt).toBeNull();
@@ -153,8 +192,16 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
     it('idempotente: desarquivar duas vezes mantém archivedAt: null', async () => {
       const offer = await createOffer(siteA, productA, true);
 
-      const first = await unarchiveUseCase.execute({ siteId: siteA.id, id: offer.id });
-      const second = await unarchiveUseCase.execute({ siteId: siteA.id, id: offer.id });
+      const first = await unarchiveUseCase.execute({
+        siteId: siteA.id,
+        productId: productA.id,
+        id: offer.id,
+      });
+      const second = await unarchiveUseCase.execute({
+        siteId: siteA.id,
+        productId: productA.id,
+        id: offer.id,
+      });
 
       expect(first?.archivedAt).toBeNull();
       expect(second?.archivedAt).toBeNull();
@@ -163,6 +210,7 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
     it('id inexistente no próprio Site: null', async () => {
       const result = await unarchiveUseCase.execute({
         siteId: siteA.id,
+        productId: productA.id,
         id: '00000000-0000-0000-0000-000000000000',
       });
 
@@ -177,6 +225,7 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
 
       const result = await unarchiveUseCase.execute({
         siteId: siteA.id,
+        productId: productFromSiteB.id,
         id: offerFromSiteB.id,
       });
 
@@ -187,19 +236,22 @@ describe('ArchiveOfferUseCase / UnarchiveOfferUseCase (CAT-019/CAT-020, operaç�
       });
       expect(persisted.archivedAt).not.toBeNull();
     });
-  });
 
-  it('nenhuma rota HTTP expõe arquivar/desarquivar Oferta: 404', async () => {
-    const offer = await createOffer(siteA, productA);
+    it('id de Oferta real do mesmo Site mas de outro Produto: null (identidade contextual), Oferta original inalterada', async () => {
+      const offer = await createOffer(siteA, productA, true);
+      const archivedAtBefore = offer.archivedAt;
 
-    const archiveResponse = await request(app!.getHttpServer()).post(
-      `/admin/sites/${siteA.slug}/products/${productA.id}/offers/${offer.id}/archive`,
-    );
-    const unarchiveResponse = await request(app!.getHttpServer()).post(
-      `/admin/sites/${siteA.slug}/products/${productA.id}/offers/${offer.id}/unarchive`,
-    );
+      const result = await unarchiveUseCase.execute({
+        siteId: siteA.id,
+        productId: otherProductA.id,
+        id: offer.id,
+      });
 
-    expect(archiveResponse.status).toBe(404);
-    expect(unarchiveResponse.status).toBe(404);
+      expect(result).toBeNull();
+
+      const persisted = await prisma.offer.findUniqueOrThrow({ where: { id: offer.id } });
+      expect(persisted.archivedAt?.toISOString()).toBe(archivedAtBefore!.toISOString());
+      expect(persisted.productId).toBe(productA.id);
+    });
   });
 });

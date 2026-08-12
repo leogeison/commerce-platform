@@ -279,44 +279,61 @@ export class PrismaOfferRepository {
   }
 
   /**
-   * Arquiva uma `Offer` do Site (CAT-019, operação **interna** — sem
-   * controller/rota HTTP própria; endpoint real é `REV-013`, ainda não
-   * implementado). Mesmo padrão de `PrismaProductRepository.archiveBySite`
-   * (CAT-012): `updateMany` condicionado a `archivedAt: null` (idempotente,
-   * não sobrescreve o timestamp original), seguido de `findUnique` na
-   * chave composta `id_siteId` — `null` cobre "não existe"/"de outro
-   * Site", mesmo critério de isolamento já usado em
-   * `findOneByProductAndSite`.
+   * Arquiva uma `Offer` do Site, restrita ao Produto informado (CAT-019,
+   * operação **interna** — sem controller/rota HTTP própria; endpoint real
+   * é `REV-013`). `productId` faz parte da identidade contextual desta
+   * operação — mesma decisão já tomada para `updateBySite` (CAT-018) — mas
+   * a implementação não pode reaproveitar a estratégia reativa de
+   * `updateBySite`: arquivar é idempotente e precisa **preservar** o
+   * `archivedAt` original numa segunda chamada, o que uma instrução
+   * `update()` direta destruiria (sempre escreveria um novo timestamp).
    *
-   * Sem `productId` no `where`: diferente de `findOneByProductAndSite`
-   * (CAT-017), esta é uma operação interna chamada só com `siteId` + `id`
-   * (mesma assinatura de `ArchiveProductUseCase`) — não há parâmetro de
-   * rota "produto errado" para distinguir aqui.
+   * Por isso mantém a estrutura de duas etapas já usada por
+   * `PrismaProductRepository.archiveBySite`, mas com uma correção
+   * importante: `productId` entra tanto no `updateMany` (condição de
+   * escrita) quanto na leitura de confirmação seguinte — que deixa de ser
+   * `findUnique` na chave composta `id_siteId` (só dois campos) e passa a
+   * ser `findFirst({ id, siteId, productId })` (os três campos da
+   * identidade). Isso evita um falso sucesso: se `productId` não bater, o
+   * `updateMany` não afeta nenhuma linha (0), mas se a leitura seguinte
+   * ainda usasse só `id + siteId`, ela encontraria a Oferta real (de outro
+   * Produto) e a devolveria como se a operação tivesse funcionado. Com
+   * `productId` também na leitura, a mesma condição que impede a escrita
+   * também impede a leitura de "vazar" a Oferta errada — `null` cobre,
+   * com o mesmo resultado genérico, "não existe", "de outro Site" e "de
+   * outro Produto".
+   *
+   * `updateMany` condicionado a `archivedAt: null`: idempotente, não
+   * sobrescreve o timestamp original — arquivar uma Oferta já arquivada
+   * (mas com `id`/`siteId`/`productId` corretos) não bate na condição
+   * (0 linhas afetadas), mas o `findFirst` seguinte ainda encontra a
+   * Oferta (os três IDs batem) e a devolve com o `archivedAt` original
+   * intacto — sucesso idempotente, sem sobrescrita.
    */
-  async archiveBySite(siteId: string, id: string): Promise<Offer | null> {
+  async archiveBySite(siteId: string, productId: string, id: string): Promise<Offer | null> {
     await this.prisma.offer.updateMany({
-      where: { id, siteId, archivedAt: null },
+      where: { id, siteId, productId, archivedAt: null },
       data: { archivedAt: new Date() },
     });
 
-    return this.prisma.offer.findUnique({
-      where: { id_siteId: { id, siteId } },
+    return this.prisma.offer.findFirst({
+      where: { id, siteId, productId },
     });
   }
 
   /**
-   * Desarquiva uma `Offer` do Site (CAT-020, operação **interna** — mesmo
-   * critério de `archiveBySite`, invertido). Endpoint real também é
-   * `REV-013`.
+   * Desarquiva uma `Offer` do Site, restrita ao Produto informado (CAT-020,
+   * operação **interna** — mesmo critério de `archiveBySite`, invertido).
+   * Endpoint real também é `REV-013`.
    */
-  async unarchiveBySite(siteId: string, id: string): Promise<Offer | null> {
+  async unarchiveBySite(siteId: string, productId: string, id: string): Promise<Offer | null> {
     await this.prisma.offer.updateMany({
-      where: { id, siteId, archivedAt: { not: null } },
+      where: { id, siteId, productId, archivedAt: { not: null } },
       data: { archivedAt: null },
     });
 
-    return this.prisma.offer.findUnique({
-      where: { id_siteId: { id, siteId } },
+    return this.prisma.offer.findFirst({
+      where: { id, siteId, productId },
     });
   }
 
