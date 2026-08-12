@@ -17,6 +17,7 @@ import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { RevalidateAffectedArticlesUseCase } from './application/revalidate-affected-articles.use-case';
 import { UpdateCategoryAndRevalidateUseCase } from './application/update-category-and-revalidate.use-case';
+import { UpdateProductAndRevalidateUseCase } from './application/update-product-and-revalidate.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
@@ -25,6 +26,7 @@ import { RemoveCategoryController } from './presentation/remove-category.control
 import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
 import { UpdateCategoryController } from './presentation/update-category.controller';
+import { UpdateProductController } from './presentation/update-product.controller';
 
 /**
  * Primeiro módulo do bounded context `application` (APP-001,
@@ -139,6 +141,18 @@ import { UpdateCategoryController } from './presentation/update-category.control
  * injeta `RevalidationPort` independentemente e loga sua própria falha; o
  * paralelismo entre eles é só de padrão, não de código.
  *
+ * `UpdateProductAndRevalidateUseCase` (REV-010) é, pelo mesmo critério de
+ * `UpdateCategoryAndRevalidateUseCase`, o único caminho HTTP que persiste
+ * alterações de `Product`: atualiza via `UpdateProductUseCase` (exportado
+ * por `CatalogModule` desde CAT-011) e, em caso de sucesso, aciona
+ * `RevalidateAffectedArticlesUseCase.revalidateForProduct` (já provider
+ * deste módulo). `UpdateProductController` (`PATCH .../products/:id`) é seu
+ * único consumidor HTTP — `UpdateProductUseCase` nunca é injetado
+ * diretamente por nenhum controller. Sem `try/catch`/`Logger` própria, pela
+ * mesma razão de `UpdateCategoryAndRevalidateUseCase`. Nenhuma abstração
+ * nova compartilhada entre os dois orquestradores de atualização — cada um
+ * mantém sua própria classe.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome os providers
  * deste módulo — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
  * exportação entra junto com a tarefa que precisar dela.
@@ -162,6 +176,7 @@ import { UpdateCategoryController } from './presentation/update-category.control
     PublishArticleController,
     ArchiveArticleController,
     UpdateCategoryController,
+    UpdateProductController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -175,6 +190,7 @@ import { UpdateCategoryController } from './presentation/update-category.control
     ArchiveArticleAndRevalidateUseCase,
     RevalidateAffectedArticlesUseCase,
     UpdateCategoryAndRevalidateUseCase,
+    UpdateProductAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}

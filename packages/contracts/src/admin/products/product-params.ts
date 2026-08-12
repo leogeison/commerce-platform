@@ -19,11 +19,12 @@ export type ProductsSiteParams = z.infer<typeof productsSiteParamsSchema>;
 /**
  * `GET /admin/sites/:siteSlug/products/:id`,
  * `POST /admin/sites/:siteSlug/products/:id/archive`,
- * `POST /admin/sites/:siteSlug/products/:id/unarchive`
+ * `POST /admin/sites/:siteSlug/products/:id/unarchive`,
+ * `PATCH /admin/sites/:siteSlug/products/:id` (REV-010)
  *
- * Sem contrato de parâmetros para CAT-011 (atualizar) / CAT-014 (excluir)
- * — mesma decisão já tomada para `CAT-004`/`CAT-007` na CTR-003: operações
- * internas, sem rota HTTP direta.
+ * Sem contrato de parâmetros dedicado para CAT-014 (excluir) — mesma
+ * decisão já tomada para `CAT-007` na CTR-003: operação interna, sem rota
+ * HTTP direta.
  */
 export const productParamsSchema = z.object({
   siteSlug: z.string().min(1),

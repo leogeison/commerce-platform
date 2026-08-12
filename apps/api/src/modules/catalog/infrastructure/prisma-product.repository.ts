@@ -21,6 +21,22 @@ export type DeleteProductRepositoryResult =
   | { ok: false; reason: 'NOT_FOUND' }
   | { ok: false; reason: 'HAS_OFFERS' };
 
+export interface UpdateProductInput {
+  siteId: string;
+  id: string;
+  name?: string;
+  slug?: string;
+  categoryId?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+}
+
+export type UpdateProductRepositoryResult =
+  | { ok: true; product: Product }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'SLUG_CONFLICT' }
+  | { ok: false; reason: 'CATEGORY_NOT_FOUND' };
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -189,6 +205,66 @@ export class PrismaProductRepository {
         },
       },
     });
+  }
+
+  /**
+   * Atualiza um `Product` do Site (CAT-011) — operação INTERNA, sem
+   * controller próprio: só `UpdateProductUseCase` a chama, que por sua vez
+   * só é chamado pelo orquestrador HTTP-facing que também aciona a
+   * coordenação de revalidação (REV-010).
+   *
+   * `prisma.product.update` direto pela chave composta `id_siteId`, sem
+   * `updateMany`-condicionado: mesmo critério de
+   * `PrismaCategoryRepository.updateBySite` — `Product` não tem máquina de
+   * estados, a única condição de elegibilidade é a identidade. Produto
+   * arquivado é atualizável normalmente: nenhum filtro de `archivedAt` no
+   * `where`, e como `archivedAt` nunca entra no `data` abaixo, seu valor é
+   * sempre preservado.
+   *
+   * `categoryId`/`description`/`imageUrl` são passados exatamente como
+   * chegam em `input` (`string | null | undefined`), sem nenhuma
+   * normalização — aproveita o comportamento nativo do Prisma em
+   * `update`: `undefined` não entra na instrução SQL (coluna intocada),
+   * `null` explícito limpa a coluna, qualquer outro valor a define (mesma
+   * semântica tri-state já documentada em `PrismaArticleRepository.updateBySite`).
+   *
+   * Estratégia reativa, mesma de `create()`: tenta a escrita direto e
+   * traduz o erro. `P2025` (chave composta não bateu — inexistente ou de
+   * outro Site) → `NOT_FOUND`. `P2002` (`@@unique([siteId, slug])`) →
+   * `SLUG_CONFLICT`. `P2003` → `CATEGORY_NOT_FOUND` — só a FK de
+   * `categoryId` é alcançável neste método (mesmo raciocínio já usado em
+   * `create()`); interpretação local a este método, não uma regra geral
+   * sobre o que `P2003` significa em `Product`.
+   */
+  async updateBySite(input: UpdateProductInput): Promise<UpdateProductRepositoryResult> {
+    try {
+      const product = await this.prisma.product.update({
+        where: { id_siteId: { id: input.id, siteId: input.siteId } },
+        data: {
+          name: input.name,
+          slug: input.slug,
+          categoryId: input.categoryId,
+          description: input.description,
+          imageUrl: input.imageUrl,
+        },
+      });
+
+      return { ok: true, product };
+    } catch (err) {
+      if (isRecordNotFound(err)) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isUniqueConstraintViolation(err)) {
+        return { ok: false, reason: 'SLUG_CONFLICT' };
+      }
+
+      if (isForeignKeyConstraintViolation(err)) {
+        return { ok: false, reason: 'CATEGORY_NOT_FOUND' };
+      }
+
+      throw err;
+    }
   }
 
   /**

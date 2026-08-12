@@ -23,6 +23,7 @@ import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-c
 import { UnarchiveOfferUseCase } from './application/unarchive-offer.use-case';
 import { UnarchiveProductUseCase } from './application/unarchive-product.use-case';
 import { UpdateCategoryUseCase } from './application/update-category.use-case';
+import { UpdateProductUseCase } from './application/update-product.use-case';
 import { PrismaCategoryRepository } from './infrastructure/prisma-category.repository';
 import { PrismaOfferRepository } from './infrastructure/prisma-offer.repository';
 import { PrismaProductRepository } from './infrastructure/prisma-product.repository';
@@ -48,17 +49,18 @@ import { PublicCategoryController } from './presentation/public-category.control
  * necessário pelo `OriginGuard`, mesmo padrão já usado em `IdentityModule`.
  *
  * `exports: [PrismaCategoryRepository, PrismaOfferRepository, DeleteProductUseCase,
- * DeleteCategoryUseCase, DeleteOfferUseCase, UpdateCategoryUseCase]` — os dois
- * primeiros desde APP-001 (`ApplicationModule` precisa deles para
- * `CalculateArticleHealthUseCase`); `DeleteProductUseCase` (CAT-014) desde
- * APP-003; `DeleteCategoryUseCase` (CAT-007) desde APP-006;
+ * DeleteCategoryUseCase, DeleteOfferUseCase, UpdateCategoryUseCase,
+ * UpdateProductUseCase]` — os dois primeiros desde APP-001 (`ApplicationModule`
+ * precisa deles para `CalculateArticleHealthUseCase`); `DeleteProductUseCase`
+ * (CAT-014) desde APP-003; `DeleteCategoryUseCase` (CAT-007) desde APP-006;
  * `DeleteOfferUseCase` (CAT-021) desde TRK-010, para `RemoveOfferUseCase`
  * delegar a exclusão física depois de confirmar que não há `AffiliateClick`
  * vinculado — mesmo padrão exato de `DeleteProductUseCase`/APP-003 e
- * `DeleteCategoryUseCase`/APP-006. `UpdateCategoryUseCase` (CAT-004)
- * exportado por antecipação explícita: não tem controller próprio nem
- * nenhuma razão de existir senão ser chamado pelo orquestrador HTTP-facing
- * de atualização em `ApplicationModule` (REV-009) — mesmo critério de
+ * `DeleteCategoryUseCase`/APP-006. `UpdateCategoryUseCase` (CAT-004) e
+ * `UpdateProductUseCase` (CAT-011) exportados por antecipação explícita:
+ * nenhum dos dois tem controller próprio nem nenhuma razão de existir senão
+ * ser chamado pelos orquestradores HTTP-facing de atualização em
+ * `ApplicationModule` (REV-009/REV-010) — mesmo critério de
  * `MarkArticleAsPublishedUseCase`/`ArchiveArticleUseCase` em `EditorialModule`.
  * `PrismaProductRepository` segue sem exportar — nada em `application` o
  * consome diretamente ainda. `ArchiveProductUseCase`/
@@ -96,6 +98,7 @@ import { PublicCategoryController } from './presentation/public-category.control
     ArchiveProductUseCase,
     UnarchiveProductUseCase,
     DeleteProductUseCase,
+    UpdateProductUseCase,
     PrismaOfferRepository,
     CreateOfferUseCase,
     ListOffersUseCase,
@@ -111,6 +114,7 @@ import { PublicCategoryController } from './presentation/public-category.control
     DeleteCategoryUseCase,
     DeleteOfferUseCase,
     UpdateCategoryUseCase,
+    UpdateProductUseCase,
   ],
 })
 export class CatalogModule {}

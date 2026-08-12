@@ -1,5 +1,6 @@
 export * from './product.js';
 export * from './create-product-request.js';
+export * from './update-product-request.js';
 export * from './product-params.js';
 export * from './list-products-query.js';
 export * from './list-products-response.js';
