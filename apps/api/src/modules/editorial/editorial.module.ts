@@ -21,6 +21,7 @@ import { RevertArticleToDraftUseCase } from './application/revert-article-to-dra
 import { SubmitArticleForReviewUseCase } from './application/submit-article-for-review.use-case';
 import { UnlinkArticleProductUseCase } from './application/unlink-article-product.use-case';
 import { UpdateArticleUseCase } from './application/update-article.use-case';
+import { UpdateAuthorUseCase } from './application/update-author.use-case';
 import { PrismaArticleProductRepository } from './infrastructure/prisma-article-product.repository';
 import { PrismaArticleRepository } from './infrastructure/prisma-article.repository';
 import { PrismaAuthorRepository } from './infrastructure/prisma-author.repository';
@@ -44,13 +45,17 @@ import { PublicArticlesController } from './presentation/public-articles.control
  * `CatalogModule`, que agrupa Categoria/Produto/Oferta).
  *
  * `exports: [PrismaArticleRepository, PrismaArticleProductRepository,
- * MarkArticleAsPublishedUseCase, ArchiveArticleUseCase]` — os dois
- * repositórios exportados porque `ApplicationModule` precisa deles para
- * `CalculateArticleHealthUseCase`. `MarkArticleAsPublishedUseCase` e
- * `ArchiveArticleUseCase` são exportados por antecipação explícita (decisão
+ * MarkArticleAsPublishedUseCase, ArchiveArticleUseCase, UpdateAuthorUseCase]`
+ * — os dois repositórios exportados porque `ApplicationModule` precisa
+ * deles para `CalculateArticleHealthUseCase`. `MarkArticleAsPublishedUseCase`
+ * e `ArchiveArticleUseCase` são exportados por antecipação explícita (decisão
  * do usuário): nenhum dos dois tem controller próprio nem qualquer razão de
  * existir senão ser chamado pelos orquestradores HTTP-facing de publicação e
- * arquivamento em `ApplicationModule`. Nenhum outro provider é exportado.
+ * arquivamento em `ApplicationModule`. `UpdateAuthorUseCase` (EDT-004)
+ * exportado pelo mesmo motivo: sem controller próprio, único chamador
+ * autorizado é `UpdateAuthorAndRevalidateUseCase` (REV-014) em
+ * `ApplicationModule`, mesmo critério de `UpdateOfferUseCase` (CAT-018,
+ * exportado por `CatalogModule`). Nenhum outro provider é exportado.
  *
  * `PublicArticlesController`/`ListPublicArticlesUseCase` (PUB-002) e
  * `GetPublicArticleUseCase` (PUB-003): leitura pública de Artigo entra no
@@ -69,6 +74,7 @@ import { PublicArticlesController } from './presentation/public-articles.control
     ListAuthorsUseCase,
     GetAuthorUseCase,
     DeleteAuthorUseCase,
+    UpdateAuthorUseCase,
     PrismaArticleRepository,
     CreateArticleUseCase,
     ListArticlesUseCase,
@@ -91,6 +97,7 @@ import { PublicArticlesController } from './presentation/public-articles.control
     PrismaArticleProductRepository,
     MarkArticleAsPublishedUseCase,
     ArchiveArticleUseCase,
+    UpdateAuthorUseCase,
   ],
 })
 export class EditorialModule {}

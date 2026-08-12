@@ -21,6 +21,7 @@ import { UpdateProductAndRevalidateUseCase } from './application/update-product-
 import { ProductArchiveAndRevalidateUseCase } from './application/product-archive-and-revalidate.use-case';
 import { UpdateOfferAndRevalidateUseCase } from './application/update-offer-and-revalidate.use-case';
 import { OfferArchiveAndRevalidateUseCase } from './application/offer-archive-and-revalidate.use-case';
+import { UpdateAuthorAndRevalidateUseCase } from './application/update-author-and-revalidate.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
@@ -33,6 +34,7 @@ import { RemoveProductController } from './presentation/remove-product.controlle
 import { UpdateCategoryController } from './presentation/update-category.controller';
 import { UpdateOfferController } from './presentation/update-offer.controller';
 import { UpdateProductController } from './presentation/update-product.controller';
+import { UpdateAuthorController } from './presentation/update-author.controller';
 
 /**
  * Primeiro módulo do bounded context `application` (APP-001,
@@ -208,6 +210,21 @@ import { UpdateProductController } from './presentation/update-product.controlle
  * arquivamento mantém sua própria classe, mesmo padrão de duas rotas por
  * classe, código independente.
  *
+ * `UpdateAuthorAndRevalidateUseCase` (REV-014) é, pelo mesmo critério dos
+ * demais orquestradores de atualização, o único caminho HTTP que persiste
+ * alterações de `Author`: atualiza via `UpdateAuthorUseCase` (exportado por
+ * `EditorialModule` desde EDT-004) e, em caso de sucesso, aciona
+ * `RevalidateAffectedArticlesUseCase.revalidateForAuthor` (já provider
+ * deste módulo). `UpdateAuthorController` (`PATCH .../authors/:id`) é seu
+ * único consumidor HTTP — `UpdateAuthorUseCase` nunca é injetado
+ * diretamente por nenhum controller. Sem `try/catch`/`Logger` própria, pela
+ * mesma razão dos demais orquestradores baseados em
+ * `RevalidateAffectedArticlesUseCase`. Nenhuma abstração nova compartilhada
+ * com os outros orquestradores de atualização — cada um mantém sua própria
+ * classe. `Author.userId` reproduz exatamente a mesma regra de tenancy já
+ * estabelecida em `EDT-001` (sem checagem de `SiteUser`/membership),
+ * decisão não revisitada por esta tarefa.
+ *
  * Nenhum `exports` ainda: nada fora de `application` consome os providers
  * deste módulo — mesma convenção já usada em `CatalogModule`/`EditorialModule`,
  * exportação entra junto com a tarefa que precisar dela.
@@ -235,6 +252,7 @@ import { UpdateProductController } from './presentation/update-product.controlle
     ProductArchiveController,
     UpdateOfferController,
     OfferArchiveController,
+    UpdateAuthorController,
   ],
   providers: [
     CalculateArticleHealthUseCase,
@@ -252,6 +270,7 @@ import { UpdateProductController } from './presentation/update-product.controlle
     ProductArchiveAndRevalidateUseCase,
     UpdateOfferAndRevalidateUseCase,
     OfferArchiveAndRevalidateUseCase,
+    UpdateAuthorAndRevalidateUseCase,
   ],
 })
 export class ApplicationModule {}

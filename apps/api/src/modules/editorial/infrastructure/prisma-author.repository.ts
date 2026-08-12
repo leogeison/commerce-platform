@@ -36,6 +36,21 @@ export type DeleteAuthorRepositoryResult =
   | { ok: false; reason: 'NOT_FOUND' }
   | { ok: false; reason: 'HAS_ARTICLES' };
 
+export interface UpdateAuthorInput {
+  siteId: string;
+  id: string;
+  name?: string;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  userId?: string | null;
+}
+
+export type UpdateAuthorRepositoryResult =
+  | { ok: true; author: Author }
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'USER_ALREADY_HAS_AUTHOR' }
+  | { ok: false; reason: 'USER_NOT_FOUND' };
+
 /**
  * Nome real, gerado pela migration (`20260728150323_init/migration.sql`),
  * da FK de `Author.userId` para `User.id`. Único jeito confiável de
@@ -170,6 +185,81 @@ export class PrismaAuthorRepository {
     return this.prisma.author.findUnique({
       where: { id_siteId: { id, siteId } },
     });
+  }
+
+  /**
+   * Atualiza um `Author` do Site (EDT-004). Reativa, um único
+   * `prisma.author.update()` pela chave composta `id_siteId` — mesmo
+   * critério de `PrismaOfferRepository.updateBySite` (CAT-018): sem
+   * pré-checagem, tenta a atualização direto e traduz o erro do
+   * Postgres/Prisma.
+   *
+   * Propagação tri-state: `name`/`bio`/`avatarUrl`/`userId` repassados
+   * exatamente como chegam em `input` para `data` — campo omitido
+   * (`undefined`) nunca entra na instrução SQL (Prisma ignora chaves
+   * `undefined`, coluna preservada); campo `null` explícito limpa a coluna
+   * (`bio`/`avatarUrl`) ou remove o vínculo com `User` (`userId`, autor
+   * volta a ser convidado); campo com valor define ou troca — trocar de um
+   * `User` para outro usa exatamente a mesma instrução, sem tratamento
+   * diferente de "vincular pela primeira vez".
+   *
+   * Traduz os mesmos dois erros de `create()`, com a mesma cautela de só
+   * mascarar quando a constraint específica for identificada com
+   * segurança — reproduzindo exatamente a mesma regra de tenancy de
+   * `userId` já documentada lá (sem checagem de `SiteUser`/membership,
+   * decisão de `EDT-001` não revisitada aqui):
+   *
+   * - `P2025` → `NOT_FOUND` — cobre `id` inexistente e `id` de um Author de
+   *   outro Site (a chave composta nunca bate), mesmo critério de
+   *   `deleteBySite`/`findOneBySite`.
+   * - `P2002` em `@@unique([siteId, userId])` → `USER_ALREADY_HAS_AUTHOR`,
+   *   só quando os campos resolvidos por `readUniqueConstraintFields` forem
+   *   exatamente `siteId` e `userId`.
+   * - `P2003` na FK `Author.user` → `USER_NOT_FOUND`, só quando o nome da
+   *   constraint (`readForeignKeyConstraintName`) for exatamente
+   *   `Author_userId_fkey`.
+   *
+   * Qualquer `P2002`/`P2003` que não bata exatamente sobe sem tradução, em
+   * vez de ser mascarado.
+   */
+  async updateBySite(input: UpdateAuthorInput): Promise<UpdateAuthorRepositoryResult> {
+    try {
+      const author = await this.prisma.author.update({
+        where: { id_siteId: { id: input.id, siteId: input.siteId } },
+        data: {
+          name: input.name,
+          bio: input.bio,
+          avatarUrl: input.avatarUrl,
+          userId: input.userId,
+        },
+      });
+
+      return { ok: true, author };
+    } catch (err) {
+      if (isErrorWithCode(err, 'P2025')) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
+
+      if (isErrorWithCode(err, 'P2002')) {
+        const fields = readUniqueConstraintFields(err);
+        if (fields?.length === 2 && fields.includes('siteId') && fields.includes('userId')) {
+          return { ok: false, reason: 'USER_ALREADY_HAS_AUTHOR' };
+        }
+
+        throw err;
+      }
+
+      if (isErrorWithCode(err, 'P2003')) {
+        const constraintName = readForeignKeyConstraintName(err);
+        if (constraintName === USER_FOREIGN_KEY_CONSTRAINT) {
+          return { ok: false, reason: 'USER_NOT_FOUND' };
+        }
+
+        throw err;
+      }
+
+      throw err;
+    }
   }
 
   /**
