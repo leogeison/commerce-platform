@@ -190,12 +190,17 @@ describe('ArticleList', () => {
     expect(within(row as HTMLElement).getByText('Sem categoria')).toBeInTheDocument();
   });
 
-  it('exibe Título, Status e Tipo com rótulos amigáveis, sem link no título', async () => {
+  it('exibe Título, Status e Tipo com rótulos amigáveis, título com link para /:id', async () => {
     mockFetch({
       articles: () =>
         jsonResponse(200, {
           items: [
-            makeArticle({ title: 'Artigo em revisão', status: 'PENDING_REVIEW', type: 'BUYING_GUIDE' }),
+            makeArticle({
+              id: '33333333-3333-4333-8333-333333333333',
+              title: 'Artigo em revisão',
+              status: 'PENDING_REVIEW',
+              type: 'BUYING_GUIDE',
+            }),
           ],
           page: 1,
           pageSize: 20,
@@ -205,11 +210,22 @@ describe('ArticleList', () => {
     });
     render(<ArticleList siteSlug="fastcompre" />);
 
-    const row = (await screen.findByText('Artigo em revisão')).closest('tr');
+    const link = await screen.findByRole('link', { name: 'Artigo em revisão' });
+    expect(link).toHaveAttribute('href', '/fastcompre/articles/33333333-3333-4333-8333-333333333333');
+    const row = link.closest('tr');
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText('Em revisão')).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText('Guia de compra')).toBeInTheDocument();
-    expect(within(row as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('link "Novo Artigo" aponta para /:siteSlug/articles/new', async () => {
+    mockFetch({ articles: emptyArticlesResponse });
+    render(<ArticleList siteSlug="fastcompre" />);
+
+    expect(await screen.findByRole('link', { name: 'Novo Artigo' })).toHaveAttribute(
+      'href',
+      '/fastcompre/articles/new',
+    );
   });
 
   it('paginação: "Próxima" busca a página seguinte', async () => {

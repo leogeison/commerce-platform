@@ -43,6 +43,7 @@ import { SessionAuthGuard } from '../../identity/presentation/session-auth.guard
 import { MinRole } from '../../tenancy/presentation/min-role.decorator';
 import { SiteAuthorizationGuard } from '../../tenancy/presentation/site-authorization.guard';
 import { CreateArticleUseCase } from '../application/create-article.use-case';
+import { GetArticleProductsUseCase } from '../application/get-article-products.use-case';
 import { GetArticleUseCase } from '../application/get-article.use-case';
 import { LinkArticleProductUseCase } from '../application/link-article-product.use-case';
 import { ListArticlesUseCase } from '../application/list-articles.use-case';
@@ -103,6 +104,7 @@ export class ArticlesController {
     private readonly listArticlesUseCase: ListArticlesUseCase,
     private readonly getArticleUseCase: GetArticleUseCase,
     private readonly updateArticleUseCase: UpdateArticleUseCase,
+    private readonly getArticleProductsUseCase: GetArticleProductsUseCase,
     private readonly linkArticleProductUseCase: LinkArticleProductUseCase,
     private readonly unlinkArticleProductUseCase: UnlinkArticleProductUseCase,
     private readonly reorderArticleProductsUseCase: ReorderArticleProductsUseCase,
@@ -302,6 +304,46 @@ export class ArticlesController {
     }
 
     return toArticleAdmin(result.article);
+  }
+
+  /**
+   * `GET /admin/sites/:siteSlug/articles/:id/products` (incremento ADM-009,
+   * sobre `EDT-010`) — lista os `productId`s vinculados ao Artigo, na
+   * ordem de `position`.
+   *
+   * Mesmos guards/`@MinRole('VIEWER')` de `detail()`: leitura, sem
+   * `OriginGuard`. Chama `GetArticleUseCase` primeiro só para resolver
+   * `404` (Artigo não existe ou é de outro Site) — `GetArticleProductsUseCase`
+   * não distingue isso de "sem Produtos vinculados" (ambos `[]`), mesmo
+   * critério de `detail()` reaproveitado aqui em vez de duplicado.
+   *
+   * Reaproveita `articleProductsResponseSchema` (`{ productIds }`), mesmo
+   * formato de resposta dos três endpoints de mutação de `ArticleProduct` —
+   * nenhum contrato novo.
+   */
+  @Get(':id/products')
+  @UseGuards(SessionAuthGuard, SiteAuthorizationGuard)
+  @MinRole('VIEWER')
+  async products(
+    @Param(new ZodValidationPipe(articleParamsSchema))
+    params: ArticleParams,
+    @Req() req: Request,
+  ): Promise<ArticleProductsResponse> {
+    const article = await this.getArticleUseCase.execute({
+      siteId: req.tenant!.siteId,
+      id: params.id,
+    });
+
+    if (!article) {
+      throw new NotFoundException(ARTICLE_NOT_FOUND_MESSAGE);
+    }
+
+    const productIds = await this.getArticleProductsUseCase.execute({
+      siteId: req.tenant!.siteId,
+      articleId: params.id,
+    });
+
+    return { productIds };
   }
 
   /**

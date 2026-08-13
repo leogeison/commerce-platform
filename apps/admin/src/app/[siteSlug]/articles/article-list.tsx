@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ChangeEvent } from 'react';
+import Link from 'next/link';
 import {
   articleStatusSchema,
   articleTypeSchema,
@@ -12,6 +13,7 @@ import {
 } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
+import { STATUS_LABELS, TYPE_LABELS } from '../../../lib/article-labels';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
 import styles from './article-list.module.css';
 
@@ -30,25 +32,6 @@ const GENERIC_ERROR_MESSAGE = 'Não foi possível carregar os Artigos. Tente nov
 const GENERIC_CATEGORIES_ERROR_MESSAGE = 'Não foi possível carregar as Categorias.';
 const PAGE_SIZE = 20;
 const BUSINESS_ERROR_STATUS_CODES = new Set([403, 404, 409, 422]);
-
-/**
- * Rótulos de apresentação — só copy, não fonte de verdade de valores
- * válidos (isso continua sendo `articleStatusSchema`/`articleTypeSchema`,
- * iterados diretamente para montar as opções dos filtros abaixo).
- */
-const STATUS_LABELS: Record<ArticleStatus, string> = {
-  DRAFT: 'Rascunho',
-  PENDING_REVIEW: 'Em revisão',
-  PUBLISHED: 'Publicado',
-  ARCHIVED: 'Arquivado',
-};
-
-const TYPE_LABELS: Record<ArticleType, string> = {
-  REVIEW: 'Review',
-  COMPARISON: 'Comparativo',
-  BUYING_GUIDE: 'Guia de compra',
-  DEAL: 'Promoção',
-};
 
 function resolveErrorMessage(error: unknown): string {
   if (
@@ -112,10 +95,24 @@ function categoryLabel(categoryId: string | null, categoriesState: CategoriesSta
 }
 
 /**
- * `/:siteSlug/articles` (ADM-008; Architecture.md §32) — só listagem,
+ * `articleHref` aponta para `/:siteSlug/articles/:id` — rota criada na
+ * ADM-009 (`ArticleDetail`). Até a ADM-008, as linhas eram só texto porque
+ * essa rota não existia; agora que existe, cada linha e o botão "Novo
+ * Artigo" apontam para ela, mesmo padrão de `productHref`/"Novo Produto"
+ * em `ProductList`.
+ */
+function articleHref(siteSlug: string, articleId: string): string {
+  return `/${encodeURIComponent(siteSlug)}/articles/${encodeURIComponent(articleId)}`;
+}
+
+/**
+ * `/:siteSlug/articles` (ADM-008; Architecture.md §32) — listagem,
  * paginação e os três filtros combináveis (`status`/`type`/`categoryId`,
- * `listArticlesQuerySchema`, `EDT-007`). Sem `/new`, sem `/:id`, sem link
- * de título para editor, sem botão "Novo Artigo" — isso é ADM-009+.
+ * `listArticlesQuerySchema`, `EDT-007`). Link por linha para `/:id` e
+ * botão "Novo Artigo" para `/new` acrescentados na ADM-009, quando essas
+ * rotas passaram a existir (`ArticleDetail`/`CreateArticle`). Nenhuma
+ * transição de status, `/health` ou lógica de Role aqui — isso é
+ * ADM-010/011/012.
  *
  * Busca de Artigos (`GET /articles`) e busca de Categorias (só para o
  * filtro e para resolver o nome de cada linha, via `fetchAllCategories`)
@@ -254,6 +251,7 @@ export function ArticleList({ siteSlug }: ArticleListProps) {
             )}
           </div>
         </div>
+        <Link href={`/${encodeURIComponent(siteSlug)}/articles/new`}>Novo Artigo</Link>
       </div>
 
       {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}
@@ -281,7 +279,9 @@ export function ArticleList({ siteSlug }: ArticleListProps) {
               <tbody>
                 {state.data.items.map((article) => (
                   <tr key={article.id}>
-                    <th scope="row">{article.title}</th>
+                    <th scope="row">
+                      <Link href={articleHref(siteSlug, article.id)}>{article.title}</Link>
+                    </th>
                     <td>{STATUS_LABELS[article.status]}</td>
                     <td>{TYPE_LABELS[article.type]}</td>
                     <td>{categoryLabel(article.categoryId, categoriesState)}</td>

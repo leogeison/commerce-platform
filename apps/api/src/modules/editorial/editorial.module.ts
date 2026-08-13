@@ -7,6 +7,7 @@ import { ArchiveArticleUseCase } from './application/archive-article.use-case';
 import { CreateArticleUseCase } from './application/create-article.use-case';
 import { CreateAuthorUseCase } from './application/create-author.use-case';
 import { DeleteAuthorUseCase } from './application/delete-author.use-case';
+import { GetArticleProductsUseCase } from './application/get-article-products.use-case';
 import { GetArticleUseCase } from './application/get-article.use-case';
 import { GetAuthorUseCase } from './application/get-author.use-case';
 import { GetPublicArticleUseCase } from './application/get-public-article.use-case';
@@ -82,6 +83,7 @@ import { PublicArticlesController } from './presentation/public-articles.control
     GetPublicArticleUseCase,
     GetArticleUseCase,
     UpdateArticleUseCase,
+    GetArticleProductsUseCase,
     PrismaArticleProductRepository,
     LinkArticleProductUseCase,
     UnlinkArticleProductUseCase,
