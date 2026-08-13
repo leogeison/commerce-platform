@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ArticleAdmin, ArticleStatus } from '@commerce-platform/contracts';
+import type { ArticleAdmin, ArticleStatus, Role } from '@commerce-platform/contracts';
 import { ArticleTransitionPanel } from './article-transition-panel';
+import { SiteRoleProvider } from '../../site-role-context';
 
 const SITE_SLUG = 'fastcompre';
 const ARTICLE_ID = '11111111-1111-4111-8111-111111111111';
@@ -39,6 +40,28 @@ function transitionUrl(path: string): string {
   return `/admin/sites/${SITE_SLUG}/articles/${ARTICLE_ID}/${path}`;
 }
 
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 (todos os botões previstos para o status
+ * aparecem) — os testes específicos de `VIEWER`/`EDITOR` passam a Role
+ * explicitamente.
+ */
+function renderPanel(
+  props: { status: ArticleStatus; onTransition: (article: ArticleAdmin) => void },
+  role: Role = 'OWNER',
+) {
+  return render(
+    <SiteRoleProvider value={role}>
+      <ArticleTransitionPanel
+        siteSlug={SITE_SLUG}
+        articleId={ARTICLE_ID}
+        status={props.status}
+        onTransition={props.onTransition}
+      />
+    </SiteRoleProvider>,
+  );
+}
+
 describe('ArticleTransitionPanel', () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -46,9 +69,7 @@ describe('ArticleTransitionPanel', () => {
 
   it('DRAFT: renderiza só "Enviar para revisão"', () => {
     global.fetch = jest.fn<typeof fetch>();
-    render(
-      <ArticleTransitionPanel siteSlug={SITE_SLUG} articleId={ARTICLE_ID} status="DRAFT" onTransition={jest.fn()} />,
-    );
+    renderPanel({ status: 'DRAFT', onTransition: jest.fn() });
 
     expect(screen.getByRole('button', { name: 'Enviar para revisão' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Publicar' })).not.toBeInTheDocument();
@@ -59,14 +80,7 @@ describe('ArticleTransitionPanel', () => {
 
   it('PENDING_REVIEW: renderiza "Publicar" e "Voltar para rascunho", nessa ordem', () => {
     global.fetch = jest.fn<typeof fetch>();
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="PENDING_REVIEW"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'PENDING_REVIEW', onTransition: jest.fn() });
 
     const buttons = screen.getAllByRole('button');
     expect(buttons).toHaveLength(2);
@@ -76,14 +90,7 @@ describe('ArticleTransitionPanel', () => {
 
   it('PUBLISHED: renderiza só "Arquivar"', () => {
     global.fetch = jest.fn<typeof fetch>();
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="PUBLISHED"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'PUBLISHED', onTransition: jest.fn() });
 
     expect(screen.getByRole('button', { name: 'Arquivar' })).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(1);
@@ -91,14 +98,7 @@ describe('ArticleTransitionPanel', () => {
 
   it('ARCHIVED: renderiza só "Restaurar para rascunho"', () => {
     global.fetch = jest.fn<typeof fetch>();
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="ARCHIVED"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'ARCHIVED', onTransition: jest.fn() });
 
     expect(screen.getByRole('button', { name: 'Restaurar para rascunho' })).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(1);
@@ -126,14 +126,7 @@ describe('ArticleTransitionPanel', () => {
       });
       const onTransition = jest.fn<(article: ArticleAdmin) => void>();
 
-      render(
-        <ArticleTransitionPanel
-          siteSlug={SITE_SLUG}
-          articleId={ARTICLE_ID}
-          status={status}
-          onTransition={onTransition}
-        />,
-      );
+      renderPanel({ status, onTransition });
 
       await user.click(screen.getByRole('button', { name: label }));
 
@@ -154,9 +147,7 @@ describe('ArticleTransitionPanel', () => {
         }),
     );
 
-    render(
-      <ArticleTransitionPanel siteSlug={SITE_SLUG} articleId={ARTICLE_ID} status="PUBLISHED" onTransition={jest.fn()} />,
-    );
+    renderPanel({ status: 'PUBLISHED', onTransition: jest.fn() });
 
     const button = screen.getByRole('button', { name: 'Arquivar' });
     await user.click(button);
@@ -178,14 +169,7 @@ describe('ArticleTransitionPanel', () => {
         }),
     );
 
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="PENDING_REVIEW"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'PENDING_REVIEW', onTransition: jest.fn() });
 
     const publishButton = screen.getByRole('button', { name: 'Publicar' });
     await user.click(publishButton);
@@ -208,14 +192,7 @@ describe('ArticleTransitionPanel', () => {
     );
     const onTransition = jest.fn();
 
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="PUBLISHED"
-        onTransition={onTransition}
-      />,
-    );
+    renderPanel({ status: 'PUBLISHED', onTransition });
 
     await user.click(screen.getByRole('button', { name: 'Arquivar' }));
 
@@ -229,14 +206,7 @@ describe('ArticleTransitionPanel', () => {
       jsonResponse(404, { statusCode: 404, code: 'NOT_FOUND', error: 'Not Found', message: 'Artigo não encontrado.' }),
     );
 
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="ARCHIVED"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'ARCHIVED', onTransition: jest.fn() });
 
     await user.click(screen.getByRole('button', { name: 'Restaurar para rascunho' }));
 
@@ -255,14 +225,7 @@ describe('ArticleTransitionPanel', () => {
       }),
     );
 
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="PENDING_REVIEW"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'PENDING_REVIEW', onTransition: jest.fn() });
 
     await user.click(screen.getByRole('button', { name: 'Publicar' }));
 
@@ -277,19 +240,51 @@ describe('ArticleTransitionPanel', () => {
     const user = userEvent.setup();
     global.fetch = jest.fn<typeof fetch>(async () => jsonResponse(500, { unexpected: 'shape' }));
 
-    render(
-      <ArticleTransitionPanel
-        siteSlug={SITE_SLUG}
-        articleId={ARTICLE_ID}
-        status="PUBLISHED"
-        onTransition={jest.fn()}
-      />,
-    );
+    renderPanel({ status: 'PUBLISHED', onTransition: jest.fn() });
 
     await user.click(screen.getByRole('button', { name: 'Arquivar' }));
 
     expect(
       await screen.findByText('Não foi possível concluir a ação. Tente novamente em instantes.'),
     ).toBeInTheDocument();
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('EDITOR em PENDING_REVIEW: vê "Publicar" e "Voltar para rascunho" (ambos EDITOR)', () => {
+    global.fetch = jest.fn<typeof fetch>();
+    renderPanel({ status: 'PENDING_REVIEW', onTransition: jest.fn() }, 'EDITOR');
+
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
+  });
+
+  it('EDITOR em PUBLISHED: não vê nenhum botão (archive exige OWNER) — retorna null, sem seção vazia', () => {
+    global.fetch = jest.fn<typeof fetch>();
+    const { container } = renderPanel({ status: 'PUBLISHED', onTransition: jest.fn() }, 'EDITOR');
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('EDITOR em ARCHIVED: não vê nenhum botão (restore-to-draft exige OWNER)', () => {
+    global.fetch = jest.fn<typeof fetch>();
+    renderPanel({ status: 'ARCHIVED', onTransition: jest.fn() }, 'EDITOR');
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('OWNER: vê todos os botões previstos para o status, em qualquer status (mesmo comportamento de antes da ADM-012)', () => {
+    global.fetch = jest.fn<typeof fetch>();
+    renderPanel({ status: 'PUBLISHED', onTransition: jest.fn() }, 'OWNER');
+
+    expect(screen.getByRole('button', { name: 'Arquivar' })).toBeInTheDocument();
+  });
+
+  it('VIEWER: não vê nenhum botão em nenhum status', () => {
+    global.fetch = jest.fn<typeof fetch>();
+    renderPanel({ status: 'DRAFT', onTransition: jest.fn() }, 'VIEWER');
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

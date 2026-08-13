@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import type { Role } from '@commerce-platform/contracts';
 import { ProductDetail } from './product-detail';
+import { SiteRoleProvider } from '../../site-role-context';
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -15,10 +17,17 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
   prefetch: jest.fn(),
 };
 
-function renderDetail() {
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 — os testes específicos de `VIEWER`/`EDITOR`
+ * passam a Role explicitamente.
+ */
+function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <ProductDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+      <SiteRoleProvider value={role}>
+        <ProductDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+      </SiteRoleProvider>
     </AppRouterContext.Provider>,
   );
 }
@@ -217,5 +226,28 @@ describe('ProductDetail', () => {
       await screen.findByText('Este Produto possui Ofertas vinculadas e não pode ser excluído.'),
     ).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('EDITOR: mostra o ProductForm, sem nenhum botão de ciclo de vida', async () => {
+    global.fetch = mockFetch({});
+    renderDetail('EDITOR');
+
+    expect(await screen.findByLabelText('Nome')).toHaveValue('Fone Bluetooth');
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Arquivar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
+  });
+
+  it('VIEWER: mostra ProductReadOnly, sem ProductForm nem botões de ciclo de vida', async () => {
+    global.fetch = mockFetch({});
+    renderDetail('VIEWER');
+
+    expect(await screen.findByRole('heading', { name: 'Fone Bluetooth' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Salvar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Arquivar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
   });
 });

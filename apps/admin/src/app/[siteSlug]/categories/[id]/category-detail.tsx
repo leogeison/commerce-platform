@@ -6,7 +6,10 @@ import { z } from 'zod';
 import { categoryAdminSchema, type CategoryAdmin, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { useSiteRole } from '../../site-role-context';
 import { CategoryForm } from '../category-form';
+import { CategoryReadOnly } from './category-read-only';
 import styles from './category-detail.module.css';
 
 interface CategoryDetailProps {
@@ -49,14 +52,18 @@ function categoryPath(siteSlug: string, id: string): string {
  * (via `CategoryForm` compartilhado), arquivar/desarquivar e exclusão.
  * Nenhuma rota de detalhe separada (não existe no mapa de páginas, §32).
  *
- * Nenhuma visibilidade condicional por Role: os três botões de ciclo de
- * vida ficam sempre visíveis (decisão explícita — ADM-012 é quem filtra
- * isso depois, em todas as telas de uma vez). A API continua sendo a
- * autoridade real; uma tentativa sem Role suficiente volta como `403`,
- * tratado pelo mesmo caminho genérico de erro.
+ * Visibilidade por Role (ADM-012): `VIEWER` vê `CategoryReadOnly` — nunca
+ * `CategoryForm` (Architecture.md §32: "`VIEWER` abre detalhe em modo
+ * somente leitura"; mesmo princípio de composição explícita já usado em
+ * `ArticleReadOnly`, não o mesmo form desabilitado). `EDITOR`/`OWNER` veem
+ * `CategoryForm`; só `OWNER` vê os botões Arquivar/Desarquivar/Excluir.
+ * Esconder isso é puramente UX — a API continua sendo a autoridade real;
+ * uma tentativa sem Role suficiente (forçada por fora da UI) volta como
+ * `403`, tratado pelo mesmo caminho genérico de erro.
  */
 export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
   const router = useRouter();
+  const role = useSiteRole();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessingLifecycle, setIsProcessingLifecycle] = useState(false);
@@ -141,6 +148,10 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
 
   const { category } = state;
 
+  if (!roleMeetsMinimum(role, 'EDITOR')) {
+    return <CategoryReadOnly category={category} />;
+  }
+
   return (
     <div className={styles.detail}>
       <CategoryForm
@@ -149,20 +160,22 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
         onSubmit={handleUpdate}
       />
 
-      <div className={styles.actions}>
-        {category.archivedAt ? (
-          <button type="button" onClick={() => handleArchiveToggle('unarchive')} disabled={isProcessingLifecycle}>
-            Desarquivar
+      {roleMeetsMinimum(role, 'OWNER') && (
+        <div className={styles.actions}>
+          {category.archivedAt ? (
+            <button type="button" onClick={() => handleArchiveToggle('unarchive')} disabled={isProcessingLifecycle}>
+              Desarquivar
+            </button>
+          ) : (
+            <button type="button" onClick={() => handleArchiveToggle('archive')} disabled={isProcessingLifecycle}>
+              Arquivar
+            </button>
+          )}
+          <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
+            Excluir
           </button>
-        ) : (
-          <button type="button" onClick={() => handleArchiveToggle('archive')} disabled={isProcessingLifecycle}>
-            Arquivar
-          </button>
-        )}
-        <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
-          Excluir
-        </button>
-      </div>
+        </div>
+      )}
 
       {actionError && (
         <p role="alert" className={styles.status}>

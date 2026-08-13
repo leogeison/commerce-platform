@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { articleAdminSchema, type ArticleAdmin, type ArticleStatus } from '@commerce-platform/contracts';
+import { articleAdminSchema, type ArticleAdmin, type ArticleStatus, type Role } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { useSiteRole } from '../../site-role-context';
 import styles from './article-transition-panel.module.css';
 
 interface ArticleTransitionPanelProps {
@@ -45,6 +47,25 @@ const ACTIONS_BY_STATUS: Record<ArticleStatus, TransitionAction[]> = {
   ARCHIVED: [{ key: 'restore-to-draft', label: 'Restaurar para rascunho', pendingLabel: 'Restaurando...' }],
 };
 
+/**
+ * Role mínima por transição (ADM-012; Architecture.md §16 — mesma Role já
+ * exigida pelo backend em cada endpoint, `@MinRole` de
+ * `articles.controller.ts`/`publish-article.controller.ts`/
+ * `archive-article.controller.ts`): `submit-for-review`/`revert-to-draft`/
+ * `publish` são fluxo normal de edição (`EDITOR`); `archive`/
+ * `restore-to-draft` saem de/para `ARCHIVED`, mesma Role de arquivar/
+ * desarquivar em Categoria/Produto/Oferta (`OWNER`). Mapa separado de
+ * `ACTIONS_BY_STATUS` de propósito — este só sabe "quem pode", nunca "o
+ * que existe para este status" (isso continua sendo só `ACTIONS_BY_STATUS`).
+ */
+const MIN_ROLE_BY_TRANSITION: Record<TransitionKey, Role> = {
+  'submit-for-review': 'EDITOR',
+  'revert-to-draft': 'EDITOR',
+  publish: 'EDITOR',
+  archive: 'OWNER',
+  'restore-to-draft': 'OWNER',
+};
+
 function transitionPath(siteSlug: string, articleId: string, key: TransitionKey): string {
   return `/admin/sites/${encodeURIComponent(siteSlug)}/articles/${encodeURIComponent(articleId)}/${key}`;
 }
@@ -74,11 +95,15 @@ function resolveActionErrorMessage(error: unknown): string {
  * apresentação granular das pendências é escopo da ADM-011 (`/health`,
  * contrato já tipado), não deste painel.
  *
- * Sem leitura de Role do usuário atual (ADM-012, fora de escopo): todos os
- * botões previstos para o status aparecem sempre; um clique sem Role
- * suficiente recebe `403` da própria API, tratado pelo mesmo mecanismo
- * genérico de erro abaixo — nada é escondido antecipadamente na UI
- * (Architecture.md §16: "esconder ações não autorizadas é apenas UX").
+ * Visibilidade por Role (ADM-012): `MIN_ROLE_BY_TRANSITION` cruza a lista
+ * de `ACTIONS_BY_STATUS` do status atual com a Role do usuário
+ * (`useSiteRole()`) — só os botões que a Role atual autoriza aparecem. Se
+ * nenhuma ação do status sobrar depois do filtro (ex.: `EDITOR` em
+ * `PUBLISHED`/`ARCHIVED`, cujas transições exigem `OWNER`), o componente
+ * devolve `null` — nunca uma seção vazia. Esconder continua sendo só UX
+ * (Architecture.md §16): um clique forçado por fora da UI ainda recebe
+ * `403` da própria API, tratado pelo mesmo mecanismo genérico de erro
+ * abaixo.
  *
  * `pendingAction` desabilita TODOS os botões enquanto qualquer requisição
  * está em voo (mesmo critério de `isProcessing` em `ArticleProductsSection`)
@@ -87,6 +112,7 @@ function resolveActionErrorMessage(error: unknown): string {
  * início do handler enquanto `pendingAction` não for `null`.
  */
 export function ArticleTransitionPanel({ siteSlug, articleId, status, onTransition }: ArticleTransitionPanelProps) {
+  const role = useSiteRole();
   const [pendingAction, setPendingAction] = useState<TransitionKey | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -108,7 +134,11 @@ export function ArticleTransitionPanel({ siteSlug, articleId, status, onTransiti
     }
   }
 
-  const actions = ACTIONS_BY_STATUS[status];
+  const actions = ACTIONS_BY_STATUS[status].filter((action) => roleMeetsMinimum(role, MIN_ROLE_BY_TRANSITION[action.key]));
+
+  if (actions.length === 0) {
+    return null;
+  }
 
   return (
     <div className={styles.panel}>

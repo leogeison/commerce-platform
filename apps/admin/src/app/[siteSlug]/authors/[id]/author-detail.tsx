@@ -6,7 +6,10 @@ import { z } from 'zod';
 import { authorAdminSchema, type AuthorAdmin, type UpdateAuthorRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { useSiteRole } from '../../site-role-context';
 import { AuthorForm, type AuthorFormValues } from '../author-form';
+import { AuthorReadOnly } from './author-read-only';
 import styles from './author-detail.module.css';
 
 interface AuthorDetailProps {
@@ -52,12 +55,14 @@ function authorPath(siteSlug: string, id: string): string {
  * `userId` ausente como "não alterar", nunca como "desvincular" (só um
  * `userId: null` explícito faria isso, e este código nunca produz isso).
  *
- * Nenhuma visibilidade condicional por Role: o botão de exclusão fica
- * sempre visível (ADM-012 é quem filtra isso depois, em todas as telas de
- * uma vez). A API continua sendo a autoridade real.
+ * Visibilidade por Role (ADM-012): `VIEWER` vê `AuthorReadOnly` — nunca
+ * `AuthorForm` (mesmo princípio de `CategoryDetail`/`ProductDetail`).
+ * `EDITOR`/`OWNER` veem `AuthorForm`; só `OWNER` vê o botão Excluir. A API
+ * continua sendo a autoridade real.
  */
 export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
   const router = useRouter();
+  const role = useSiteRole();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessingLifecycle, setIsProcessingLifecycle] = useState(false);
@@ -128,6 +133,10 @@ export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
 
   const { author } = state;
 
+  if (!roleMeetsMinimum(role, 'EDITOR')) {
+    return <AuthorReadOnly author={author} />;
+  }
+
   return (
     <div className={styles.detail}>
       <AuthorForm
@@ -137,11 +146,13 @@ export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
         onSubmit={handleUpdate}
       />
 
-      <div className={styles.actions}>
-        <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
-          Excluir
-        </button>
-      </div>
+      {roleMeetsMinimum(role, 'OWNER') && (
+        <div className={styles.actions}>
+          <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
+            Excluir
+          </button>
+        </div>
+      )}
 
       {actionError && (
         <p role="alert" className={styles.status}>

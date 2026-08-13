@@ -15,6 +15,8 @@ import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { STATUS_LABELS, TYPE_LABELS } from '../../../lib/article-labels';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
+import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
+import { useSiteRole } from '../site-role-context';
 import styles from './article-list.module.css';
 
 interface ArticleListProps {
@@ -111,8 +113,11 @@ function articleHref(siteSlug: string, articleId: string): string {
  * `listArticlesQuerySchema`, `EDT-007`). Link por linha para `/:id` e
  * botão "Novo Artigo" para `/new` acrescentados na ADM-009, quando essas
  * rotas passaram a existir (`ArticleDetail`/`CreateArticle`). Nenhuma
- * transição de status, `/health` ou lógica de Role aqui — isso é
- * ADM-010/011/012.
+ * transição de status nem `/health` aqui — isso é ADM-010/011.
+ *
+ * "Novo Artigo" só aparece para `EDITOR+` (ADM-012) — criar exige `EDITOR`
+ * no backend (`@MinRole('EDITOR')` em `POST /articles`); esconder o link
+ * para `VIEWER` é só UX, a API continua sendo a autoridade real.
  *
  * Busca de Artigos (`GET /articles`) e busca de Categorias (só para o
  * filtro e para resolver o nome de cada linha, via `fetchAllCategories`)
@@ -129,6 +134,7 @@ function articleHref(siteSlug: string, articleId: string): string {
  * é só o marcador HTML certo para o formato do dado desta tela.
  */
 export function ArticleList({ siteSlug }: ArticleListProps) {
+  const role = useSiteRole();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<ArticleStatus | ''>('');
   const [type, setType] = useState<ArticleType | ''>('');
@@ -251,7 +257,9 @@ export function ArticleList({ siteSlug }: ArticleListProps) {
             )}
           </div>
         </div>
-        <Link href={`/${encodeURIComponent(siteSlug)}/articles/new`}>Novo Artigo</Link>
+        {roleMeetsMinimum(role, 'EDITOR') && (
+          <Link href={`/${encodeURIComponent(siteSlug)}/articles/new`}>Novo Artigo</Link>
+        )}
       </div>
 
       {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}

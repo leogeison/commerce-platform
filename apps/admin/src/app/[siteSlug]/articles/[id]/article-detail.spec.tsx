@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import type { Role } from '@commerce-platform/contracts';
 import { ArticleDetail } from './article-detail';
+import { SiteRoleProvider } from '../../site-role-context';
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -15,10 +17,18 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
   prefetch: jest.fn(),
 };
 
-function renderDetail() {
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 (composição editável em DRAFT, os 5 botões
+ * de transição por status) — os testes específicos de `VIEWER`/`EDITOR`
+ * passam a Role explicitamente.
+ */
+function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <ArticleDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+      <SiteRoleProvider value={role}>
+        <ArticleDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+      </SiteRoleProvider>
     </AppRouterContext.Provider>,
   );
 }
@@ -468,5 +478,53 @@ describe('ArticleDetail', () => {
 
     expect(await screen.findByText('Publicado')).toBeInTheDocument();
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
+  });
+
+  // --- ADM-012: composição por Role × status ---
+
+  it('VIEWER em DRAFT: composição read-only (ArticleReadOnly/ArticleProductsReadOnly), nunca ArticleForm/ArticleProductsSection', async () => {
+    mockFetch({ article: () => jsonResponse(200, draftArticle) });
+    renderDetail('VIEWER');
+
+    expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
+    expect(screen.getByText('Rascunho')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
+    expect(screen.queryByText('Adicionar Produto')).not.toBeInTheDocument();
+    expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
+  });
+
+  it('VIEWER em DRAFT: ArticleTransitionPanel não mostra nenhum botão (submit-for-review exige EDITOR)', async () => {
+    mockFetch({ article: () => jsonResponse(200, draftArticle) });
+    renderDetail('VIEWER');
+
+    await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' });
+    expect(screen.queryByRole('button', { name: 'Enviar para revisão' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('EDITOR em DRAFT: composição editável, igual ao comportamento já existente (Role suficiente)', async () => {
+    mockFetch({ article: () => jsonResponse(200, draftArticle) });
+    renderDetail('EDITOR');
+
+    expect(await screen.findByLabelText('Título')).toHaveValue('Melhor fone Bluetooth');
+    expect(screen.getByRole('button', { name: 'Enviar para revisão' })).toBeInTheDocument();
+  });
+
+  it('EDITOR em PENDING_REVIEW: composição read-only (status manda), mas TransitionPanel mostra as ações que EDITOR autoriza', async () => {
+    mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
+    renderDetail('EDITOR');
+
+    expect(await screen.findByText('Em revisão')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
+  });
+
+  it('VIEWER em PENDING_REVIEW: composição read-only, TransitionPanel sem nenhum botão', async () => {
+    mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
+    renderDetail('VIEWER');
+
+    expect(await screen.findByText('Em revisão')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Role } from '@commerce-platform/contracts';
 import { ProductList } from './product-list';
+import { SiteRoleProvider } from '../site-role-context';
+
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 — o teste específico de `VIEWER` passa a
+ * Role explicitamente.
+ */
+function renderList(role: Role = 'OWNER') {
+  return render(
+    <SiteRoleProvider value={role}>
+      <ProductList siteSlug="fastcompre" />
+    </SiteRoleProvider>,
+  );
+}
 
 function makeProduct(overrides: Partial<{ id: string; name: string; archivedAt: string | null }> = {}) {
   return {
@@ -69,14 +84,14 @@ describe('ProductList', () => {
   it('estado inicial: mostra "Carregando..."', () => {
     mockFetch(() => new Response());
     global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
 
     expect(screen.getByText('Carregando...')).toBeInTheDocument();
   });
 
   it('erro genérico: mostra mensagem', async () => {
     mockFetch(() => jsonResponse(500, { unexpected: 'shape' }));
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
 
     expect(
       await screen.findByText('Não foi possível carregar os Produtos. Tente novamente em instantes.'),
@@ -85,7 +100,7 @@ describe('ProductList', () => {
 
   it('lista vazia: mostra mensagem acessível, sem "Página X de Y"', async () => {
     mockFetch(() => jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Nenhum Produto encontrado.')).toBeInTheDocument();
     expect(screen.queryByText(/Página/)).not.toBeInTheDocument();
@@ -104,7 +119,7 @@ describe('ProductList', () => {
         totalPages: 1,
       }),
     );
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
 
     const link = await screen.findByRole('link', { name: 'Fone Bluetooth' });
     expect(link).toHaveAttribute('href', '/fastcompre/products/11111111-1111-4111-8111-111111111111');
@@ -113,7 +128,7 @@ describe('ProductList', () => {
 
   it('link "Novo Produto" aponta para /:siteSlug/products/new', async () => {
     mockFetch(() => jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByRole('link', { name: 'Novo Produto' })).toHaveAttribute(
       'href',
@@ -139,7 +154,7 @@ describe('ProductList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Página 1 de 2')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Próxima' }));
@@ -158,7 +173,7 @@ describe('ProductList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhum Produto encontrado.');
 
     await user.selectOptions(screen.getByLabelText('Status'), 'Arquivadas');
@@ -188,7 +203,7 @@ describe('ProductList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ProductList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhum Produto encontrado.');
 
     expect(await screen.findByRole('option', { name: 'Descontinuados (arquivada)' })).toBeInTheDocument();
@@ -201,5 +216,15 @@ describe('ProductList', () => {
       expect(lastUrl.searchParams.get('categoryId')).toBe(ARCHIVED_CATEGORY.id);
       expect(lastUrl.searchParams.get('page')).toBe('1');
     });
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('VIEWER: sem o link "Novo Produto"', async () => {
+    mockFetch(() => jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
+    renderList('VIEWER');
+
+    await screen.findByText('Nenhum Produto encontrado.');
+    expect(screen.queryByRole('link', { name: 'Novo Produto' })).not.toBeInTheDocument();
   });
 });

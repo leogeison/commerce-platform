@@ -6,8 +6,11 @@ import { z } from 'zod';
 import { productDetailAdminSchema, type ProductDetailAdmin, type UpdateProductRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { useSiteRole } from '../../site-role-context';
 import { ProductForm, type ProductFormValues } from '../product-form';
 import { OfferSection } from './offer-section';
+import { ProductReadOnly } from './product-read-only';
 import styles from './product-detail.module.css';
 
 interface ProductDetailProps {
@@ -46,12 +49,16 @@ function productPath(siteSlug: string, id: string): string {
  * embutida (`OfferSection`). Nenhuma rota de detalhe separada, nenhuma
  * rota própria de Oferta — não existem no mapa de páginas (§32).
  *
- * Nenhuma visibilidade condicional por Role: os controles de ciclo de
- * vida ficam sempre visíveis (ADM-012 filtra isso depois, em todas as
- * telas de uma vez). A API continua sendo a autoridade real.
+ * Visibilidade por Role (ADM-012): `VIEWER` vê `ProductReadOnly` — nunca
+ * `ProductForm` (mesmo princípio de `CategoryDetail`/`ArticleReadOnly`).
+ * `EDITOR`/`OWNER` veem `ProductForm`; só `OWNER` vê os botões Arquivar/
+ * Desarquivar/Excluir. `OfferSection` continua renderizado nas duas
+ * composições — ela trata sua própria visibilidade por Role internamente.
+ * A API continua sendo a autoridade real.
  */
 export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
   const router = useRouter();
+  const role = useSiteRole();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessingLifecycle, setIsProcessingLifecycle] = useState(false);
@@ -142,6 +149,15 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
 
   const { product } = state;
 
+  if (!roleMeetsMinimum(role, 'EDITOR')) {
+    return (
+      <div className={styles.detail}>
+        <ProductReadOnly siteSlug={siteSlug} product={product} />
+        <OfferSection siteSlug={siteSlug} productId={id} />
+      </div>
+    );
+  }
+
   return (
     <div className={styles.detail}>
       <ProductForm
@@ -157,20 +173,22 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
         onSubmit={handleUpdate}
       />
 
-      <div className={styles.actions}>
-        {product.archivedAt ? (
-          <button type="button" onClick={() => handleArchiveToggle('unarchive')} disabled={isProcessingLifecycle}>
-            Desarquivar
+      {roleMeetsMinimum(role, 'OWNER') && (
+        <div className={styles.actions}>
+          {product.archivedAt ? (
+            <button type="button" onClick={() => handleArchiveToggle('unarchive')} disabled={isProcessingLifecycle}>
+              Desarquivar
+            </button>
+          ) : (
+            <button type="button" onClick={() => handleArchiveToggle('archive')} disabled={isProcessingLifecycle}>
+              Arquivar
+            </button>
+          )}
+          <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
+            Excluir
           </button>
-        ) : (
-          <button type="button" onClick={() => handleArchiveToggle('archive')} disabled={isProcessingLifecycle}>
-            Arquivar
-          </button>
-        )}
-        <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
-          Excluir
-        </button>
-      </div>
+        </div>
+      )}
 
       {actionError && (
         <p role="alert" className={styles.status}>

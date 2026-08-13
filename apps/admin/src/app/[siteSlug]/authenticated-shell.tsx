@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { meResponseSchema, type MeResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
+import { SiteRoleProvider } from './site-role-context';
 import styles from './authenticated-shell.module.css';
 
 interface AuthenticatedShellProps {
@@ -44,6 +45,16 @@ const NAV_ITEMS = [
  * Validação de `siteSlug` contra `sites[]` é só UX (`router.replace('/')`
  * quando não bate) — nunca substitui `SiteAuthorizationGuard` na API, única
  * autoridade real (Architecture.md §16).
+ *
+ * `SiteRoleProvider` (ADM-012) envolve só `children` — `currentSite.role` é
+ * recalculado a cada render a partir do mesmo `sites[]` já em `state`, sem
+ * novo fetch. Como `sites[]` é a lista de vínculos do usuário inteira (não
+ * filtrada por Site), ela já contém a Role do próximo `siteSlug` mesmo
+ * antes de qualquer nova chamada a `/admin/auth/me` terminar — trocar de
+ * Site no seletor atualiza a Role no mesmo render em que `siteSlug` muda.
+ * `children` só é alcançável depois de `state.status === 'ready'`, então
+ * `useSiteRole()` nunca é chamado fora do Provider por um descendente real
+ * desta árvore.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
@@ -115,6 +126,10 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
   }
 
   const { sites } = state.data;
+  // Garantido pelo próprio efeito acima: se `siteSlug` não estivesse em
+  // `sites`, já teria disparado `router.replace('/')` antes de chegar a
+  // `status: 'ready'`.
+  const currentSite = sites.find((site) => site.siteSlug === siteSlug)!;
 
   return (
     <div className={styles.shell}>
@@ -160,7 +175,9 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
         </div>
       </header>
 
-      <main className={styles.content}>{children}</main>
+      <main className={styles.content}>
+        <SiteRoleProvider value={currentSite.role}>{children}</SiteRoleProvider>
+      </main>
     </div>
   );
 }

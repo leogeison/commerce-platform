@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { articleAdminSchema, type ArticleAdmin, type UpdateArticleRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { useSiteRole } from '../../site-role-context';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
 import { ArticleHealthChecklist } from './article-health-checklist';
 import { ArticleProductsReadOnly } from './article-products-read-only';
@@ -54,14 +56,31 @@ function articlePath(siteSlug: string, id: string): string {
  * leitura) + `ArticleProductsReadOnly` (Produtos vinculados, sem mutação) +
  * `ArticleTransitionPanel` (ações válidas para o status atual) —
  * composição inteiramente diferente da de `DRAFT`, nunca o mesmo
- * formulário desabilitado (Architecture.md §32). Nenhum `/health`,
- * nenhuma leitura de Role do usuário atual aqui — isso é ADM-011/ADM-012.
+ * formulário desabilitado (Architecture.md §32).
  *
  * `DRAFT` ganha, além do já existente, `ArticleTransitionPanel` só com a
  * ação externa "Enviar para revisão" — orquestrada por este componente via
  * `handleTransition`, nunca pelo próprio `ArticleForm` (que continua
  * responsável só pelos campos editáveis/salvamento, sem conhecer a máquina
  * de estados).
+ *
+ * Composição por Role × status (ADM-012) — as duas responsabilidades
+ * ficam deliberadamente separadas, nunca fundidas numa regra nova:
+ * `status` continua sendo o único dono da máquina de estados (só
+ * `ArticleTransitionPanel`/`ACTIONS_BY_STATUS` sabem quais transições
+ * existem para cada status — nada disso muda aqui); `canEdit` (Role atual
+ * `>= EDITOR`) só decide se a composição atual é editável ou não. As duas
+ * condições são combinadas por `||` porque convergem na MESMA UI já
+ * aprovada na ADM-010: um `VIEWER` abrindo um Artigo em `DRAFT` também cai
+ * na composição read-only (Architecture.md §32: "`VIEWER` abre detalhe em
+ * modo somente leitura") — não é uma composição nova, é o motivo "Role
+ * insuficiente" reaproveitando a mesma UI que já existe para o motivo
+ * "status não é DRAFT". Nem `ArticleForm` nem `ArticleProductsSection`
+ * mudam: continuam só renderizados quando `isDraft && canEdit`.
+ * `ArticleTransitionPanel` é montado nas duas composições e decide sozinho
+ * (via `useSiteRole()` + `MIN_ROLE_BY_TRANSITION`) quais botões aparecem —
+ * nunca `null` por causa de Role aqui, só por causa de `status`
+ * (`ACTIONS_BY_STATUS`).
  *
  * `handleTransition` é o único callback usado pelas 5 transições
  * possíveis: recebe o `ArticleAdmin` já retornado pela própria API e
@@ -87,6 +106,7 @@ function articlePath(siteSlug: string, id: string): string {
  * `/health` — só comunicam sucesso a este orquestrador.
  */
 export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
+  const role = useSiteRole();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [healthRevision, setHealthRevision] = useState(0);
 
@@ -151,8 +171,10 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   }
 
   const { article } = state;
+  const isDraft = article.status === 'DRAFT'; // motivo: máquina de estados
+  const canEdit = roleMeetsMinimum(role, 'EDITOR'); // motivo: Role insuficiente
 
-  if (article.status !== 'DRAFT') {
+  if (!isDraft || !canEdit) {
     return (
       <div className={styles.readOnly}>
         <ArticleReadOnly siteSlug={siteSlug} article={article} />

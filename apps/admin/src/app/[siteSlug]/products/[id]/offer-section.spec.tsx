@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Role } from '@commerce-platform/contracts';
 import { OfferSection } from './offer-section';
+import { SiteRoleProvider } from '../../site-role-context';
+
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 (todos os controles visíveis) — os testes
+ * específicos de `VIEWER`/`EDITOR` passam a Role explicitamente.
+ */
+function renderSection(role: Role = 'OWNER') {
+  return render(
+    <SiteRoleProvider value={role}>
+      <OfferSection siteSlug="fastcompre" productId="prod-1" />
+    </SiteRoleProvider>,
+  );
+}
 
 function makeOffer(overrides: Partial<{ id: string; price: string; inStock: boolean; archivedAt: string | null }> = {}) {
   return {
@@ -38,14 +53,14 @@ describe('OfferSection', () => {
 
   it('estado inicial: mostra "Carregando..."', () => {
     global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
 
     expect(screen.getByText('Carregando...')).toBeInTheDocument();
   });
 
   it('erro genérico ao carregar: mostra mensagem', async () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(500, { unexpected: 'shape' }));
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
 
     expect(
       await screen.findByText('Não foi possível carregar as Ofertas. Tente novamente em instantes.'),
@@ -56,7 +71,7 @@ describe('OfferSection', () => {
     global.fetch = jest
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
 
     expect(await screen.findByText('Nenhuma Oferta cadastrada.')).toBeInTheDocument();
   });
@@ -71,7 +86,7 @@ describe('OfferSection', () => {
         totalPages: 1,
       }),
     );
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
 
     expect(
       await screen.findByText('MERCADO_LIVRE — 150.00 BRL (sem estoque) (arquivada)'),
@@ -90,7 +105,7 @@ describe('OfferSection', () => {
     });
     global.fetch = fetchMock;
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
     await screen.findByText('Nenhuma Oferta cadastrada.');
 
     await user.click(screen.getByRole('button', { name: 'Nova Oferta' }));
@@ -114,7 +129,7 @@ describe('OfferSection', () => {
     });
     global.fetch = fetchMock;
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
     await screen.findByText('MERCADO_LIVRE — 99.90 BRL');
 
     await user.click(screen.getByRole('button', { name: 'Editar' }));
@@ -136,7 +151,7 @@ describe('OfferSection', () => {
       return jsonResponse(200, { items: [makeOffer()], page: 1, pageSize: 20, total: 1, totalPages: 1 });
     });
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
     await user.click(await screen.findByRole('button', { name: 'Arquivar' }));
 
     expect(await screen.findByRole('button', { name: 'Desarquivar' })).toBeInTheDocument();
@@ -151,7 +166,7 @@ describe('OfferSection', () => {
       return jsonResponse(200, { items: [makeOffer()], page: 1, pageSize: 20, total: 1, totalPages: 1 });
     });
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
     await user.click(await screen.findByRole('button', { name: 'Arquivar' }));
 
     expect(
@@ -178,7 +193,7 @@ describe('OfferSection', () => {
       });
     });
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
     await user.click(await screen.findByRole('button', { name: 'Excluir' }));
 
     expect(await screen.findByText('Nenhuma Oferta cadastrada.')).toBeInTheDocument();
@@ -193,7 +208,7 @@ describe('OfferSection', () => {
       .mockResolvedValue(jsonResponse(200, { items: [makeOffer()], page: 1, pageSize: 20, total: 1, totalPages: 1 }));
     global.fetch = fetchMock;
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
     await user.click(await screen.findByRole('button', { name: 'Excluir' }));
 
     expect(fetchMock).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: 'DELETE' }));
@@ -231,7 +246,7 @@ describe('OfferSection', () => {
     });
     global.fetch = fetchMock;
 
-    render(<OfferSection siteSlug="fastcompre" productId="prod-1" />);
+    renderSection();
 
     await waitFor(() => expect(screen.getByText('Página 1 de 2')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'Próxima' }));
@@ -243,5 +258,42 @@ describe('OfferSection', () => {
     const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
     const lastUrl = new URL(String(lastCall[0]));
     expect(lastUrl.searchParams.get('page')).toBe('1');
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('VIEWER: sem "Nova Oferta", sem "Editar", sem "Arquivar"/"Excluir" — só a linha de texto', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, { items: [makeOffer()], page: 1, pageSize: 20, total: 1, totalPages: 1 }),
+    );
+    renderSection('VIEWER');
+
+    expect(await screen.findByText('MERCADO_LIVRE — 99.90 BRL')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nova Oferta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Arquivar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
+  });
+
+  it('EDITOR: mostra "Nova Oferta" e "Editar", sem "Arquivar"/"Desarquivar"/"Excluir"', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, { items: [makeOffer()], page: 1, pageSize: 20, total: 1, totalPages: 1 }),
+    );
+    renderSection('EDITOR');
+
+    expect(await screen.findByRole('button', { name: 'Nova Oferta' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Arquivar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
+  });
+
+  it('VIEWER: estruturalmente nunca monta o OfferForm (sem gatilho de criar/editar disponível)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, { items: [makeOffer()], page: 1, pageSize: 20, total: 1, totalPages: 1 }),
+    );
+    renderSection('VIEWER');
+
+    await screen.findByText('MERCADO_LIVRE — 99.90 BRL');
+    expect(screen.queryByLabelText('Preço')).not.toBeInTheDocument();
   });
 });

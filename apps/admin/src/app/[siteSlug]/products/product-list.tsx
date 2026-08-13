@@ -6,6 +6,8 @@ import { listProductsResponseSchema, type CategoryAdmin, type ListProductsRespon
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
+import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
+import { useSiteRole } from '../site-role-context';
 import styles from './product-list.module.css';
 
 interface ProductListProps {
@@ -69,6 +71,7 @@ function productHref(siteSlug: string, productId: string): string {
  * vínculo novo a evitar.
  */
 export function ProductList({ siteSlug }: ProductListProps) {
+  const role = useSiteRole();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<ArchivedFilter>('all');
   const [categoryId, setCategoryId] = useState('');
@@ -164,7 +167,9 @@ export function ProductList({ siteSlug }: ProductListProps) {
             </select>
           </div>
         </div>
-        <Link href={`/${encodeURIComponent(siteSlug)}/products/new`}>Novo Produto</Link>
+        {roleMeetsMinimum(role, 'EDITOR') && (
+          <Link href={`/${encodeURIComponent(siteSlug)}/products/new`}>Novo Produto</Link>
+        )}
       </div>
 
       {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}

@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Role } from '@commerce-platform/contracts';
 import { ArticleList } from './article-list';
+import { SiteRoleProvider } from '../site-role-context';
+
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 — o teste específico de `VIEWER` passa a
+ * Role explicitamente.
+ */
+function renderList(role: Role = 'OWNER') {
+  return render(
+    <SiteRoleProvider value={role}>
+      <ArticleList siteSlug="fastcompre" />
+    </SiteRoleProvider>,
+  );
+}
 
 function makeArticle(
   overrides: Partial<{
@@ -90,14 +105,14 @@ describe('ArticleList', () => {
 
   it('estado inicial: mostra "Carregando..."', () => {
     global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     expect(screen.getByText('Carregando...')).toBeInTheDocument();
   });
 
   it('erro genérico ao carregar Artigos: mostra mensagem principal e não renderiza itens', async () => {
     mockFetch({ articles: () => jsonResponse(500, { unexpected: 'shape' }) });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     expect(
       await screen.findByText('Não foi possível carregar os Artigos. Tente novamente em instantes.'),
@@ -107,7 +122,7 @@ describe('ArticleList', () => {
 
   it('lista vazia: mostra mensagem acessível, sem "Página X de Y"', async () => {
     mockFetch({ articles: emptyArticlesResponse });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Nenhum Artigo encontrado.')).toBeInTheDocument();
     expect(screen.queryByText(/Página/)).not.toBeInTheDocument();
@@ -125,7 +140,7 @@ describe('ArticleList', () => {
           totalPages: 1,
         }),
     });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Não foi possível carregar as Categorias.')).toBeInTheDocument();
     expect(screen.getByLabelText('Categoria')).toBeDisabled();
@@ -147,7 +162,7 @@ describe('ArticleList', () => {
           totalPages: 1,
         }),
     });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     const row = (await screen.findByText('Review de smartphone')).closest('tr');
     expect(row).not.toBeNull();
@@ -165,7 +180,7 @@ describe('ArticleList', () => {
           totalPages: 1,
         }),
     });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     const row = (await screen.findByText('Comparativo antigo')).closest('tr');
     expect(row).not.toBeNull();
@@ -183,7 +198,7 @@ describe('ArticleList', () => {
           totalPages: 1,
         }),
     });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     const row = (await screen.findByText('Guia sem categoria')).closest('tr');
     expect(row).not.toBeNull();
@@ -208,7 +223,7 @@ describe('ArticleList', () => {
           totalPages: 1,
         }),
     });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     const link = await screen.findByRole('link', { name: 'Artigo em revisão' });
     expect(link).toHaveAttribute('href', '/fastcompre/articles/33333333-3333-4333-8333-333333333333');
@@ -220,7 +235,7 @@ describe('ArticleList', () => {
 
   it('link "Novo Artigo" aponta para /:siteSlug/articles/new', async () => {
     mockFetch({ articles: emptyArticlesResponse });
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByRole('link', { name: 'Novo Artigo' })).toHaveAttribute(
       'href',
@@ -246,7 +261,7 @@ describe('ArticleList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Página 1 de 2')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Próxima' }));
@@ -265,7 +280,7 @@ describe('ArticleList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhum Artigo encontrado.');
 
     await user.selectOptions(screen.getByLabelText('Status'), 'Publicado');
@@ -289,7 +304,7 @@ describe('ArticleList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhum Artigo encontrado.');
 
     await user.selectOptions(screen.getByLabelText('Tipo'), 'Promoção');
@@ -319,7 +334,7 @@ describe('ArticleList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhum Artigo encontrado.');
 
     expect(await screen.findByRole('option', { name: 'Descontinuados (arquivada)' })).toBeInTheDocument();
@@ -351,7 +366,7 @@ describe('ArticleList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<ArticleList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhum Artigo encontrado.');
 
     await user.selectOptions(screen.getByLabelText('Status'), 'Rascunho');
@@ -365,5 +380,15 @@ describe('ArticleList', () => {
       expect(lastUrl.searchParams.get('type')).toBe('REVIEW');
       expect(lastUrl.searchParams.get('categoryId')).toBe(ACTIVE_CATEGORY.id);
     });
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('VIEWER: sem o link "Novo Artigo"', async () => {
+    mockFetch({ articles: emptyArticlesResponse });
+    renderList('VIEWER');
+
+    await screen.findByText('Nenhum Artigo encontrado.');
+    expect(screen.queryByRole('link', { name: 'Novo Artigo' })).not.toBeInTheDocument();
   });
 });

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { listCategoriesResponseSchema, type ListCategoriesResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
+import { useSiteRole } from '../site-role-context';
 import styles from './category-list.module.css';
 
 interface CategoryListProps {
@@ -59,6 +61,7 @@ function categoryHref(siteSlug: string, categoryId: string): string {
 }
 
 export function CategoryList({ siteSlug }: CategoryListProps) {
+  const role = useSiteRole();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<ArchivedFilter>('all');
   const [state, setState] = useState<ListState>({ status: 'loading' });
@@ -117,7 +120,9 @@ export function CategoryList({ siteSlug }: CategoryListProps) {
             <option value="archived">Arquivadas</option>
           </select>
         </div>
-        <Link href={`/${encodeURIComponent(siteSlug)}/categories/new`}>Nova Categoria</Link>
+        {roleMeetsMinimum(role, 'EDITOR') && (
+          <Link href={`/${encodeURIComponent(siteSlug)}/categories/new`}>Nova Categoria</Link>
+        )}
       </div>
 
       {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}

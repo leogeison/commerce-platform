@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { listOffersResponseSchema, offerAdminSchema, type ListOffersResponse, type OfferAdmin } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { useSiteRole } from '../../site-role-context';
 import { OfferForm, type OfferFormValues } from './offer-form';
 import styles from './offer-section.module.css';
 
@@ -67,8 +69,20 @@ function offerToFormValues(offer: OfferAdmin): OfferFormValues {
  * Categoria/Produto, porque aqui a metadata de paginação (`total`/
  * `totalPages`) realmente muda. Editar/arquivar/desarquivar não mudam a
  * contagem, então só atualizam o item local, sem nova busca.
+ *
+ * Visibilidade por Role (ADM-012) — sem componente `OfferReadOnly`
+ * separado: a listagem já renderiza cada item como uma linha de texto por
+ * padrão (`<span>`); `OfferForm` só aparece transitoriamente quando
+ * `isCreating`/`editingOfferId` viram verdade, e os dois únicos gatilhos
+ * disso são os botões "Nova Oferta"/"Editar". Escondendo esses dois
+ * botões para quem não é `EDITOR`, a listagem em si já fica genuinamente
+ * somente leitura, sem precisar duplicar a mesma linha de texto num
+ * componente irmão. "Arquivar"/"Desarquivar"/"Excluir" exigem `OWNER`.
  */
 export function OfferSection({ siteSlug, productId }: OfferSectionProps) {
+  const role = useSiteRole();
+  const canEdit = roleMeetsMinimum(role, 'EDITOR');
+  const canManage = roleMeetsMinimum(role, 'OWNER');
   const [page, setPage] = useState(1);
   const [state, setState] = useState<ListState>({ status: 'loading' });
   const [isCreating, setIsCreating] = useState(false);
@@ -230,7 +244,7 @@ export function OfferSection({ siteSlug, productId }: OfferSectionProps) {
     <section className={styles.section}>
       <div className={styles.header}>
         <h2>Ofertas</h2>
-        {!isCreating && (
+        {canEdit && !isCreating && (
           <button type="button" onClick={() => setIsCreating(true)}>
             Nova Oferta
           </button>
@@ -268,29 +282,34 @@ export function OfferSection({ siteSlug, productId }: OfferSectionProps) {
                   {offer.archivedAt ? ' (arquivada)' : ''}
                 </span>
                 <div className={styles.rowActions}>
-                  <button type="button" onClick={() => setEditingOfferId(offer.id)} disabled={busyOfferId === offer.id}>
-                    Editar
-                  </button>
-                  {offer.archivedAt ? (
-                    <button
-                      type="button"
-                      onClick={() => handleArchiveToggle(offer.id, 'unarchive')}
-                      disabled={busyOfferId === offer.id}
-                    >
-                      Desarquivar
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleArchiveToggle(offer.id, 'archive')}
-                      disabled={busyOfferId === offer.id}
-                    >
-                      Arquivar
+                  {canEdit && (
+                    <button type="button" onClick={() => setEditingOfferId(offer.id)} disabled={busyOfferId === offer.id}>
+                      Editar
                     </button>
                   )}
-                  <button type="button" onClick={() => handleDelete(offer.id)} disabled={busyOfferId === offer.id}>
-                    Excluir
-                  </button>
+                  {canManage &&
+                    (offer.archivedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => handleArchiveToggle(offer.id, 'unarchive')}
+                        disabled={busyOfferId === offer.id}
+                      >
+                        Desarquivar
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleArchiveToggle(offer.id, 'archive')}
+                        disabled={busyOfferId === offer.id}
+                      >
+                        Arquivar
+                      </button>
+                    ))}
+                  {canManage && (
+                    <button type="button" onClick={() => handleDelete(offer.id)} disabled={busyOfferId === offer.id}>
+                      Excluir
+                    </button>
+                  )}
                 </div>
               </li>
             ),

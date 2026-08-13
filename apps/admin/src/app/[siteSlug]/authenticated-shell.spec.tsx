@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { PathnameContext } from 'next/dist/shared/lib/hooks-client-context.shared-runtime';
 import { AuthenticatedShell } from './authenticated-shell';
+import { useSiteRole } from './site-role-context';
 
 /**
  * `NEXT_PUBLIC_API_URL` já vem fixado por `jest.setup.ts`. `global.fetch` é
@@ -28,6 +29,11 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
   replace: mockReplace,
   prefetch: jest.fn(),
 };
+
+function RoleProbe() {
+  const role = useSiteRole();
+  return <p>Role via Context: {role}</p>;
+}
 
 function renderShell(pathname: string, children: React.ReactNode = <p>Conteúdo da página</p>) {
   return render(
@@ -153,6 +159,42 @@ describe('AuthenticatedShell', () => {
     expect(select).toHaveValue('fastcompre');
 
     expect(screen.getByText('Conteúdo da página')).toBeInTheDocument();
+  });
+
+  it('fornece a Role do Site atual via SiteRoleProvider (ADM-012), sem prop drilling', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+    renderShell('/fastcompre/categories', <RoleProbe />);
+
+    expect(await screen.findByText('Role via Context: OWNER')).toBeInTheDocument();
+  });
+
+  it('troca de siteSlug (prop) atualiza a Role fornecida pelo Context, sem esperar novo fetch', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+    const { rerender } = render(
+      <AppRouterContext.Provider value={mockRouter}>
+        <PathnameContext.Provider value="/fastcompre/categories">
+          <AuthenticatedShell siteSlug="fastcompre">
+            <RoleProbe />
+          </AuthenticatedShell>
+        </PathnameContext.Provider>
+      </AppRouterContext.Provider>,
+    );
+
+    expect(await screen.findByText('Role via Context: OWNER')).toBeInTheDocument();
+
+    rerender(
+      <AppRouterContext.Provider value={mockRouter}>
+        <PathnameContext.Provider value="/outra-marca/categories">
+          <AuthenticatedShell siteSlug="outra-marca">
+            <RoleProbe />
+          </AuthenticatedShell>
+        </PathnameContext.Provider>
+      </AppRouterContext.Provider>,
+    );
+
+    expect(await screen.findByText('Role via Context: EDITOR')).toBeInTheDocument();
   });
 
   it('link ativo recebe aria-current="page"', async () => {

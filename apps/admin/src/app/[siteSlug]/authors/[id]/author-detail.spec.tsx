@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import type { Role } from '@commerce-platform/contracts';
 import { AuthorDetail } from './author-detail';
+import { SiteRoleProvider } from '../../site-role-context';
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -15,10 +17,17 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
   prefetch: jest.fn(),
 };
 
-function renderDetail() {
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 — os testes específicos de `VIEWER`/`EDITOR`
+ * passam a Role explicitamente.
+ */
+function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <AuthorDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+      <SiteRoleProvider value={role}>
+        <AuthorDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+      </SiteRoleProvider>
     </AppRouterContext.Provider>,
   );
 }
@@ -182,5 +191,25 @@ describe('AuthorDetail', () => {
       await screen.findByText('Este Autor está vinculado a um ou mais Artigos e não pode ser excluído.'),
     ).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('EDITOR: mostra o AuthorForm, sem o botão Excluir', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, baseAuthor));
+    renderDetail('EDITOR');
+
+    expect(await screen.findByLabelText('Nome')).toHaveValue('Ana Souza');
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excluir' })).not.toBeInTheDocument();
+  });
+
+  it('VIEWER: mostra AuthorReadOnly, sem AuthorForm nem botão Excluir', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, baseAuthor));
+    renderDetail('VIEWER');
+
+    expect(await screen.findByRole('heading', { name: 'Ana Souza' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { listAuthorsResponseSchema, type ListAuthorsResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
+import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
+import { useSiteRole } from '../site-role-context';
 import styles from './author-list.module.css';
 
 interface AuthorListProps {
@@ -51,6 +53,7 @@ function authorHref(siteSlug: string, authorId: string): string {
 }
 
 export function AuthorList({ siteSlug }: AuthorListProps) {
+  const role = useSiteRole();
   const [page, setPage] = useState(1);
   const [state, setState] = useState<ListState>({ status: 'loading' });
 
@@ -91,7 +94,9 @@ export function AuthorList({ siteSlug }: AuthorListProps) {
   return (
     <div className={styles.list}>
       <div className={styles.toolbar}>
-        <Link href={`/${encodeURIComponent(siteSlug)}/authors/new`}>Novo Autor</Link>
+        {roleMeetsMinimum(role, 'EDITOR') && (
+          <Link href={`/${encodeURIComponent(siteSlug)}/authors/new`}>Novo Autor</Link>
+        )}
       </div>
 
       {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}

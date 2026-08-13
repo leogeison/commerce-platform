@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Role } from '@commerce-platform/contracts';
 import { CategoryList } from './category-list';
+import { SiteRoleProvider } from '../site-role-context';
+
+/**
+ * `role` default `'OWNER'` preserva o comportamento dos testes já
+ * existentes antes da ADM-012 — o teste específico de `VIEWER` passa a
+ * Role explicitamente.
+ */
+function renderList(role: Role = 'OWNER') {
+  return render(
+    <SiteRoleProvider value={role}>
+      <CategoryList siteSlug="fastcompre" />
+    </SiteRoleProvider>,
+  );
+}
 
 function makeCategory(
   overrides: Partial<{ id: string; name: string; slug: string; archivedAt: string | null }> = {},
@@ -32,14 +47,14 @@ describe('CategoryList', () => {
 
   it('estado inicial: mostra "Carregando..."', () => {
     global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
 
     expect(screen.getByText('Carregando...')).toBeInTheDocument();
   });
 
   it('erro genérico: mostra mensagem', async () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(500, { unexpected: 'shape' }));
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
 
     expect(
       await screen.findByText('Não foi possível carregar as Categorias. Tente novamente em instantes.'),
@@ -50,7 +65,7 @@ describe('CategoryList', () => {
     global.fetch = jest
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Nenhuma Categoria encontrada.')).toBeInTheDocument();
     expect(screen.queryByText(/Página/)).not.toBeInTheDocument();
@@ -75,7 +90,7 @@ describe('CategoryList', () => {
         totalPages: 1,
       }),
     );
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
 
     const link = await screen.findByRole('link', { name: 'Eletrônicos' });
     expect(link).toHaveAttribute('href', '/fastcompre/categories/11111111-1111-4111-8111-111111111111');
@@ -86,7 +101,7 @@ describe('CategoryList', () => {
     global.fetch = jest
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByRole('link', { name: 'Nova Categoria' })).toHaveAttribute(
       'href',
@@ -109,7 +124,7 @@ describe('CategoryList', () => {
     });
     global.fetch = fetchMock;
 
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
 
     expect(await screen.findByText('Página 1 de 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
@@ -131,7 +146,7 @@ describe('CategoryList', () => {
       .mockResolvedValue(jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
     global.fetch = fetchMock;
 
-    render(<CategoryList siteSlug="fastcompre" />);
+    renderList();
     await screen.findByText('Nenhuma Categoria encontrada.');
 
     await user.selectOptions(screen.getByLabelText('Status'), 'Arquivadas');
@@ -152,5 +167,17 @@ describe('CategoryList', () => {
       const lastUrl = new URL(String(fetchMock.mock.calls[fetchMock.mock.calls.length - 1][0]));
       expect(lastUrl.searchParams.has('archived')).toBe(false);
     });
+  });
+
+  // --- ADM-012: visibilidade por Role ---
+
+  it('VIEWER: sem o link "Nova Categoria"', async () => {
+    global.fetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
+    renderList('VIEWER');
+
+    await screen.findByText('Nenhuma Categoria encontrada.');
+    expect(screen.queryByRole('link', { name: 'Nova Categoria' })).not.toBeInTheDocument();
   });
 });
