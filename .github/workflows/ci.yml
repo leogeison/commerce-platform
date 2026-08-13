@@ -56,3 +56,9 @@ jobs:
           SITE_URL: 'https://fastcompre.invalid'
           AFFILIATE_REDIRECT_URL: 'https://fastcompre.invalid'
           REVALIDATION_SECRET: 'fastcompre-invalid-ci-secret-000'
+          # apps/admin valida NEXT_PUBLIC_API_URL da mesma forma (env.ts,
+          # ADM-001) — `next build` executa esse parse ao prerenderizar
+          # páginas como /login que importam api-client.ts. Mesma lógica do
+          # fastcompre acima: o artefato de CI não é deployado, então o
+          # valor só precisa ser uma origem sintaticamente válida.
+          NEXT_PUBLIC_API_URL: 'http://127.0.0.1:9999'
