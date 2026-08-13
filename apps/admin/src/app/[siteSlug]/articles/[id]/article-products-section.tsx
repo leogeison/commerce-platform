@@ -10,6 +10,7 @@ import styles from './article-products-section.module.css';
 interface ArticleProductsSectionProps {
   siteSlug: string;
   articleId: string;
+  onProductsChanged?: () => void;
 }
 
 type ProductIdsState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; productIds: string[] };
@@ -59,8 +60,14 @@ function resolveActionErrorMessage(error: unknown): string {
  * Reordenar via botões "Mover para cima"/"Mover para baixo" — sem
  * drag-and-drop, sem nova dependência (decisão fechada no desenho técnico
  * da ADM-009).
+ *
+ * `onProductsChanged` (opcional, ADM-011) — chamado só após vincular ou
+ * desvincular com sucesso, nunca em falha e nunca em reordenar (a ordem
+ * não é uma das condições de `/health`). Este componente continua sem
+ * conhecer `/health`: só comunica sucesso ao orquestrador
+ * (`ArticleDetail`), que decide o que fazer com isso.
  */
-export function ArticleProductsSection({ siteSlug, articleId }: ArticleProductsSectionProps) {
+export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged }: ArticleProductsSectionProps) {
   const [productIdsState, setProductIdsState] = useState<ProductIdsState>({ status: 'loading' });
   const [catalogState, setCatalogState] = useState<CatalogState>({ status: 'loading' });
   const [selectedToLink, setSelectedToLink] = useState('');
@@ -120,6 +127,7 @@ export function ArticleProductsSection({ siteSlug, articleId }: ArticleProductsS
       });
       setProductIdsState({ status: 'ready', productIds: response.productIds });
       setSelectedToLink('');
+      onProductsChanged?.();
     } catch (error) {
       setActionError(resolveActionErrorMessage(error));
     } finally {
@@ -140,6 +148,7 @@ export function ArticleProductsSection({ siteSlug, articleId }: ArticleProductsS
         { method: 'DELETE' },
       );
       setProductIdsState({ status: 'ready', productIds: response.productIds });
+      onProductsChanged?.();
     } catch (error) {
       setActionError(resolveActionErrorMessage(error));
     } finally {

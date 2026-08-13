@@ -35,6 +35,10 @@ function emptyPaginated() {
   return jsonResponse(200, { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 });
 }
 
+function catalogResponse(items: unknown[]) {
+  return jsonResponse(200, { items, page: 1, pageSize: 100, total: items.length, totalPages: 1 });
+}
+
 const TRANSITION_PATH_PATTERN = /\/(submit-for-review|revert-to-draft|publish|archive|restore-to-draft)$/;
 
 const draftArticle = {
@@ -54,31 +58,96 @@ const draftArticle = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+function healthyResponse() {
+  return {
+    categoryActive: true,
+    hasAtLeastOneProduct: true,
+    allProductsHaveValidOffer: true,
+    invalidProducts: [],
+    slugUnique: true,
+    metaDescriptionFilled: true,
+    coverImagePresent: true,
+    healthy: true,
+  };
+}
+
+const PRODUCT_A = {
+  id: 'aaaaaaaa-1111-4111-8111-111111111111',
+  siteId: '22222222-2222-4222-8222-222222222222',
+  categoryId: null,
+  name: 'Fone Bluetooth',
+  slug: 'fone-bluetooth',
+  description: null,
+  imageUrl: null,
+  archivedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const PRODUCT_B = {
+  id: 'bbbbbbbb-2222-4222-8222-222222222222',
+  siteId: '22222222-2222-4222-8222-222222222222',
+  categoryId: null,
+  name: 'Caixa de Som',
+  slug: 'caixa-de-som',
+  description: null,
+  imageUrl: null,
+  archivedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 /**
  * Roteador de fetch cobrindo todos os efeitos independentes compostos por
- * `ArticleDetail`: detalhe do Artigo (`getArticleCallCount` conta só este),
+ * `ArticleDetail`: detalhe do Artigo (`getArticleCallCount` conta só
+ * este), `/health` (`getHealthCallCount` conta só este — ADM-011),
  * Categorias/Autores (`ArticleForm` em DRAFT, `ArticleReadOnly` fora de
- * DRAFT), Produtos vinculados/catálogo (`ArticleProductsSection`/
- * `ArticleProductsReadOnly`) e as 5 rotas de transição
- * (`ArticleTransitionPanel`).
+ * DRAFT), Produtos vinculados (`GET/POST/DELETE/PATCH reorder :id/products`)
+ * e catálogo completo do Site (`GET /products?page=...`, usado tanto por
+ * `ArticleProductsSection`/`ArticleProductsReadOnly` quanto por
+ * `ArticleHealthChecklist` para resolver nomes de `invalidProducts`) e as
+ * 5 rotas de transição (`ArticleTransitionPanel`).
+ *
+ * `productIds`/`catalogItems` controlam o estado inicial dos Produtos
+ * vinculados/catálogo; `link`/`unlink`/`reorder` sobrescrevem a resposta de
+ * cada mutação quando o teste precisa simular sucesso com dados concretos
+ * ou falha.
  */
 function mockFetch(options: {
   article: () => Response;
   patch?: () => Response;
   transition?: () => Response;
+  health?: () => Response;
+  productIds?: string[];
+  catalogItems?: unknown[];
+  link?: () => Response;
+  unlink?: () => Response;
+  reorder?: () => Response;
 }) {
   let getArticleCallCount = 0;
+  let getHealthCallCount = 0;
 
   const fetchMock = jest.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
+    const method = init?.method;
 
-    if (init?.method === 'POST' && TRANSITION_PATH_PATTERN.test(url)) {
+    if (method === 'POST' && TRANSITION_PATH_PATTERN.test(url)) {
       return options.transition ? options.transition() : jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' });
     }
-    if (init?.method === 'PATCH' && url.includes('/products/reorder')) {
-      return emptyPaginated();
+    if (url.endsWith('/health')) {
+      getHealthCallCount += 1;
+      return options.health ? options.health() : jsonResponse(200, healthyResponse());
     }
-    if (init?.method === 'PATCH' && !url.includes('/products')) {
+    if (method === 'POST' && url.endsWith('/products')) {
+      return options.link ? options.link() : jsonResponse(200, { productIds: options.productIds ?? [] });
+    }
+    if (method === 'DELETE' && url.includes('/products/')) {
+      return options.unlink ? options.unlink() : jsonResponse(200, { productIds: [] });
+    }
+    if (method === 'PATCH' && url.endsWith('/products/reorder')) {
+      return options.reorder ? options.reorder() : jsonResponse(200, { productIds: options.productIds ?? [] });
+    }
+    if (method === 'PATCH' && !url.includes('/products')) {
       return options.patch ? options.patch() : jsonResponse(200, draftArticle);
     }
     if (url.includes('/categories')) {
@@ -88,10 +157,10 @@ function mockFetch(options: {
       return emptyPaginated();
     }
     if (url.endsWith('/products')) {
-      return jsonResponse(200, { productIds: [] });
+      return jsonResponse(200, { productIds: options.productIds ?? [] });
     }
     if (url.includes('/products')) {
-      return emptyPaginated();
+      return catalogResponse(options.catalogItems ?? []);
     }
 
     getArticleCallCount += 1;
@@ -100,7 +169,7 @@ function mockFetch(options: {
 
   global.fetch = fetchMock;
 
-  return { getArticleCallCount: () => getArticleCallCount };
+  return { getArticleCallCount: () => getArticleCallCount, getHealthCallCount: () => getHealthCallCount };
 }
 
 describe('ArticleDetail', () => {
@@ -234,5 +303,170 @@ describe('ArticleDetail', () => {
 
     expect(await screen.findByText('Somente Artigos em DRAFT podem ser editados.')).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  // --- ADM-011: healthRevision aciona novo GET :id/health nos pontos exatos aprovados ---
+
+  it('healthRevision: PATCH bem-sucedido do ArticleForm em DRAFT causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      patch: () => jsonResponse(200, draftArticle),
+    });
+    renderDetail();
+
+    await screen.findByLabelText('Título');
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
+  });
+
+  it('healthRevision: PATCH com falha (409) NÃO causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      patch: () =>
+        jsonResponse(409, {
+          statusCode: 409,
+          code: 'CONFLICT',
+          error: 'Conflict',
+          message: 'Somente Artigos em DRAFT podem ser editados.',
+        }),
+    });
+    renderDetail();
+
+    await screen.findByLabelText('Título');
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    expect(await screen.findByText('Somente Artigos em DRAFT podem ser editados.')).toBeInTheDocument();
+    expect(fetchState.getHealthCallCount()).toBe(1);
+  });
+
+  it('healthRevision: vincular Produto com sucesso causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [],
+      catalogItems: [PRODUCT_A],
+      link: () => jsonResponse(200, { productIds: [PRODUCT_A.id] }),
+    });
+    renderDetail();
+
+    await screen.findByText('Adicionar Produto');
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.selectOptions(screen.getByLabelText('Adicionar Produto'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Vincular' }));
+
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
+  });
+
+  it('healthRevision: vincular Produto com falha NÃO causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [],
+      catalogItems: [PRODUCT_A],
+      link: () =>
+        jsonResponse(409, {
+          statusCode: 409,
+          code: 'CONFLICT',
+          error: 'Conflict',
+          message: 'Produto já vinculado a este Artigo.',
+        }),
+    });
+    renderDetail();
+
+    await screen.findByText('Adicionar Produto');
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.selectOptions(screen.getByLabelText('Adicionar Produto'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Vincular' }));
+
+    expect(await screen.findByText('Produto já vinculado a este Artigo.')).toBeInTheDocument();
+    expect(fetchState.getHealthCallCount()).toBe(1);
+  });
+
+  it('healthRevision: desvincular Produto com sucesso causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [PRODUCT_A.id],
+      catalogItems: [PRODUCT_A],
+      unlink: () => jsonResponse(200, { productIds: [] }),
+    });
+    renderDetail();
+
+    await screen.findByText(PRODUCT_A.name);
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
+  });
+
+  it('healthRevision: desvincular Produto com falha NÃO causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [PRODUCT_A.id],
+      catalogItems: [PRODUCT_A],
+      unlink: () =>
+        jsonResponse(409, {
+          statusCode: 409,
+          code: 'CONFLICT',
+          error: 'Conflict',
+          message: 'Não foi possível remover o Produto.',
+        }),
+    });
+    renderDetail();
+
+    await screen.findByText(PRODUCT_A.name);
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    expect(await screen.findByText('Não foi possível remover o Produto.')).toBeInTheDocument();
+    expect(fetchState.getHealthCallCount()).toBe(1);
+  });
+
+  it('healthRevision: reordenar Produtos NÃO causa novo GET :id/health (ordem não é condição de /health)', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [PRODUCT_A.id, PRODUCT_B.id],
+      catalogItems: [PRODUCT_A, PRODUCT_B],
+      reorder: () => jsonResponse(200, { productIds: [PRODUCT_B.id, PRODUCT_A.id] }),
+    });
+    renderDetail();
+
+    await screen.findByText(PRODUCT_A.name);
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: `Mover ${PRODUCT_A.name} para baixo` }));
+
+    await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(PRODUCT_B.name));
+    expect(fetchState.getHealthCallCount()).toBe(1);
+  });
+
+  it('healthRevision: transição de status que não desmonta o checklist (PENDING_REVIEW → PUBLISHED) ainda assim causa novo GET :id/health', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }),
+      transition: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }),
+    });
+    renderDetail();
+
+    await screen.findByRole('button', { name: 'Publicar' });
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
+
+    await user.click(screen.getByRole('button', { name: 'Publicar' }));
+
+    expect(await screen.findByText('Publicado')).toBeInTheDocument();
+    await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
   });
 });

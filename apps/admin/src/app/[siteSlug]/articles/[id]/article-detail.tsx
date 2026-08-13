@@ -5,6 +5,7 @@ import { articleAdminSchema, type ArticleAdmin, type UpdateArticleRequest } from
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
+import { ArticleHealthChecklist } from './article-health-checklist';
 import { ArticleProductsReadOnly } from './article-products-read-only';
 import { ArticleProductsSection } from './article-products-section';
 import { ArticleReadOnly } from './article-read-only';
@@ -71,9 +72,23 @@ function articlePath(siteSlug: string, id: string): string {
  * `bodyMdx` quando vazio (`''`) — apagar o corpo inteiro é uma atualização
  * válida, diferente do `CREATE` (`CreateArticle`), que omite `bodyMdx`
  * vazio. Nunca envia `status`/`publishedAt`.
+ *
+ * `healthRevision` (ADM-011) — contador local incrementado só em dois
+ * pontos de sucesso: PATCH do Artigo (`handleUpdate`) e vincular/
+ * desvincular Produto com sucesso (`handleProductsChanged`, repassado a
+ * `ArticleProductsSection`). Nunca incrementado em falha, nunca em
+ * reordenar (a ordem não é uma das condições de `/health`).
+ * `ArticleHealthChecklist` recebe `refreshKey={healthRevision}` nas duas
+ * composições e refaz `GET :id/health` sempre que essa revisão muda — é
+ * o único jeito do checklist não ficar obsoleto depois que o usuário
+ * corrige uma pendência em `DRAFT` sem trocar de status (transição de
+ * status já é coberta à parte, via a própria prop `status`). Nem
+ * `ArticleForm` nem `ArticleProductsSection` ganham conhecimento de
+ * `/health` — só comunicam sucesso a este orquestrador.
  */
 export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   const [state, setState] = useState<DetailState>({ status: 'loading' });
+  const [healthRevision, setHealthRevision] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,10 +127,15 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
       body,
     });
     setState({ status: 'ready', article });
+    setHealthRevision((revision) => revision + 1);
   }
 
   function handleTransition(article: ArticleAdmin) {
     setState({ status: 'ready', article });
+  }
+
+  function handleProductsChanged() {
+    setHealthRevision((revision) => revision + 1);
   }
 
   if (state.status === 'loading') {
@@ -137,6 +157,12 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
       <div className={styles.readOnly}>
         <ArticleReadOnly siteSlug={siteSlug} article={article} />
         <ArticleProductsReadOnly siteSlug={siteSlug} articleId={id} />
+        <ArticleHealthChecklist
+          siteSlug={siteSlug}
+          articleId={id}
+          status={article.status}
+          refreshKey={healthRevision}
+        />
         <ArticleTransitionPanel
           siteSlug={siteSlug}
           articleId={id}
@@ -165,7 +191,14 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
         onSubmit={handleUpdate}
       />
 
-      <ArticleProductsSection siteSlug={siteSlug} articleId={id} />
+      <ArticleProductsSection siteSlug={siteSlug} articleId={id} onProductsChanged={handleProductsChanged} />
+
+      <ArticleHealthChecklist
+        siteSlug={siteSlug}
+        articleId={id}
+        status={article.status}
+        refreshKey={healthRevision}
+      />
 
       <ArticleTransitionPanel
         siteSlug={siteSlug}

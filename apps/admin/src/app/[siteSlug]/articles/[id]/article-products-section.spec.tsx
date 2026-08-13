@@ -41,8 +41,10 @@ function productsPath() {
   return `/admin/sites/${SITE_SLUG}/articles/${ARTICLE_ID}/products`;
 }
 
-function render_() {
-  return render(<ArticleProductsSection siteSlug={SITE_SLUG} articleId={ARTICLE_ID} />);
+function render_(onProductsChanged?: () => void) {
+  return render(
+    <ArticleProductsSection siteSlug={SITE_SLUG} articleId={ARTICLE_ID} onProductsChanged={onProductsChanged} />,
+  );
 }
 
 describe('ArticleProductsSection', () => {
@@ -208,5 +210,149 @@ describe('ArticleProductsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Vincular' }));
 
     expect(await screen.findByText('Este Produto já está vinculado a este Artigo.')).toBeInTheDocument();
+  });
+
+  it('onProductsChanged (ADM-011): vincular com sucesso chama o callback 1 vez', async () => {
+    const user = userEvent.setup();
+    const onProductsChanged = jest.fn();
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        return jsonResponse(201, { productIds: [PRODUCT_A.id] });
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [] });
+      }
+      return catalogResponse([PRODUCT_A]);
+    });
+    render_(onProductsChanged);
+
+    await screen.findByText('Nenhum Produto vinculado.');
+    await user.selectOptions(screen.getByLabelText('Adicionar Produto'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Vincular' }));
+
+    await waitFor(() => expect(onProductsChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('onProductsChanged (ADM-011): desvincular com sucesso chama o callback 1 vez', async () => {
+    const user = userEvent.setup();
+    const onProductsChanged = jest.fn();
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'DELETE') {
+        return jsonResponse(200, { productIds: [] });
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [PRODUCT_A.id] });
+      }
+      return catalogResponse([PRODUCT_A]);
+    });
+    render_(onProductsChanged);
+
+    await screen.findByText('Fone Bluetooth');
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    await waitFor(() => expect(onProductsChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('onProductsChanged (ADM-011): reordenar NÃO chama o callback', async () => {
+    const user = userEvent.setup();
+    const onProductsChanged = jest.fn();
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'PATCH' && url.endsWith('/reorder')) {
+        return jsonResponse(200, { productIds: [PRODUCT_B.id, PRODUCT_A.id] });
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [PRODUCT_A.id, PRODUCT_B.id] });
+      }
+      return catalogResponse([PRODUCT_A, PRODUCT_B]);
+    });
+    render_(onProductsChanged);
+
+    await screen.findByText('Fone Bluetooth');
+    await user.click(screen.getByRole('button', { name: `Mover ${PRODUCT_A.name} para baixo` }));
+
+    await waitFor(() => {
+      const items = screen.getAllByRole('listitem');
+      expect(items[0]).toHaveTextContent('Caixa de Som');
+    });
+    expect(onProductsChanged).not.toHaveBeenCalled();
+  });
+
+  it('onProductsChanged (ADM-011): falha ao vincular NÃO chama o callback', async () => {
+    const user = userEvent.setup();
+    const onProductsChanged = jest.fn();
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        return jsonResponse(409, {
+          statusCode: 409,
+          code: 'CONFLICT',
+          error: 'Conflict',
+          message: 'Este Produto já está vinculado a este Artigo.',
+        });
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [] });
+      }
+      return catalogResponse([PRODUCT_A]);
+    });
+    render_(onProductsChanged);
+
+    await screen.findByText('Nenhum Produto vinculado.');
+    await user.selectOptions(screen.getByLabelText('Adicionar Produto'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Vincular' }));
+
+    await screen.findByText('Este Produto já está vinculado a este Artigo.');
+    expect(onProductsChanged).not.toHaveBeenCalled();
+  });
+
+  it('onProductsChanged (ADM-011): falha ao desvincular NÃO chama o callback', async () => {
+    const user = userEvent.setup();
+    const onProductsChanged = jest.fn();
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'DELETE') {
+        return jsonResponse(409, {
+          statusCode: 409,
+          code: 'CONFLICT',
+          error: 'Conflict',
+          message: 'Este Produto não está vinculado a este Artigo.',
+        });
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [PRODUCT_A.id] });
+      }
+      return catalogResponse([PRODUCT_A]);
+    });
+    render_(onProductsChanged);
+
+    await screen.findByText('Fone Bluetooth');
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    expect(onProductsChanged).not.toHaveBeenCalled();
+  });
+
+  it('onProductsChanged ausente: vincular/desvincular continuam funcionando sem quebrar', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        return jsonResponse(201, { productIds: [PRODUCT_A.id] });
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [] });
+      }
+      return catalogResponse([PRODUCT_A]);
+    });
+    render_();
+
+    await screen.findByText('Nenhum Produto vinculado.');
+    await user.selectOptions(screen.getByLabelText('Adicionar Produto'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Vincular' }));
+
+    await waitFor(() => expect(screen.getByText('Fone Bluetooth')).toBeInTheDocument());
   });
 });
