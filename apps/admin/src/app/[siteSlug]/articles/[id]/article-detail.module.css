@@ -13,26 +13,6 @@
 .readOnly {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 2rem;
   max-width: 480px;
-}
-
-.readOnly h1 {
-  font-size: 1.25rem;
-  margin: 0;
-}
-
-.summary {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.25rem 0.75rem;
-  margin: 0;
-}
-
-.summary dt {
-  font-weight: 600;
-}
-
-.summary dd {
-  margin: 0;
 }

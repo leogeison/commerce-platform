@@ -35,6 +35,8 @@ function emptyPaginated() {
   return jsonResponse(200, { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 });
 }
 
+const TRANSITION_PATH_PATTERN = /\/(submit-for-review|revert-to-draft|publish|archive|restore-to-draft)$/;
+
 const draftArticle = {
   id: '11111111-1111-4111-8111-111111111111',
   siteId: '22222222-2222-4222-8222-222222222222',
@@ -54,13 +56,25 @@ const draftArticle = {
 
 /**
  * Roteador de fetch cobrindo todos os efeitos independentes compostos por
- * `ArticleDetail` quando `status === 'DRAFT'`: detalhe do Artigo,
- * Categorias/Autores (para `ArticleForm`) e Produtos vinculados/catálogo
- * (para `ArticleProductsSection`).
+ * `ArticleDetail`: detalhe do Artigo (`getArticleCallCount` conta só este),
+ * Categorias/Autores (`ArticleForm` em DRAFT, `ArticleReadOnly` fora de
+ * DRAFT), Produtos vinculados/catálogo (`ArticleProductsSection`/
+ * `ArticleProductsReadOnly`) e as 5 rotas de transição
+ * (`ArticleTransitionPanel`).
  */
-function mockFetch(options: { article: () => Response; patch?: () => Response }) {
-  global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+function mockFetch(options: {
+  article: () => Response;
+  patch?: () => Response;
+  transition?: () => Response;
+}) {
+  let getArticleCallCount = 0;
+
+  const fetchMock = jest.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
+
+    if (init?.method === 'POST' && TRANSITION_PATH_PATTERN.test(url)) {
+      return options.transition ? options.transition() : jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' });
+    }
     if (init?.method === 'PATCH' && url.includes('/products/reorder')) {
       return emptyPaginated();
     }
@@ -79,8 +93,14 @@ function mockFetch(options: { article: () => Response; patch?: () => Response })
     if (url.includes('/products')) {
       return emptyPaginated();
     }
+
+    getArticleCallCount += 1;
     return options.article();
   });
+
+  global.fetch = fetchMock;
+
+  return { getArticleCallCount: () => getArticleCallCount };
 }
 
 describe('ArticleDetail', () => {
@@ -106,7 +126,7 @@ describe('ArticleDetail', () => {
     expect(await screen.findByText('Artigo não encontrado.')).toBeInTheDocument();
   });
 
-  it('DRAFT: renderiza ArticleForm preenchido e a seção de Produtos vinculados', async () => {
+  it('DRAFT: renderiza ArticleForm preenchido, a seção de Produtos vinculados e "Enviar para revisão"', async () => {
     mockFetch({ article: () => jsonResponse(200, draftArticle) });
     renderDetail();
 
@@ -114,34 +134,52 @@ describe('ArticleDetail', () => {
     expect(screen.getByLabelText('Slug')).toHaveValue('melhor-fone-bluetooth');
     expect(screen.getByLabelText('Corpo (Markdown)')).toHaveValue('# Conteúdo original');
     expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar para revisão' })).toBeInTheDocument();
   });
 
-  it('status !== DRAFT (PUBLISHED): composição mínima somente leitura, sem ArticleForm nem seção de Produtos', async () => {
+  it('status !== DRAFT (PUBLISHED): composição somente leitura + Produtos somente leitura + botão "Arquivar", sem ArticleForm', async () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
     renderDetail();
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
     expect(screen.getByText('Publicado')).toBeInTheDocument();
     expect(screen.getByText('Review')).toBeInTheDocument();
-    expect(screen.getByText(/ADM-010/)).toBeInTheDocument();
+    expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arquivar' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
-    expect(screen.queryByText('Nenhum Produto vinculado.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
   });
 
-  it('status !== DRAFT (PENDING_REVIEW): mesma composição mínima', async () => {
+  it('status !== DRAFT (PENDING_REVIEW): botões "Publicar" e "Voltar para rascunho"', async () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail();
 
     expect(await screen.findByText('Em revisão')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
   });
 
-  it('status !== DRAFT (ARCHIVED): mesma composição mínima', async () => {
+  it('status !== DRAFT (ARCHIVED): botão "Restaurar para rascunho"', async () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'ARCHIVED' }) });
     renderDetail();
 
     expect(await screen.findByText('Arquivado')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restaurar para rascunho' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
+  });
+
+  it('DRAFT → PENDING_REVIEW: "Enviar para revisão" troca a composição usando o ArticleAdmin da resposta, sem novo GET /:id', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({ article: () => jsonResponse(200, draftArticle) });
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Enviar para revisão' }));
+
+    expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
+    expect(screen.getByText('Em revisão')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
+    expect(fetchState.getArticleCallCount()).toBe(1);
   });
 
   it('PATCH sempre envia bodyMdx, inclusive string vazia (apagar o corpo é uma edição válida)', async () => {

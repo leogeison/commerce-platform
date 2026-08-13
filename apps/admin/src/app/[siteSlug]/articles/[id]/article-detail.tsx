@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import { articleAdminSchema, type ArticleAdmin, type UpdateArticleRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
-import { STATUS_LABELS, TYPE_LABELS } from '../../../../lib/article-labels';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
+import { ArticleProductsReadOnly } from './article-products-read-only';
 import { ArticleProductsSection } from './article-products-section';
+import { ArticleReadOnly } from './article-read-only';
+import { ArticleTransitionPanel } from './article-transition-panel';
 import styles from './article-detail.module.css';
 
 interface ArticleDetailProps {
@@ -47,11 +49,23 @@ function articlePath(siteSlug: string, id: string): string {
  * (vínculo de Produtos, `EDT-010`) — as duas únicas peças do modo DRAFT
  * definidas em Architecture.md §32.
  *
- * `status !== 'DRAFT'`: composição mínima e propositalmente provisória,
- * só leitura (título/tipo/status) — decisão fechada no desenho técnico da
- * ADM-009. Será inteiramente substituída pela ADM-010 (painel de decisão),
- * não estendida. Nenhuma transição de status, nenhum `/health` aqui — isso
- * é ADM-010/011.
+ * `status !== 'DRAFT'` (ADM-010): `ArticleReadOnly` (conteúdo em modo
+ * leitura) + `ArticleProductsReadOnly` (Produtos vinculados, sem mutação) +
+ * `ArticleTransitionPanel` (ações válidas para o status atual) —
+ * composição inteiramente diferente da de `DRAFT`, nunca o mesmo
+ * formulário desabilitado (Architecture.md §32). Nenhum `/health`,
+ * nenhuma leitura de Role do usuário atual aqui — isso é ADM-011/ADM-012.
+ *
+ * `DRAFT` ganha, além do já existente, `ArticleTransitionPanel` só com a
+ * ação externa "Enviar para revisão" — orquestrada por este componente via
+ * `handleTransition`, nunca pelo próprio `ArticleForm` (que continua
+ * responsável só pelos campos editáveis/salvamento, sem conhecer a máquina
+ * de estados).
+ *
+ * `handleTransition` é o único callback usado pelas 5 transições
+ * possíveis: recebe o `ArticleAdmin` já retornado pela própria API e
+ * substitui `state.article` com ele — o próximo render escolhe a
+ * composição certa pelo novo `status`, sem nenhum novo `GET /:id`.
  *
  * `handleUpdate` sempre envia todos os campos do `ArticleForm`, inclusive
  * `bodyMdx` quando vazio (`''`) — apagar o corpo inteiro é uma atualização
@@ -100,6 +114,10 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
     setState({ status: 'ready', article });
   }
 
+  function handleTransition(article: ArticleAdmin) {
+    setState({ status: 'ready', article });
+  }
+
   if (state.status === 'loading') {
     return <p className={styles.status}>Carregando...</p>;
   }
@@ -117,17 +135,14 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   if (article.status !== 'DRAFT') {
     return (
       <div className={styles.readOnly}>
-        <h1>{article.title}</h1>
-        <dl className={styles.summary}>
-          <dt>Tipo</dt>
-          <dd>{TYPE_LABELS[article.type]}</dd>
-          <dt>Status</dt>
-          <dd>{STATUS_LABELS[article.status]}</dd>
-        </dl>
-        <p className={styles.status}>
-          Este Artigo não está em rascunho. A edição de conteúdo e as ações de transição de status para este estado
-          serão tratadas pelo modo de decisão (ADM-010), ainda não implementado.
-        </p>
+        <ArticleReadOnly siteSlug={siteSlug} article={article} />
+        <ArticleProductsReadOnly siteSlug={siteSlug} articleId={id} />
+        <ArticleTransitionPanel
+          siteSlug={siteSlug}
+          articleId={id}
+          status={article.status}
+          onTransition={handleTransition}
+        />
       </div>
     );
   }
@@ -151,6 +166,13 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
       />
 
       <ArticleProductsSection siteSlug={siteSlug} articleId={id} />
+
+      <ArticleTransitionPanel
+        siteSlug={siteSlug}
+        articleId={id}
+        status={article.status}
+        onTransition={handleTransition}
+      />
     </div>
   );
 }
