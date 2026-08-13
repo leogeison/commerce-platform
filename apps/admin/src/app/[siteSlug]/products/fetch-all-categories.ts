@@ -1,0 +1,37 @@
+import { listCategoriesResponseSchema, type CategoryAdmin } from '@commerce-platform/contracts';
+import { apiRequest } from '../../../lib/api-client';
+
+const MAX_PAGE_SIZE = 100;
+
+/**
+ * `GET /admin/sites/:siteSlug/categories` é paginado (`pageSize` máximo
+ * `100`, `listCategoriesQuerySchema`) — não existe endpoint "sem
+ * paginação" e a ADM-006 não cria um novo. Busca todas as páginas com o
+ * maior `pageSize` permitido, sem filtro `archived` (retorna ativas e
+ * arquivadas juntas, mesma semântica de 3 estados já usada na ADM-005),
+ * concatenando os itens até `page >= totalPages` (ou lista vazia, cobrindo
+ * o caso `totalPages: 0`).
+ *
+ * Único uso: popular os seletores de Categoria do Produto (`ProductForm`,
+ * vínculo; `ProductList`, filtro) — não é uma abstração genérica entre
+ * entidades, só os dois consumidores reais desta feature (ADM-006).
+ */
+export async function fetchAllCategories(siteSlug: string): Promise<CategoryAdmin[]> {
+  const all: CategoryAdmin[] = [];
+  let page = 1;
+
+  for (;;) {
+    const response = await apiRequest(
+      `/admin/sites/${encodeURIComponent(siteSlug)}/categories?page=${page}&pageSize=${MAX_PAGE_SIZE}`,
+      listCategoriesResponseSchema,
+    );
+    all.push(...response.items);
+
+    if (page >= response.totalPages || response.items.length === 0) {
+      break;
+    }
+    page += 1;
+  }
+
+  return all;
+}

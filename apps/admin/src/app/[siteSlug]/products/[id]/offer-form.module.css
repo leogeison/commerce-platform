@@ -1,0 +1,74 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 320px;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.field input,
+.field select {
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkboxField label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.fieldError,
+.formError {
+  color: #c0392b;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.actions button {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  background-color: #111827;
+  color: #fff;
+  cursor: pointer;
+}
+
+.actions button[type='button'] {
+  background: #fff;
+  color: #111827;
+  border: 1px solid #ccc;
+}
+
+.actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

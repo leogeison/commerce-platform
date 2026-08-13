@@ -36,11 +36,17 @@ export async function apiRequest<T>(
   responseSchema: z.ZodType<T>,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const isFormData = options.body instanceof FormData;
+
   const response = await fetch(`${env.NEXT_PUBLIC_API_URL}${path}`, {
     method: options.method ?? 'GET',
     credentials: 'include',
-    headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    // `FormData` (ADM-006, upload de imagem multipart) vai direto como body,
+    // sem `JSON.stringify` e sem `Content-Type` manual — o navegador é quem
+    // precisa gerar o `multipart/form-data` com o boundary correto; definir
+    // `Content-Type` explicitamente aqui quebraria esse boundary.
+    headers: options.body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : undefined,
+    body: options.body === undefined ? undefined : isFormData ? (options.body as FormData) : JSON.stringify(options.body),
   });
 
   const parsedBody = await parseBody(response);

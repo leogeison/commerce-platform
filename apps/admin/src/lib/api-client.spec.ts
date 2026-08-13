@@ -53,6 +53,27 @@ describe('apiRequest', () => {
     });
   });
 
+  it('POST com body FormData (ADM-006, upload multipart): envia o próprio FormData direto, sem JSON.stringify e sem Content-Type manual', async () => {
+    mockFetchOnce(201, JSON.stringify({ url: 'https://cdn.example.com/imagem.jpg' }));
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['fake-image-bytes']), 'foto.jpg');
+    formData.append('purpose', 'PRODUCT');
+
+    const responseSchema = z.object({ url: z.string() });
+    await apiRequest('/admin/sites/fastcompre/uploads/images', responseSchema, {
+      method: 'POST',
+      body: formData,
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/admin/sites/fastcompre/uploads/images', {
+      method: 'POST',
+      credentials: 'include',
+      headers: undefined,
+      body: formData,
+    });
+  });
+
   it('2xx com corpo vazio e z.void(): resolve com sucesso, sem lançar', async () => {
     mockFetchOnce(204, '');
 
