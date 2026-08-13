@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { listProductsResponseSchema, type CategoryAdmin, type ListProductsResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
-import { fetchAllCategories } from './fetch-all-categories';
+import { fetchAllCategories } from '../../../lib/fetch-all-categories';
 import styles from './product-list.module.css';
 
 interface ProductListProps {

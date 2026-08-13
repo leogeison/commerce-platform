@@ -1,5 +1,5 @@
 import { listCategoriesResponseSchema, type CategoryAdmin } from '@commerce-platform/contracts';
-import { apiRequest } from '../../../lib/api-client';
+import { apiRequest } from './api-client';
 
 const MAX_PAGE_SIZE = 100;
 
@@ -12,9 +12,12 @@ const MAX_PAGE_SIZE = 100;
  * concatenando os itens até `page >= totalPages` (ou lista vazia, cobrindo
  * o caso `totalPages: 0`).
  *
- * Único uso: popular os seletores de Categoria do Produto (`ProductForm`,
- * vínculo; `ProductList`, filtro) — não é uma abstração genérica entre
- * entidades, só os dois consumidores reais desta feature (ADM-006).
+ * Movida de `products/` para `lib/` na ADM-008: passou a ter dois
+ * consumidores reais e independentes — `ProductForm`/`ProductList`
+ * (vínculo/filtro de Categoria do Produto, ADM-006) e `ArticleList`
+ * (filtro de Categoria do Artigo, ADM-008). Continua sendo uma função só
+ * de Categoria, não uma abstração genérica entre entidades — nenhum
+ * repository/hook genérico/provider/Context criado.
  */
 export async function fetchAllCategories(siteSlug: string): Promise<CategoryAdmin[]> {
   const all: CategoryAdmin[] = [];

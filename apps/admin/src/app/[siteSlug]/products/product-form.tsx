@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { uploadImageResponseSchema, type CategoryAdmin } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
-import { fetchAllCategories } from './fetch-all-categories';
+import { fetchAllCategories } from '../../../lib/fetch-all-categories';
 import styles from './product-form.module.css';
 
 export interface ProductFormValues {
