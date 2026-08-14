@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
 import type { Marketplace, Offer } from '../../../generated/prisma/client';
+import { isForeignKeyConstraintViolation } from '../../../shared/database/prisma-error.util';
 
 export interface CreateOfferInput {
   siteId: string;
@@ -353,10 +354,11 @@ export class PrismaOfferRepository {
    * `AffiliateClick`: ele só tenta o `delete` direto pela chave composta
    * `id_siteId` e traduz o que o Postgres devolver, sem saber (nem
    * precisar saber) qual tabela originou a violação de integridade
-   * referencial — `P2003` aqui vira o motivo genérico `HAS_DEPENDENTS`
-   * (não um nome específico de Tracking), decisão explícita da CAT-021: o
-   * Catalog trata isso como "existe algum dependente externo", nunca como
-   * "existe um `AffiliateClick`".
+   * referencial — `isForeignKeyConstraintViolation` (`P2003` ou `23001`,
+   * ver `shared/database/prisma-error.util`) aqui vira o motivo genérico
+   * `HAS_DEPENDENTS` (não um nome específico de Tracking), decisão
+   * explícita da CAT-021: o Catalog trata isso como "existe algum
+   * dependente externo", nunca como "existe um `AffiliateClick`".
    *
    * `P2025` (registro não encontrado) → `NOT_FOUND`, mesmo critério de
    * isolamento já usado em `PrismaProductRepository.deleteBySite` — cobre
@@ -426,22 +428,6 @@ export interface OfferSummaryRow {
   archivedAt: Date | null;
   inStock: boolean;
   affiliateUrl: string;
-}
-
-/**
- * `P2003`: violação de foreign key. Em `create()`, sempre `productId`
- * inválido/de outro Site. Em `deleteBySite()`, sempre um dependente
- * externo ao Catalog (`AffiliateClick`, nunca mencionado aqui) —
- * traduzido para `HAS_DEPENDENTS`, motivo genérico. Mesmo código,
- * significado depende de qual método capturou o erro.
- */
-function isForeignKeyConstraintViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: unknown }).code === 'P2003'
-  );
 }
 
 /** `P2025`: operação (aqui, `delete`) não encontrou o registro pela `where`. */

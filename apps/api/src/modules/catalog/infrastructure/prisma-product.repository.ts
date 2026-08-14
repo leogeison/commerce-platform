@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
 import { Prisma, type Product } from '../../../generated/prisma/client';
+import { isForeignKeyConstraintViolation } from '../../../shared/database/prisma-error.util';
 
 export interface CreateProductInput {
   siteId: string;
@@ -316,7 +317,8 @@ export class PrismaProductRepository {
    * vinculada" e uma Oferta ser criada logo depois.
    *
    * `Offer.product` é `onDelete: Restrict` no schema — o próprio Postgres
-   * recusa a exclusão se existir Oferta vinculada, traduzido para `P2003`.
+   * recusa a exclusão se existir Oferta vinculada, reconhecido por
+   * `isForeignKeyConstraintViolation` (`shared/database/prisma-error.util`).
    * `P2025` é "registro não encontrado" — cobre tanto `id` inexistente
    * quanto `id` de um Produto de outro Site (a chave composta `id_siteId`
    * nunca bate), mesmo critério de isolamento já usado em
@@ -357,20 +359,6 @@ function isUniqueConstraintViolation(err: unknown): boolean {
     err !== null &&
     'code' in err &&
     (err as { code?: unknown }).code === 'P2002'
-  );
-}
-
-/**
- * `P2003`: violação de foreign key — em `create()`, `categoryId`
- * inválido/de outro Site; em `deleteBySite()`, Oferta(s) ainda vinculada(s).
- * Mesmo código, significado depende de qual método capturou o erro.
- */
-function isForeignKeyConstraintViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: unknown }).code === 'P2003'
   );
 }
 

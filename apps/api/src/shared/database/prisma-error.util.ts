@@ -55,12 +55,18 @@ export function isErrorWithCode(err: unknown, code: string): boolean {
 }
 
 /**
- * Navega defensivamente até `error.meta.driverAdapterError.cause.constraint`
- * (Prisma 7 + `@prisma/adapter-pg`). Cada nível é checado com `typeof`/`in`
+ * Navega defensivamente até `error.meta.driverAdapterError.cause` (Prisma 7
+ * + `@prisma/adapter-pg`) — objeto bruto devolvido pelo driver adapter para
+ * qualquer erro de Postgres, reconhecido ou não pelo `mapDriverError` dele.
+ * Base comum de `readDriverConstraint` (lê `cause.constraint`, usado por
+ * `P2003` já reconhecido) e `readDriverErrorCode` (lê `cause.code`, usado
+ * por `isForeignKeyConstraintViolation` para o caso `23001`, não
+ * reconhecido pelo `mapDriverError`) — mesmo objeto `cause`, campo
+ * diferente conforme quem chama. Cada nível é checado com `typeof`/`in`
  * antes de descer; qualquer desvio do formato esperado interrompe e
  * devolve `undefined`.
  */
-function readDriverConstraint(err: unknown): Record<string, unknown> | undefined {
+function readDriverErrorCause(err: unknown): Record<string, unknown> | undefined {
   if (typeof err !== 'object' || err === null || !('meta' in err)) {
     return undefined;
   }
@@ -80,14 +86,39 @@ function readDriverConstraint(err: unknown): Record<string, unknown> | undefined
   }
 
   const cause = (driverAdapterError as { cause?: unknown }).cause;
-  if (typeof cause !== 'object' || cause === null || !('constraint' in cause)) {
+  return typeof cause === 'object' && cause !== null ? (cause as Record<string, unknown>) : undefined;
+}
+
+/**
+ * `error.meta.driverAdapterError.cause.constraint`, quando presente.
+ * Continua exigindo `'constraint' in cause` explicitamente (não só
+ * `cause?.constraint`) para preservar o mesmo critério defensivo de
+ * antes: ausência da chave é tratada igual a formato inesperado.
+ */
+function readDriverConstraint(err: unknown): Record<string, unknown> | undefined {
+  const cause = readDriverErrorCause(err);
+  if (cause === undefined || !('constraint' in cause)) {
     return undefined;
   }
 
-  const constraint = (cause as { constraint?: unknown }).constraint;
+  const constraint = cause.constraint;
   return typeof constraint === 'object' && constraint !== null
     ? (constraint as Record<string, unknown>)
     : undefined;
+}
+
+/**
+ * `error.meta.driverAdapterError.cause.code` — SQLSTATE bruto do Postgres,
+ * preservado pelo driver adapter mesmo quando `mapDriverError`
+ * (`@prisma/adapter-pg`) não tem um `case` próprio para aquele código (cai
+ * no `default`, que devolve `kind: "postgres"` + `code` original). Usado
+ * por `isForeignKeyConstraintViolation` para reconhecer `23001`, que não
+ * vira `P2003` — ver o comentário dessa função para o histórico completo.
+ */
+function readDriverErrorCode(err: unknown): string | undefined {
+  const cause = readDriverErrorCause(err);
+  const code = cause?.code;
+  return typeof code === 'string' ? code : undefined;
 }
 
 /**
@@ -202,4 +233,48 @@ export function readForeignKeyConstraintName(err: unknown): string | undefined {
   const constraint = readDriverConstraint(err);
   const index = constraint?.index;
   return typeof index === 'string' ? index : undefined;
+}
+
+/**
+ * `SQLSTATE` Postgres para `restrict_violation` — devolvido quando um
+ * `DELETE`/`UPDATE` viola uma FK declarada com `ON DELETE RESTRICT`
+ * (todas as FKs internas deste schema, `schema.prisma`). Diferente de
+ * `23503` (`foreign_key_violation`, o único código que `mapDriverError`
+ * reconhece e mapeia para `P2003` — sempre o caso em `INSERT`/`UPDATE` com
+ * FK inválida, nunca afetado pela ação declarada em `ON DELETE`), `23001`
+ * não tem `case` próprio nesse mapeamento.
+ */
+const POSTGRES_RESTRICT_VIOLATION_SQLSTATE = '23001';
+
+/**
+ * `true` para uma violação de foreign key detectável de qualquer um dos
+ * dois formatos observados nesta base de código:
+ *
+ * 1. `P2003` — o código que o Prisma Client atribui quando
+ *    `@prisma/adapter-pg` reconhece o erro Postgres (`23503`,
+ *    `foreign_key_violation`). Comportamento já conhecido, usado até aqui
+ *    nos caminhos de `create`/`update` (ex.: `Author.userId` inexistente).
+ * 2. `23001` (`restrict_violation`) no formato bruto do driver adapter —
+ *    `error.meta.driverAdapterError.cause.code`. É o código que o Postgres
+ *    real efetivamente devolve quando um `delete()` é bloqueado por uma FK
+ *    `ON DELETE RESTRICT` (todo `deleteBySite` de Categoria/Produto/Oferta/
+ *    Autor). `mapDriverError` não tem `case` para `23001`, então o Prisma
+ *    Client nunca atribui `P2003` a esse erro — sem este segundo
+ *    reconhecimento, ele sobe sem tradução (`500`), mesmo o Postgres já
+ *    tendo bloqueado a operação corretamente por causa do dependente.
+ *    Validado empiricamente contra Postgres real (Categoria bloqueada por
+ *    Produto).
+ *
+ * Nenhum outro `SQLSTATE` (`23505` unique, `23502` not-null, `23514`
+ * check, ou qualquer erro genérico/objeto malformado) bate em nenhuma das
+ * duas checagens — `23001` é uma classe do padrão SQL exclusiva de
+ * violação de `RESTRICT`/`NO ACTION` explícito, nunca usada pelo Postgres
+ * para nenhum outro tipo de erro.
+ */
+export function isForeignKeyConstraintViolation(err: unknown): boolean {
+  if (isErrorWithCode(err, 'P2003')) {
+    return true;
+  }
+
+  return readDriverErrorCode(err) === POSTGRES_RESTRICT_VIOLATION_SQLSTATE;
 }

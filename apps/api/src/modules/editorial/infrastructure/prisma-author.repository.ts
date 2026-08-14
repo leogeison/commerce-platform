@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
 import {
   isErrorWithCode,
+  isForeignKeyConstraintViolation,
   readForeignKeyConstraintName,
   readUniqueConstraintFields,
 } from '../../../shared/database/prisma-error.util';
@@ -275,9 +276,15 @@ export class PrismaAuthorRepository {
    * `delete()`: `Article.author` (`Article_authorId_siteId_fkey`,
    * `onDelete: Restrict`) — `Author.user`/`Author.site` são FKs *saindo*
    * de `Author`, nunca bloqueiam a exclusão dele. Por isso qualquer
-   * `P2003` aqui é sempre "Artigo vinculado", sem precisar inspecionar
-   * `meta`/mensagem (mesmo critério de `PrismaCategoryRepository.deleteBySite`
-   * pra `HAS_PRODUCTS`).
+   * violação de FK aqui é sempre "Artigo vinculado", sem precisar
+   * inspecionar `meta`/mensagem (mesmo critério de
+   * `PrismaCategoryRepository.deleteBySite` pra `HAS_PRODUCTS`). Usa
+   * `isForeignKeyConstraintViolation` (não `isErrorWithCode(err, 'P2003')`
+   * puro, como os demais caminhos deste arquivo): a FK de `Article.author`
+   * é `onDelete: Restrict`, e o Postgres real devolve `SQLSTATE 23001`
+   * para isso — código diferente do `P2003`/`23503` que `create()`/
+   * `update()` recebem quando `userId` é inválido (ver
+   * `shared/database/prisma-error.util`).
    *
    * `P2025` é "registro não encontrado" — cobre tanto `id` inexistente
    * quanto `id` de um Author de outro Site (a chave composta `id_siteId`
@@ -295,7 +302,7 @@ export class PrismaAuthorRepository {
         return { ok: false, reason: 'NOT_FOUND' };
       }
 
-      if (isErrorWithCode(err, 'P2003')) {
+      if (isForeignKeyConstraintViolation(err)) {
         return { ok: false, reason: 'HAS_ARTICLES' };
       }
 

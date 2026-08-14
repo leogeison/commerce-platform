@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/database/prisma.service';
 import { Prisma, type Category } from '../../../generated/prisma/client';
+import { isForeignKeyConstraintViolation } from '../../../shared/database/prisma-error.util';
 
 export interface CreateCategoryInput {
   siteId: string;
@@ -326,15 +327,5 @@ function isRecordNotFound(err: unknown): boolean {
     err !== null &&
     'code' in err &&
     (err as { code?: unknown }).code === 'P2025'
-  );
-}
-
-/** `P2003`: violação de foreign key — aqui, Produto(s) ainda vinculados à Categoria. */
-function isForeignKeyConstraintViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: unknown }).code === 'P2003'
   );
 }
