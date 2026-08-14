@@ -147,7 +147,11 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
                         {product.offers.map((offer) =>
                           offer.inStock ? (
                             <li key={offer.id} className="text-sm text-neutral-500">
-                              <a href={affiliateRedirectHref(offer.id, article.id)} rel="sponsored nofollow">
+                              <a
+                                href={affiliateRedirectHref(offer.id, article.id)}
+                                target="_blank"
+                                rel="sponsored nofollow noopener noreferrer"
+                              >
                                 {offer.marketplace} — {offer.price} {offer.currency}
                               </a>
                             </li>

@@ -134,14 +134,19 @@ describe('ArticlePage', () => {
     expect(html.match(/\(indisponível\)/g)).toHaveLength(2);
 
     // Oferta em estoque (Fone A, offerId 333...3) vira link para o
-    // endpoint de redirect (WEB-009), com o offerId e o articleId corretos
-    // e `rel="sponsored nofollow"`. `env.SITE_SLUG`/`env.AFFILIATE_REDIRECT_URL`
-    // vêm fixados por `jest.setup.ts` ('test-site' / 'http://localhost:3000').
+    // endpoint de redirect (WEB-009), com o offerId e o articleId corretos,
+    // `target="_blank"` (loja externa abre em nova guia — link interno do
+    // FastCompre continua na mesma guia) e
+    // `rel="sponsored nofollow noopener noreferrer"` (o `sponsored nofollow`
+    // já existia; `noopener noreferrer` é exigido por `target="_blank"` para
+    // uma origem externa). `env.SITE_SLUG`/`env.AFFILIATE_REDIRECT_URL` vêm
+    // fixados por `jest.setup.ts` ('test-site' / 'http://localhost:3000').
     expect(html).toContain(
       'href="http://localhost:3000/r/test-site/33333333-3333-4333-8333-333333333333' +
         '?articleId=11111111-1111-4111-8111-111111111111"',
     );
-    expect(html).toContain('rel="sponsored nofollow"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="sponsored nofollow noopener noreferrer"');
 
     // Ofertas fora de estoque (Fone A, offerId 444...4; Fone B, offerId
     // 666...6) permanecem visíveis, mas nunca viram link.
@@ -195,6 +200,10 @@ describe('ArticlePage', () => {
       'href="http://localhost:3000/r/test-site/99999999-9999-4999-8999-999999999999' +
         '?articleId=11111111-1111-4111-8111-111111111111"',
     );
+    // Ambos os links de Oferta (loja externa) abrem em nova guia — mesmo
+    // critério do teste acima, aqui confirmando que vale para as duas.
+    expect(html.match(/target="_blank"/g)).toHaveLength(2);
+    expect(html.match(/rel="sponsored nofollow noopener noreferrer"/g)).toHaveLength(2);
   });
 
   it('chama notFound() quando o artigo não existe', async () => {
