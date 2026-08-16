@@ -8,6 +8,30 @@ on:
 jobs:
   build-lint-typecheck:
     runs-on: ubuntu-latest
+    # Postgres real (QA-011) — antes só existia um DATABASE_URL fictício
+    # (usado apenas para o config do Prisma carregar em "Generate Prisma
+    # Client", nunca para conectar de verdade). Agora também é usado pelas
+    # migrations reais e pela suíte e2e da API, abaixo.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Mesmas credenciais que já eram usadas como valor fictício antes da
+      # QA-011 — agora reais, apontando para o serviço postgres acima.
+      # GitHub Actions só libera os passos do job depois do serviço ficar
+      # healthy, então já está pronto quando "Generate Prisma Client" roda.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,13 +50,50 @@ jobs:
 
       - name: Generate Prisma Client
         run: pnpm --filter api exec prisma generate
-        env:
-          # prisma.config.ts usa env('DATABASE_URL') (helper de
-          # prisma/config), que lança erro se a variável não existir —
-          # mesmo `prisma generate` nunca abrindo conexão real com o banco.
-          # Valor fictício, só para o config carregar; nunca usado para
-          # conectar em nada.
-          DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci'
+
+      # QA-011: suíte de testes do MVP. `pnpm --filter api test`/`pnpm
+      # --filter admin test`/`pnpm --filter fastcompre test` não têm hook
+      # `pretest` que builde @commerce-platform/contracts (só `test:e2e`
+      # tem, via `pretest:e2e`) — sem este passo explícito, os três passos
+      # de teste abaixo falham com "Cannot find module
+      # '@commerce-platform/contracts'" (reproduzido antes de adicionar).
+      - name: Build contracts
+        run: pnpm --filter @commerce-platform/contracts build
+
+      # `test:coverage:domain` (QA-001) já roda a suíte unitária completa
+      # da API e aplica o coverageThreshold (80/80/80/70) definido ali —
+      # usado no lugar de `pnpm --filter api test` para que a QA-001 seja
+      # um gate real do CI, sem rodar a suíte unitária duas vezes.
+      - name: API unit tests + coverage gate
+        run: pnpm --filter api test:coverage:domain
+
+      - name: Admin tests
+        run: pnpm --filter admin test
+
+      - name: FastCompre tests
+        run: pnpm --filter fastcompre test
+
+      - name: Apply migrations
+        run: pnpm --filter api exec prisma migrate deploy
+
+      # --runInBand: a suíte e2e completa (77 arquivos, cada um sobe uma
+      # instância Nest própria) esgotou a memória do meu sandbox de
+      # validação (3,8GB) rodando em paralelo; serial é determinístico e
+      # já validado de ponta a ponta (~114s). Sem isso não há garantia de
+      # que a suíte completa rode de forma confiável sob paralelismo
+      # default do Jest neste runner.
+      #
+      # `pnpm --filter api test:e2e -- --runInBand` (forma óbvia) NÃO
+      # funciona nesta versão do pnpm: `--filter` + `--` insere um `--`
+      # literal antes do argumento repassado, e o Jest interpreta
+      # "--runInBand" como padrão de nome de teste em vez de flag
+      # (reproduzido: "Pattern: --runInBand - 0 matches", 0 testes
+      # rodados). `working-directory` + `pnpm run` (sem `--filter`, sem
+      # `--`) repassa a flag corretamente — validado rodando a suíte de
+      # verdade.
+      - name: API e2e tests
+        working-directory: apps/api
+        run: pnpm run test:e2e --runInBand
 
       - name: Lint
         run: pnpm lint
