@@ -237,4 +237,62 @@ describe('POST /admin/sites/:siteSlug/articles/:id/publish (e2e)', () => {
     expect(persisted?.status).toBe('DRAFT');
     expect(revalidationPort.revalidate).not.toHaveBeenCalled();
   });
+
+  it('PUBLISHED → publish: 422, única issue WRONG_STATUS, status persiste PUBLISHED, revalidação não chamada de novo', async () => {
+    const article = await createPublishableArticle('artigo-ja-publicado');
+
+    const firstResponse = await request(app!.getHttpServer())
+      .post(`/admin/sites/${siteA.slug}/articles/${article.id}/publish`)
+      .set('Cookie', cookieHeader())
+      .set('Origin', ADMIN_ORIGIN);
+    expect(firstResponse.status).toBe(200);
+    revalidationPort.revalidate.mockClear();
+
+    const response = await request(app!.getHttpServer())
+      .post(`/admin/sites/${siteA.slug}/articles/${article.id}/publish`)
+      .set('Cookie', cookieHeader())
+      .set('Origin', ADMIN_ORIGIN);
+
+    expect(response.status).toBe(422);
+    expect(apiErrorSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.details.issues).toEqual(['WRONG_STATUS']);
+    expect(revalidationPort.revalidate).not.toHaveBeenCalled();
+
+    const persisted = await prisma.article.findUnique({ where: { id: article.id } });
+    expect(persisted?.status).toBe('PUBLISHED');
+  });
+
+  it('ARCHIVED → publish: 422, única issue WRONG_STATUS, status persiste ARCHIVED, revalidação não chamada de novo', async () => {
+    const article = await createPublishableArticle('artigo-arquivado-tentando-publicar');
+
+    const publishResponse = await request(app!.getHttpServer())
+      .post(`/admin/sites/${siteA.slug}/articles/${article.id}/publish`)
+      .set('Cookie', cookieHeader())
+      .set('Origin', ADMIN_ORIGIN);
+    expect(publishResponse.status).toBe(200);
+
+    await prisma.siteUser.updateMany({
+      where: { userId: user!.id, siteId: siteA.id },
+      data: { role: Role.OWNER },
+    });
+    const archiveResponse = await request(app!.getHttpServer())
+      .post(`/admin/sites/${siteA.slug}/articles/${article.id}/archive`)
+      .set('Cookie', cookieHeader())
+      .set('Origin', ADMIN_ORIGIN);
+    expect(archiveResponse.status).toBe(200);
+    revalidationPort.revalidate.mockClear();
+
+    const response = await request(app!.getHttpServer())
+      .post(`/admin/sites/${siteA.slug}/articles/${article.id}/publish`)
+      .set('Cookie', cookieHeader())
+      .set('Origin', ADMIN_ORIGIN);
+
+    expect(response.status).toBe(422);
+    expect(apiErrorSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.details.issues).toEqual(['WRONG_STATUS']);
+    expect(revalidationPort.revalidate).not.toHaveBeenCalled();
+
+    const persisted = await prisma.article.findUnique({ where: { id: article.id } });
+    expect(persisted?.status).toBe('ARCHIVED');
+  });
 });
