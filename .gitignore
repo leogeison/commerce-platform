@@ -36,3 +36,6 @@ next-env.d.ts
 # Cache
 .eslintcache
 .turbo/
+
+# Coverage
+coverage*/
