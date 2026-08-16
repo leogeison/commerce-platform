@@ -72,6 +72,53 @@ commerce-platform/
 4. **Cliente Prisma:** `pnpm --filter api exec prisma generate` (necessário sempre que o schema mudar; a pasta gerada não é versionada).
 5. **Rodar a API:** `pnpm dev:api`. Frontends (ainda scaffolds vazios): `pnpm dev:admin` / `pnpm dev:fastcompre`.
 
+### Criando o primeiro administrador
+
+A API não faz seed automático de dados: o primeiro `User` + `Site` + `SiteUser(OWNER)` é criado por um comando interativo (`bootstrap:admin`, `AUTH-013`), nunca por um endpoint HTTP.
+
+**Pré-requisitos:**
+- Banco de dados já migrado (`docker compose up -d` + a migration aplicada, passos 2 e 4 acima).
+- `apps/api/.env` configurado (passo 3 acima).
+- A API **não** precisa estar rodando — o comando sobe seu próprio contexto de aplicação NestJS direto, independente do `pnpm dev:api`.
+
+**Comando:**
+
+```bash
+pnpm --filter api run bootstrap:admin -- \
+  --email admin@email.com \
+  --user-name "Nome do Administrador" \
+  --site-name "Nome do Site" \
+  --site-slug meu-site \
+  --site-domain meusite.com \
+  --site-locale pt-BR
+```
+
+- `--email`, `--site-name`, `--site-slug`, `--site-domain` são obrigatórios.
+- `--user-name` é opcional. `--site-locale` tem default `pt-BR` se omitido.
+- A senha **nunca** é passada como argumento: o comando pede duas vezes, interativamente, sem eco no terminal (confirmação evita erro de digitação).
+
+**O que o comando cria:** `User` (com a senha informada, já com hash), `Site` e `SiteUser` com Role `OWNER` — os três atomicamente (falha em qualquer etapa não deixa nenhum dos três).
+
+**Exemplo completo:**
+
+```
+$ pnpm --filter api run bootstrap:admin -- \
+    --email admin@fastcompre.com \
+    --user-name "Léo Geison" \
+    --site-name "FastCompre" \
+    --site-slug fastcompre \
+    --site-domain fastcompre.com
+
+Senha: ********
+Confirme a senha: ********
+Administrador criado com sucesso.
+  E-mail: admin@fastcompre.com
+  Site: FastCompre (fastcompre)
+  Role: OWNER
+```
+
+**Depois de criado:** rode `pnpm dev:api` e `pnpm dev:admin`, acesse o Admin e faça login com o e-mail e a senha informados acima. Como o bootstrap cria exatamente um Site, o login redireciona automaticamente para `/<site-slug>/categories` desse Site (a página raiz só mostra uma lista para escolher quando o usuário tem acesso a mais de um Site).
+
 ### Testes e verificação
 
 - `pnpm lint`, `pnpm typecheck`, `pnpm build` — na raiz, cobrem todos os workspaces.
