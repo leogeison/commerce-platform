@@ -1,0 +1,55 @@
+# .dockerignore da raiz — usado pelo build da imagem de apps/api (QA-010),
+# contexto = raiz do monorepo (apps/api/Dockerfile faz `COPY . .`).
+# Espelha as exclusões de .gitignore, mas aplicado a TODO workspace
+# (apps/api, apps/admin, apps/fastcompre, packages/contracts), não só ao
+# que o Dockerfile efetivamente usa — o build context inteiro é enviado ao
+# daemon do Docker antes de qualquer COPY seletivo.
+
+# Dependências
+**/node_modules
+
+# Builds
+**/dist
+**/build
+**/.next
+**/out
+
+# Ambiente — NUNCA deve entrar no contexto/imagem: são segredos reais
+# (SESSION_SECRET, REVALIDATION_SECRET, credenciais S3 etc.). Sem esta
+# exclusão, `pnpm --filter api deploy` (Dockerfile) copiaria um
+# apps/api/.env físico inteiro para dentro da imagem, caso ele exista no
+# host no momento do `docker build` — vale para .env de qualquer workspace,
+# não só apps/api.
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Logs
+**/*.log
+**/npm-debug.log*
+**/pnpm-debug.log*
+
+# Editor / SO
+**/.DS_Store
+.vscode
+.idea
+
+# Prisma (client gerado — regenerado no estágio `build` via `prisma
+# generate`; não precisa vir do contexto)
+apps/api/src/generated
+
+# Next.js
+**/next-env.d.ts
+
+# TypeScript
+**/*.tsbuildinfo
+
+# Cache
+**/.eslintcache
+**/.turbo
+
+# Coverage
+**/coverage*
+
+# Controle de versão
+.git

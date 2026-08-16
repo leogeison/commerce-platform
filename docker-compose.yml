@@ -71,6 +71,91 @@ services:
       exit 0
       "
 
+  # Serviço one-shot (QA-010): aplica as migrations do Prisma contra o
+  # Postgres do compose antes da API subir. Usa o estágio `build` do
+  # Dockerfile (não `runtime`) porque só ele tem a CLI do Prisma
+  # (devDependency de apps/api) e a pasta `prisma/` — a imagem final da
+  # API (`runtime`) não carrega nenhum dos dois de propósito.
+  # `prisma migrate deploy` é idempotente: uma segunda subida com o volume
+  # `postgres_data` já migrado só constata que não há migration pendente e
+  # sai 0, sem reaplicar nada.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    container_name: commerce-platform-migrate
+    env_file:
+      - apps/api/.env
+    environment:
+      # localhost não resolve entre containers — dentro da rede do
+      # compose, o Postgres é alcançado pelo nome do serviço.
+      DATABASE_URL: postgresql://user:password@postgres:5432/commerce_platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Invoca o binário do Prisma já instalado pelo `pnpm install` do estágio
+    # `build` diretamente (não via `pnpm --filter api exec ...`). Motivo
+    # (QA-010, investigado e reproduzido): `pnpm exec`, nesta versão do
+    # pnpm (11.x), roda uma verificação de estado ("deps status check")
+    # antes do comando de verdade que, depois de um `pnpm deploy --legacy`
+    # já ter rodado nesta mesma árvore (etapa anterior do estágio `build`),
+    # tenta silenciosamente reconciliar reinstalando com `pnpm install
+    # --production` — o que exigiria remover as devDependencies do
+    # node_modules e pede confirmação interativa
+    # (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY sem TTY). Reproduzido e
+    # isolado antes de aplicar: o gatilho é exatamente essa sequência
+    # (exec após deploy --legacy na mesma árvore), não a CLI do Prisma.
+    # Chamar o binário direto evita passar pelo `pnpm exec` inteiramente —
+    # determinístico, sem reinstalar/reorganizar node_modules no startup.
+    working_dir: /repo/apps/api
+    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+
+  # API (QA-010): imagem "local-runtime", buildada uma vez via `docker
+  # compose up --build` — não é o fluxo de desenvolvimento com hot-reload
+  # (esse continua sendo `pnpm dev:api`, fora do Docker, intocado).
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    container_name: commerce-platform-api
+    restart: unless-stopped
+    env_file:
+      - apps/api/.env
+    environment:
+      # Mesma lógica do `migrate`: hostname do serviço, não localhost.
+      DATABASE_URL: postgresql://user:password@postgres:5432/commerce_platform
+      # SDK S3 roda DENTRO do container — precisa do hostname do serviço
+      # MinIO na rede do compose. STORAGE_S3_PUBLIC_URL_BASE (apps/api/.env)
+      # continua http://localhost:9000/... de propósito: é resolvido pelo
+      # navegador, não pela API.
+      STORAGE_S3_ENDPOINT: http://minio:9000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # GET /health (health.controller.ts) via Node puro — a imagem
+      # runtime (node:22-bookworm-slim) não tem curl/wget por padrão, e
+      # Node já está lá de qualquer forma.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/health',res=>process.exit(res.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   postgres_data:
   minio_data:
