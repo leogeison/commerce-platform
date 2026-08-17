@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.0.0",
+    "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
@@ -30,6 +31,7 @@
     "@types/react-dom": "^19",
     "jest": "^30.0.0",
     "jest-environment-jsdom": "^30.0.0",
+    "tailwindcss": "^4",
     "typescript": "^5"
   }
 }
