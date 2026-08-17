@@ -8,6 +8,7 @@
     "build": "pnpm -r build",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
+    "verify:tailwind-scan": "node scripts/verify-tailwind-cross-package-scan.mjs",
     "dev:api": "node scripts/dev-api.mjs",
     "dev:admin": "pnpm --filter admin dev",
     "dev:fastcompre": "pnpm --filter fastcompre dev"

@@ -11,6 +11,12 @@
       "require": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./probe": {
+      "types": "./dist/probe.d.ts",
+      "require": "./dist/probe.js",
+      "import": "./dist/probe.js",
+      "default": "./dist/probe.js"
     }
   },
   "scripts": {
@@ -18,7 +24,12 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "react": "^19"
+  },
   "devDependencies": {
+    "@types/react": "^19",
+    "react": "19.2.4",
     "typescript": "^5"
   }
 }

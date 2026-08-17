@@ -27,8 +27,13 @@ consumidor real é o critério (ver UXA-001/UXA-005).
 
 - `tokens/` (UXF-001): fundação de tokens de design — fonte única, CSS
   custom properties.
-- `src/index.ts` (UXF-002, esta tarefa): esqueleto do pacote como
-  dependência de workspace — nenhum primitive real ainda.
+- `src/index.ts` (UXF-002): esqueleto do pacote como dependência de
+  workspace — nenhum primitive real ainda.
+- `src/probe.tsx` (UXF-004, subpath `@commerce-platform/ui/probe`):
+  probe técnico de content-scanning cross-package do Tailwind — API
+  técnica de probe/teste, **não** API de primitives do design system.
+  Ver comentário do próprio arquivo e
+  `scripts/verify-tailwind-cross-package-scan.mjs`.
 - Primitives reais (Button, Skeleton/Badge, Text) entram na UXF-005.
 
 ## Estratégia de build
@@ -37,9 +42,29 @@ O pacote é pré-compilado para `dist/` via `tsc` (mesmo padrão de
 `@commerce-platform/contracts`, com `tsconfig.json` usado só para
 `typecheck: tsc --noEmit` e `tsconfig.build.json` responsável pela
 emissão real). Isso é estritamente uma decisão de build/resolução
-TypeScript/JS — não decide como (ou se) o content-scanning do Tailwind
-em `apps/admin`/`apps/fastcompre` vai alcançar este pacote, nem se será
-via `dist/`, `src/` ou outro caminho. Essa decisão pertence à UXF-004.
+TypeScript/JS — independente de como o content-scanning do Tailwind em
+`apps/admin`/`apps/fastcompre` alcança este pacote.
+
+A UXF-004 decidiu essa segunda questão: `@source "../../../../packages/ui/src"`
+em cada `globals.css` aponta para o **código-fonte** (`src/`), não para
+`dist/` — o scanner do Tailwind lê o texto-fonte diretamente, sem
+depender de um build prévio do pacote.
+
+## Pendência: ponte tokens → Tailwind
+
+Os tokens de `packages/ui/tokens/*.css` (UXF-001) continuam, depois da
+UXF-004, sem nenhuma integração com o Tailwind — nenhum `@theme` foi
+criado. O probe técnico de content-scanning (`src/probe.tsx`) usa
+deliberadamente só utilities padrão do Tailwind (paleta/spacing do
+próprio framework), nunca os tokens do projeto — evita duplicar valores
+(HEX, spacing) que já têm `packages/ui/tokens/*.css` como fonte única de
+verdade.
+
+Antes de a UXF-005 consumir esses tokens através de utilities Tailwind
+customizadas, alguém precisa fechar essa ponte — mapear os CSS custom
+properties canônicos para `@theme` (ou mecanismo equivalente) sem criar
+uma segunda fonte de verdade para os mesmos valores. Essa decisão
+continua em aberto; nenhuma tarefa até aqui (UXF-001–004) a resolveu.
 
 ## Validação da UXF-002 (registro, não é passo de CI)
 

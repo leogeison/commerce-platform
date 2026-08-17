@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../../packages/ui/src";
 
 /*
  * O Preflight do Tailwind (importado acima) já reseta `box-sizing`,
