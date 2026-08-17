@@ -1,0 +1,54 @@
+/**
+ * packages/ui/tokens/colors.css
+ *
+ * Tokens PRIMITIVOS de cor — UXF-001 (Fundação de tokens de design).
+ *
+ * Primitivo = valor bruto (matiz + variação de luminosidade), sem papel de
+ * uso atribuído. Nada aqui deve ser consumido diretamente por componentes —
+ * o papel de uso vive em `semantic-colors.css`, que referencia estes valores
+ * via var().
+ *
+ * Formato: CSS custom properties simples em `:root`. Sem `@theme` do
+ * Tailwind v4 nesta tarefa — ver README.md, seção "Relação com Tailwind".
+ *
+ * Nomenclatura: `green-*` descreve o matiz (verde), não a intenção de marca.
+ * "Verde-floresta" é a justificativa de escolha, documentada no README —
+ * nunca o nome de um token. Isso mantém a fronteira entre primitivo (valor)
+ * e semântico (papel de uso, ver `accent-*`, `focus-*` em semantic-colors.css).
+ */
+
+:root {
+  /* ---- neutral: tinta/grafite levemente quente (hue ~30-40°, baixa saturação) ---- */
+  --color-neutral-0: #FFFFFF;
+  --color-neutral-25: #FCFCFB;
+  --color-neutral-50: #F9F9F7;
+  --color-neutral-100: #F3F2EE;
+  --color-neutral-200: #E5E2DC;
+  --color-neutral-300: #CDC7BE;
+  --color-neutral-400: #ABA396;
+  --color-neutral-500: #8B8072;
+  --color-neutral-600: #70665A;
+  --color-neutral-700: #595045;
+  --color-neutral-800: #3F372F;
+  --color-neutral-900: #29221C;
+  /* Passo de ênfase máxima da rampa neutra — reserva estrutural da escala,
+     NÃO um token criado para dark mode (dark mode está fora do escopo desta
+     tarefa; ver README.md). */
+  --color-neutral-950: #1A1511;
+
+  /* ---- green: verde-floresta / verde profundo — acento único, usado de
+     forma contida. Só os passos com consumidor semântico definido em
+     semantic-colors.css entram aqui; nenhum passo intermediário (200/300/
+     400/500) ou 900 foi criado sem uso real atribuído. ---- */
+  --color-green-50: #F0F9F6;
+  --color-green-100: #DEF2E9;
+  --color-green-600: #2C7D53;
+  --color-green-700: #1F633F;
+  --color-green-800: #15492D;
+
+  /* ---- red: feedback de erro/perigo. warning/info deliberadamente fora do
+     escopo da UXF-001 (sem consumidor definido no backlog atual). ---- */
+  --color-red-50: #FCF1F0;
+  --color-red-600: #A42B23;
+  --color-red-700: #852019;
+}

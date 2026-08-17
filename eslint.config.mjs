@@ -14,7 +14,7 @@ export default [
   },
   ...react,
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "packages/*/tokens/**/*.mjs"],
     ...node[node.length - 1],
   },
 ];

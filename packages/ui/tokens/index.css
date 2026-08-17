@@ -1,0 +1,17 @@
+/**
+ * packages/ui/tokens/index.css
+ *
+ * Ponto único de entrada dos tokens de foundation (UXF-001). CSS puro —
+ * nenhuma dependência de bundler ou de Tailwind. Ordem de import importa:
+ * semantic-colors.css referencia var()s declaradas em colors.css.
+ *
+ * Nenhum app importa este arquivo ainda — a integração real com Admin/
+ * FastCompre (e com o Tailwind de cada um) é trabalho de UXF-003/UXF-004,
+ * não desta tarefa.
+ */
+@import './colors.css';
+@import './semantic-colors.css';
+@import './typography.css';
+@import './spacing.css';
+@import './radius.css';
+@import './elevation.css';

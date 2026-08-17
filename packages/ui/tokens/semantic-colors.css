@@ -1,0 +1,81 @@
+/**
+ * packages/ui/tokens/semantic-colors.css
+ *
+ * Tokens SEMÂNTICOS de cor — UXF-001 (Fundação de tokens de design).
+ *
+ * Semântico = papel de uso, resolvido via var() para um primitivo declarado
+ * em colors.css. Componentes devem consumir exclusivamente os tokens deste
+ * arquivo — nunca os primitivos `--color-neutral-*` / `--color-green-*` /
+ * `--color-red-*` diretamente.
+ *
+ * Requer colors.css importado antes deste arquivo (ver index.css).
+ *
+ * dark-mode-ready: cada token aqui é uma indireção (var()) para um
+ * primitivo, nunca um valor literal repetido. Isso é, deliberadamente, TODA
+ * a preparação para dark mode desta tarefa — nenhuma paleta escura nem
+ * seletor `[data-theme="dark"]` é criado agora. Uma tarefa futura poderia
+ * redeclarar estes mesmos nomes sob um seletor de tema escuro sem alterar
+ * nenhum componente consumidor.
+ */
+
+:root {
+  /* ---- texto ---- */
+  --color-text-primary: var(--color-neutral-900);
+  --color-text-secondary: var(--color-neutral-700);
+  /* Texto normal/muted/helper — nunca neutral-500 (3.87:1, abaixo de 4.5:1).
+     neutral-600 cumpre 4.5:1 e é o piso para qualquer texto de tamanho normal. */
+  --color-text-muted: var(--color-neutral-600);
+  /* WCAG isenta conteúdo desabilitado do requisito de contraste de texto.
+     Nunca usar como único indicador do estado desabilitado — sempre combinar
+     com opacidade / cursor / aria-disabled no componente consumidor. */
+  --color-text-disabled: var(--color-neutral-400);
+  /* Texto claro de uso geral sobre uma futura superfície escura. Declarado
+     para completude semântica; nenhum par de teste é exigido nesta tarefa
+     porque ainda não existe uma superfície semântica escura consumidora
+     (ver check-contrast.mjs e README.md). */
+  --color-text-inverse: var(--color-neutral-0);
+
+  /* Texto sobre preenchimentos coloridos (acento/erro) — tokens dedicados,
+     desacoplados de text-inverse para permitir que accent-fill/danger-fill
+     mudem de tom no futuro sem forçar mudança em text-inverse. */
+  --color-on-accent-text: var(--color-neutral-0);
+  --color-on-danger-text: var(--color-neutral-0);
+
+  /* ---- superfície ---- */
+  --color-surface-page: var(--color-neutral-25);
+  --color-surface-raised: var(--color-neutral-0);
+  --color-surface-subtle: var(--color-neutral-50);
+
+  /* ---- borda ---- */
+  /* Decorativas — não carregam significado sozinhas, sem requisito de
+     contraste (ex.: divisores, borda de repouso de input). */
+  --color-border-subtle: var(--color-neutral-200);
+  --color-border-default: var(--color-neutral-300);
+  /* Informativa — quando a borda por si só comunica um estado (ex.: seleção
+     atual), precisa >=3:1 (WCAG 1.4.11, não-texto). */
+  --color-border-meaningful: var(--color-neutral-500);
+
+  /* ---- ícone ---- */
+  /* Ícone que carrega significado por si só (sem texto acompanhando) —
+     precisa >=3:1 (WCAG 1.4.11, não-texto). */
+  --color-icon-muted: var(--color-neutral-500);
+
+  /* ---- acento (verde-floresta), uso contido ---- */
+  --color-accent-fill-default: var(--color-green-600);
+  --color-accent-fill-hover: var(--color-green-700);
+  --color-accent-fill-active: var(--color-green-800);
+  --color-accent-text: var(--color-green-700);
+  --color-accent-subtle-bg: var(--color-green-50);
+  --color-accent-subtle-text: var(--color-green-800);
+
+  /* ---- foco ---- */
+  --color-focus-ring: var(--color-green-600);
+
+  /* ---- feedback: erro/perigo ----
+     warning/info deliberadamente fora do escopo da UXF-001 — nenhuma tarefa
+     já lida no backlog exige essas cores por nome; entram just-in-time
+     quando um consumidor real existir. */
+  --color-feedback-danger-text: var(--color-red-700);
+  --color-feedback-danger-fill: var(--color-red-600);
+  --color-feedback-danger-subtle-bg: var(--color-red-50);
+}
