@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import { Text } from './text';
 
 describe('Text', () => {
@@ -27,5 +28,11 @@ describe('Text', () => {
     render(<Text className="custom-extra">Conteúdo</Text>);
     const el = screen.getByText('Conteúdo');
     expect(el).toHaveClass('text-fg', 'text-body', 'font-ui', 'font-body', 'custom-extra');
+  });
+
+  it('has no axe-detectable accessibility violations', async () => {
+    const { container } = render(<Text>Conteúdo</Text>);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

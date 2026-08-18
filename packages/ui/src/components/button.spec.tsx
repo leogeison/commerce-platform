@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { Button } from './button';
 
 describe('Button', () => {
@@ -44,5 +45,11 @@ describe('Button', () => {
     render(<Button className="custom-extra">Salvar</Button>);
     const btn = screen.getByRole('button', { name: 'Salvar' });
     expect(btn).toHaveClass('rounded-control', 'bg-accent', 'font-ui', 'font-action', 'custom-extra');
+  });
+
+  it('has no axe-detectable accessibility violations', async () => {
+    const { container } = render(<Button>Salvar</Button>);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

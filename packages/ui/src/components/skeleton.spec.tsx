@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import { Skeleton } from './skeleton';
 
 describe('Skeleton', () => {
@@ -35,6 +36,12 @@ describe('Skeleton', () => {
     const bypass = { 'aria-hidden': 'false' } as unknown as { 'data-bypass': string };
     const { container } = render(<Skeleton {...bypass} />);
     expect(container.firstChild).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('has no axe-detectable accessibility violations', async () => {
+    const { container } = render(<Skeleton />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });
 

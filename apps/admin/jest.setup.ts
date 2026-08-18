@@ -13,6 +13,17 @@
 import '@testing-library/jest-dom/jest-globals';
 
 /**
+ * `jest-axe/extend-expect` (UXF-007) — diferente do jest-dom acima, o
+ * `@types/jest-axe` amplia tanto `namespace jest { interface Matchers }`
+ * (global clássico) quanto `declare module "@jest/expect" { interface
+ * Matchers }` (o que `@jest/globals` resolve) no mesmo arquivo de tipos —
+ * não existe um entrypoint alternativo equivalente a `/jest-globals` a
+ * escolher aqui; este único import cobre o padrão `@jest/globals` deste
+ * projeto (verificado por `tsc --strict --skipLibCheck false`).
+ */
+import 'jest-axe/extend-expect';
+
+/**
  * Valor fixo de `NEXT_PUBLIC_API_URL` para toda a suíte, exceto
  * `env.spec.ts` (que testa a própria validação e sobrescreve `process.env`
  * por teste, com `jest.resetModules()` + import dinâmico — ver esse

@@ -1,12 +1,13 @@
 /**
- * Valores fixos de `SITE_SLUG`/`API_URL` para toda a suíte, exceto
- * `env.spec.ts` (que testa a própria validação e sobrescreve `process.env`
- * por teste, com `jest.resetModules()` + import dinâmico — ver esse
- * arquivo). Executado por `setupFiles` (config do Jest), portanto antes do
- * framework de teste e de qualquer módulo do próprio arquivo de teste serem
- * carregados — momento certo para variáveis lidas por um módulo (`env.ts`)
- * validado na importação.
+ * `setupFilesAfterEnv` (UXF-007; era `setupFiles` na UXF-008) — necessário
+ * para que `jest-axe/extend-expect` chame `expect.extend(...)` depois que
+ * o ambiente Jest já está instalado (mesmo motivo de `apps/admin`,
+ * ADM-002). As variáveis de ambiente abaixo continuam sendo aplicadas
+ * antes de qualquer arquivo de teste importar `./env` — `setupFilesAfterEnv`
+ * roda depois do ambiente, mas ainda antes do arquivo de teste em si.
  */
+import 'jest-axe/extend-expect';
+
 process.env.SITE_SLUG = 'test-site';
 process.env.API_URL = 'http://localhost:3000';
 process.env.SITE_URL = 'http://localhost:3001';

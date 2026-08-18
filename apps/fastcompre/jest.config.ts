@@ -19,10 +19,10 @@ const createJestConfig = nextJest({ dir: '.' });
 // do Node diretamente (Route Handler) — Web API que `jsdom` não expõe como
 // global. Esse spec mantém `node` explicitamente via pragma
 // `@jest-environment` local (ver comentário no topo daquele arquivo); os
-// outros 9 specs + o novo spec de UXF-008 rodam sob `jsdom`.
+// outros 9 specs + o spec de UXF-008 rodam sob `jsdom`.
 const customJestConfig: Config = {
   testEnvironment: 'jsdom',
-  setupFiles: ['<rootDir>/jest.setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testMatch: ['<rootDir>/src/**/*.spec.{ts,tsx}'],
 };
 

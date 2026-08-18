@@ -60,6 +60,13 @@ jobs:
       - name: Build contracts
         run: pnpm --filter @commerce-platform/contracts build
 
+      # UXF-007: gate real de packages/ui no CI — antes só era
+      # exercitado indiretamente via `pnpm build`/`pnpm typecheck`
+      # (que dependem dele), nunca com a suíte de teste (jest-axe
+      # incluso) rodando de fato.
+      - name: UI package tests
+        run: pnpm --filter @commerce-platform/ui test
+
       # `test:coverage:domain` (QA-001) já roda a suíte unitária completa
       # da API e aplica o coverageThreshold (80/80/80/70) definido ali —
       # usado no lugar de `pnpm --filter api test` para que a QA-001 seja
