@@ -43,6 +43,8 @@ consumidor real é o critério (ver UXA-001/UXA-005).
   `Skeleton`. Ver comentário de cada arquivo para a API e o raciocínio de
   escopo mínimo (derivado do primeiro consumidor real previsto, Categoria
   em `apps/admin`).
+- `lucide-react` (UXF-006): dependência de ícones resolvida — ver seção
+  "Ícones" abaixo. Nenhum primitive a consome ainda.
 
 ## Estratégia de build
 
@@ -90,6 +92,81 @@ Escopo **mínimo**: só os tokens efetivamente consumidos por `Text`/
 `Button`/`Skeleton` (ver `tokens/tailwind-theme.css` para a lista
 completa e comentada). Qualquer token novo exposto aqui exige um
 consumidor real — nunca especulativo.
+
+## Ícones (UXF-006)
+
+`lucide-react` está disponível como `dependency` de `@commerce-platform/ui`
+(não `peerDependency`, não instalado em `apps/admin`/`apps/fastcompre`) —
+resolvido e pronto para uso por primitives futuros. Nenhum re-export,
+facade ou subconjunto nomeado de ícones existe ainda, e nenhum dos três
+primitives (`Text`/`Button`/`Skeleton`) foi alterado por esta tarefa —
+nenhum consumidor real precisa de ícone hoje; promoção de um subconjunto
+só ocorre quando um consumidor real exigir (mesmo critério já usado em
+outras partes deste pacote, ex. UXA-001/UXA-005).
+
+Requisito de acessibilidade, em termos de **resultado** (não de
+implementação específica):
+
+- **Ícone decorativo:** deve permanecer fora da árvore de acessibilidade
+  (`aria-hidden="true"`) — comportamento padrão do próprio Lucide, sem
+  configuração adicional.
+- **Ícone funcional sem texto visível** (ex.: botão só-ícone): o elemento
+  interativo que o envolve precisa ter nome acessível; o ícone em si
+  continua decorativo. Texto visualmente oculto associado ao controle é
+  o padrão preferido neste projeto (mesmo mecanismo já usado no CTA de
+  afiliado planejado para o FastCompre), mas **não** é a única forma
+  tecnicamente válida de produzir esse nome acessível — `aria-label` no
+  próprio controle, por exemplo, também satisfaz o requisito.
+
+### Validação da UXF-006 (registro, pendente de execução local)
+
+Procedimento de prova aprovado — efêmero, sem nenhum arquivo permanente:
+
+1. Instalar a dependência com `pnpm install` na raiz do repositório.
+2. Criar um arquivo temporário `src/__uxf006-proof.spec.tsx`:
+
+   ```tsx
+   import { render, screen } from '@testing-library/react';
+   import { House } from 'lucide-react';
+
+   describe('UXF-006 — prova efêmera (não commitada)', () => {
+     it('ícone decorativo renderiza com aria-hidden="true" por padrão do Lucide', () => {
+       const { container } = render(<House />);
+       expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+     });
+
+     it('controle somente-ícone tem nome acessível e o SVG continua decorativo por padrão', () => {
+       render(
+         <button type="button">
+           <House />
+           <span className="sr-only">Ir para o início</span>
+         </button>,
+       );
+       const btn = screen.getByRole('button', { name: 'Ir para o início' });
+       expect(btn).toBeInTheDocument();
+       expect(btn.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+     });
+   });
+   ```
+
+   Nenhum `aria-hidden` é passado manualmente ao ícone em nenhum dos dois
+   cenários — a asserção verifica o comportamento padrão real do pacote
+   instalado, não fornece manualmente o que a prova deveria comprovar.
+3. Rodar `pnpm --filter @commerce-platform/ui test -- __uxf006-proof`.
+4. Registrar o resultado real aqui.
+5. Apagar `src/__uxf006-proof.spec.tsx` e confirmar com
+   `git status --porcelain src` que nada ficou pendente, antes de
+   qualquer commit.
+
+**Não executado neste ambiente**: o `device_bash` usado nesta sessão não
+tem `pnpm` disponível (confirmado: `pnpm --version` → `command not found`),
+só `npm`. Como o lockfile só pode mudar via `pnpm install` (decisão já
+registrada), a dependência não pôde ser instalada aqui, e por consequência
+os passos 1–4 acima (instalação, execução da prova, `typecheck`, `build`)
+não puderam ser executados nem seu resultado registrado. Passo 5 (remoção)
+não se aplica ainda, pois o arquivo temporário nunca chegou a ser criado
+neste ambiente. Esta seção deve ser atualizada com o resultado real depois
+da execução local.
 
 ## Pendência: carregamento real de fontes
 
