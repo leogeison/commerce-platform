@@ -1,3 +1,11 @@
+/**
+ * @jest-environment node
+ *
+ * Depende do `Request` nativo do Node (instanciado diretamente abaixo, sem
+ * mock) — Web API que `jsdom` não expõe como global (UXF-008 trocou o
+ * ambiente padrão do projeto para `jsdom`; ver `jest.config.ts`). Este
+ * pragma restaura `node` somente para este arquivo.
+ */
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 /**
