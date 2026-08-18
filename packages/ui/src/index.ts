@@ -1,15 +1,21 @@
 /**
  * packages/ui — ponto de entrada público do pacote.
  *
- * UXF-002 (Esqueleto de `packages/ui`): fronteira formal do pacote no
- * workspace pnpm. Nenhum primitive real existe ainda — isso é escopo da
- * UXF-005. Este export type-only existe só para provar, em tempo de
- * compilação, que o pacote resolve corretamente como dependência de
- * workspace em `apps/admin` e `apps/fastcompre` — sem introduzir uma API
- * runtime artificial. A resolução em runtime de `dist/index.js` é
- * verificada separadamente, sem depender deste (ou de nenhum) valor
- * exportado (ver README.md, seção "Validação da UXF-002").
+ * UXF-005: primeiros primitives reais do design system. Substitui o
+ * export type-only de prova da UXF-002 (`UiPackageSkeleton`), que existiu
+ * só para comprovar a resolução do pacote como dependência de workspace —
+ * ver git history / relatório de fechamento da UXF-002 para esse registro.
  *
- * Fronteira normativa do pacote: ver README.md.
+ * Fronteira normativa do pacote: ver README.md. `src/probe.tsx`
+ * (fixture técnica da UXF-004) permanece isolado no subpath
+ * `@commerce-platform/ui/probe`, sem nenhuma relação de código com os
+ * primitives abaixo.
  */
-export type UiPackageSkeleton = never;
+export { Text } from './components/text';
+export type { TextProps, TextElement, TextVariant, TextTone } from './components/text';
+
+export { Button } from './components/button';
+export type { ButtonProps, ButtonVariant, ButtonSize } from './components/button';
+
+export { Skeleton } from './components/skeleton';
+export type { SkeletonProps, SkeletonVariant } from './components/skeleton';

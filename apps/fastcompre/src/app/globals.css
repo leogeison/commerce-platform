@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "../../../../packages/ui/tokens/index.css";
+@import "../../../../packages/ui/tokens/tailwind-theme.css";
 @source "../../../../packages/ui/src";
 
 /*

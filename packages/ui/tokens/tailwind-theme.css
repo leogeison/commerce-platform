@@ -1,0 +1,68 @@
+/**
+ * packages/ui/tokens/tailwind-theme.css
+ *
+ * UXF-005 — adapter Tailwind v4 dos tokens canônicos de
+ * `packages/ui/tokens/*.css`. A fonte de valores continua sendo
+ * exclusivamente colors.css/semantic-colors.css/typography.css/
+ * spacing.css/radius.css (todos importados por index.css, importado
+ * antes deste arquivo) — nenhum HEX, px, rem ou peso numérico é
+ * declarado aqui. Cada entrada é só um apelido de namespace Tailwind
+ * apontando, via var(), para a custom property real.
+ *
+ * Nomes deliberadamente DISTINTOS dos tokens de origem (nunca
+ * `--radius-md: var(--radius-md)` etc.) — investigação da UXF-005 provou
+ * com tailwindcss@4.3.3 real que autorreferência same-name funciona hoje
+ * (cascade layers: unlayered sempre vence layered), mas essa é uma
+ * propriedade estrutural em que o projeto decidiu deliberadamente não se
+ * apoiar, para não depender de uma sutileza de cascata que quebraria
+ * silenciosamente se os tokens algum dia fossem movidos para dentro de um
+ * @layer.
+ *
+ * Escopo mínimo: só os tokens efetivamente consumidos por Text/Button/
+ * Skeleton (UXF-005). Qualquer novo token exposto aqui exige um consumidor
+ * real — nunca especulativo (mesmo princípio de packages/ui/README.md).
+ *
+ * Toda propriedade com token correspondente na UXF-001 (cor, radius,
+ * font-family, font-size+line-height, font-weight, spacing de controle)
+ * passa por aqui com nome próprio — nunca uma utility Tailwind pura,
+ * mesmo quando o valor coincide numericamente com o default do Tailwind
+ * (ex.: nossa escala de spacing == grid de 4px do Tailwind). Só utilities
+ * sem token equivalente (flex, cursor, opacity, motion-safe:animate-pulse)
+ * continuam sendo Tailwind puro nos componentes, por não representarem
+ * decisão do design system.
+ */
+@theme inline {
+  /* cor */
+  --color-fg: var(--color-text-primary);
+  --color-fg-muted: var(--color-text-muted);
+  --color-fg-danger: var(--color-feedback-danger-text);
+  --color-fg-on-accent: var(--color-on-accent-text);
+  --color-accent: var(--color-accent-fill-default);
+  --color-accent-hover: var(--color-accent-fill-hover);
+  --color-accent-active: var(--color-accent-fill-active);
+  --color-surface: var(--color-surface-raised);
+  --color-outline: var(--color-border-default);
+  --color-focus: var(--color-focus-ring);
+  --color-skeleton: var(--color-border-subtle);
+
+  /* radius */
+  --radius-control: var(--radius-md);
+  --radius-pill: var(--radius-full);
+
+  /* fonte */
+  --font-ui: var(--font-family-sans);
+
+  /* tamanho + altura de linha */
+  --text-body: var(--font-size-base);
+  --text-body--line-height: var(--line-height-base);
+  --text-body-sm: var(--font-size-sm);
+  --text-body-sm--line-height: var(--line-height-sm);
+
+  /* peso */
+  --font-weight-body: var(--font-weight-regular);
+  --font-weight-action: var(--font-weight-semibold);
+
+  /* densidade — Button consome sem conhecer data-density */
+  --spacing-control-x: var(--space-control-x);
+  --spacing-control-y: var(--space-control-y);
+}

@@ -27,14 +27,22 @@ consumidor real é o critério (ver UXA-001/UXA-005).
 
 - `tokens/` (UXF-001): fundação de tokens de design — fonte única, CSS
   custom properties.
-- `src/index.ts` (UXF-002): esqueleto do pacote como dependência de
-  workspace — nenhum primitive real ainda.
+- `tokens/tailwind-theme.css` (UXF-005): adapter Tailwind v4 dos tokens
+  acima — ver seção "Ponte tokens → Tailwind" abaixo.
+- `src/index.ts` (UXF-002, substituído na UXF-005): esqueleto do pacote
+  como dependência de workspace — o export type-only de prova
+  (`UiPackageSkeleton`) foi substituído pelos exports reais dos
+  primitives.
 - `src/probe.tsx` (UXF-004, subpath `@commerce-platform/ui/probe`):
   probe técnico de content-scanning cross-package do Tailwind — API
   técnica de probe/teste, **não** API de primitives do design system.
   Ver comentário do próprio arquivo e
   `scripts/verify-tailwind-cross-package-scan.mjs`.
-- Primitives reais (Button, Skeleton/Badge, Text) entram na UXF-005.
+- `src/components/{text,button,skeleton}.tsx` (UXF-005): os três
+  primitives mínimos de prova do design system — `Text`, `Button`,
+  `Skeleton`. Ver comentário de cada arquivo para a API e o raciocínio de
+  escopo mínimo (derivado do primeiro consumidor real previsto, Categoria
+  em `apps/admin`).
 
 ## Estratégia de build
 
@@ -50,21 +58,74 @@ em cada `globals.css` aponta para o **código-fonte** (`src/`), não para
 `dist/` — o scanner do Tailwind lê o texto-fonte diretamente, sem
 depender de um build prévio do pacote.
 
-## Pendência: ponte tokens → Tailwind
+## Ponte tokens → Tailwind (UXF-005)
 
-Os tokens de `packages/ui/tokens/*.css` (UXF-001) continuam, depois da
-UXF-004, sem nenhuma integração com o Tailwind — nenhum `@theme` foi
-criado. O probe técnico de content-scanning (`src/probe.tsx`) usa
-deliberadamente só utilities padrão do Tailwind (paleta/spacing do
-próprio framework), nunca os tokens do projeto — evita duplicar valores
-(HEX, spacing) que já têm `packages/ui/tokens/*.css` como fonte única de
-verdade.
+Fechada nesta tarefa, via `tokens/tailwind-theme.css`, importado em cada
+`globals.css` logo após `tokens/index.css`:
 
-Antes de a UXF-005 consumir esses tokens através de utilities Tailwind
-customizadas, alguém precisa fechar essa ponte — mapear os CSS custom
-properties canônicos para `@theme` (ou mecanismo equivalente) sem criar
-uma segunda fonte de verdade para os mesmos valores. Essa decisão
-continua em aberto; nenhuma tarefa até aqui (UXF-001–004) a resolveu.
+```css
+@import "tailwindcss";
+@import "../../../../packages/ui/tokens/index.css";
+@import "../../../../packages/ui/tokens/tailwind-theme.css";
+@source "../../../../packages/ui/src";
+```
+
+Mecanismo: `@theme inline` do Tailwind v4, referenciando via `var()` as
+custom properties já declaradas em `colors.css`/`semantic-colors.css`/
+`typography.css`/`spacing.css`/`radius.css` — nenhum HEX, px, rem ou peso
+numérico é duplicado em `tailwind-theme.css`. `packages/ui/tokens/*.css`
+continua sendo a única fonte canônica de valores; o arquivo da ponte é
+só um adapter de nomenclatura Tailwind.
+
+Nomes das utilities geradas são **deliberadamente distintos** dos nomes
+dos tokens de origem (ex.: `bg-accent` → `var(--color-accent-fill-default)`,
+nunca `--color-accent-fill-default: var(--color-accent-fill-default)`) —
+investigação da UXF-005 provou com `tailwindcss@4.3.3` real que
+autorreferência same-name funciona hoje (cascade layers: declaração sem
+`@layer` sempre vence declaração com `@layer`, e `tokens/*.css` nunca usa
+`@layer`), mas essa é uma propriedade estrutural em que decidimos não nos
+apoiar — nomes distintos não dependem de nenhuma sutileza de cascata.
+
+Escopo **mínimo**: só os tokens efetivamente consumidos por `Text`/
+`Button`/`Skeleton` (ver `tokens/tailwind-theme.css` para a lista
+completa e comentada). Qualquer token novo exposto aqui exige um
+consumidor real — nunca especulativo.
+
+## Pendência: carregamento real de fontes
+
+`Text`/`Button` usam `font-ui` → `var(--font-family-sans)` ("Geist
+Sans"), mas nenhum carregamento real de fonte (`next/font`, `@font-face`)
+acontece — nem nesta tarefa nem em nenhuma anterior. `packages/ui` não
+tem e não deve ganhar conhecimento de `next/font` (fronteira normativa:
+não é um app Next.js). O fallback declarado no próprio token
+(`ui-sans-serif, -apple-system, ...`) cobre a ausência de carregamento
+sem quebrar. Essa pendência normativa **continua em aberto** após a
+UXF-005, sem tarefa dona ainda no backlog atual — mesma lacuna já
+registrada por `packages/ui/tokens/README.md`.
+
+## Testes — `jest-axe` deferido para a UXF-007
+
+`packages/ui` tem `jest.config.ts` próprio (`ts-jest` + `jest-environment-jsdom`,
+já que não é uma app Next.js e não pode reaproveitar `next/jest`).
+Os specs de `Text`/`Button`/`Skeleton` cobrem renderização, variantes/
+tons, interação (clique, `disabled`), os invariantes de `type="button"`
+default e `aria-hidden="true"` do `Skeleton`, e composição de `className`
+— tudo via `@testing-library/react`/`user-event`/`jest-dom`.
+
+**Não incluem `jest-axe`** — decisão explícita desta tarefa. A
+verificação automatizada de acessibilidade (`jest-axe`) destes três
+componentes é entregue pela **UXF-007** ("Gate de acessibilidade
+automatizada, camada 1"), que depende desta tarefa e adiciona esses
+testes aos componentes já existentes, sem reabri-los estruturalmente.
+
+## Prova visual/cross-app
+
+Sem rota nova: as rotas técnicas `/tailwind-scan-probe` (Admin e
+FastCompre, nascidas na UXF-004) foram estendidas para também renderizar
+`Text`, `Button` e `Skeleton`, preservando o `TailwindScanProbe` original
+e o `noindex` já existente no FastCompre. Prova que os três primitives
+renderizam corretamente nos dois apps através da mesma ponte
+tokens→Tailwind, sem scaffolding descartável.
 
 ## Validação da UXF-002 (registro, não é passo de CI)
 
@@ -84,10 +145,11 @@ permanente em `apps/admin` ou `apps/fastcompre`:
    `node -e "require('@commerce-platform/ui')"` executado a partir de
    `apps/admin/` e de `apps/fastcompre/`.
 
-`export type UiPackageSkeleton = never;` prova só a resolução de tipos —
-por ser type-only, é apagado na emissão e nunca chega a exercitar
-`dist/index.js`. Por isso a prova de runtime acima existe separadamente,
-sem depender de nenhum valor exportado.
+`export type UiPackageSkeleton = never;` provou só a resolução de tipos —
+por ser type-only, era apagado na emissão e nunca chegava a exercitar
+`dist/index.js`. Por isso a prova de runtime acima existiu separadamente,
+sem depender de nenhum valor exportado. Esse export foi substituído pelos
+primitives reais na UXF-005 (ver "Estado atual").
 
 Resultado (comandos e saída) registrado no relatório de fechamento da
 UXF-002 — não como teste automatizado permanente, conforme o próprio
