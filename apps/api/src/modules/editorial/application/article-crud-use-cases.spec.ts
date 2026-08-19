@@ -114,6 +114,35 @@ describe('ListArticlesUseCase', () => {
 
     expect(result.totalPages).toBe(0);
   });
+
+  it('sem orderBy: chama o repository com o shape exatamente igual ao de antes da UXF-012 (sem a chave orderBy)', async () => {
+    const findManyBySite = jest.fn().mockResolvedValue({ items: [], total: 0 });
+    const useCase = new ListArticlesUseCase(buildFakeArticleRepository({ findManyBySite }));
+
+    await useCase.execute({ siteId: SITE_ID, page: 1, pageSize: 20 });
+
+    const calledWith = findManyBySite.mock.calls[0][0];
+    expect(calledWith).not.toHaveProperty('orderBy');
+    expect(calledWith).toEqual({
+      siteId: SITE_ID,
+      page: 1,
+      pageSize: 20,
+      status: undefined,
+      type: undefined,
+      categoryId: undefined,
+    });
+  });
+
+  it('orderBy updatedAt_desc (UXF-012): repassado ao repository', async () => {
+    const findManyBySite = jest.fn().mockResolvedValue({ items: [], total: 0 });
+    const useCase = new ListArticlesUseCase(buildFakeArticleRepository({ findManyBySite }));
+
+    await useCase.execute({ siteId: SITE_ID, page: 1, pageSize: 20, orderBy: 'updatedAt_desc' });
+
+    expect(findManyBySite).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: 'updatedAt_desc' }),
+    );
+  });
 });
 
 describe('UpdateArticleUseCase', () => {

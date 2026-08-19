@@ -73,6 +73,17 @@ export type ArticleTransitionExtraData = {
   publishedAt?: Date;
 };
 
+/**
+ * Ordenação parametrizável de `findManyBySite` (UXF-012) — só os dois
+ * valores realmente necessários hoje (`createdAt desc` é o comportamento
+ * atual; `updatedAt desc` é o que o Dashboard futuro, UXA-017, precisa).
+ * Não um `{ field, direction }` genérico: nenhuma tarefa do backlog pede
+ * `createdAt asc`/`updatedAt asc`, e uma abstração maior aqui seria
+ * especulativa. Exportado (não inline) só para não duplicar a mesma união
+ * literal em `list-articles.use-case.ts`.
+ */
+export type ArticleListOrderBy = 'createdAt_desc' | 'updatedAt_desc';
+
 export interface FindManyBySiteInput {
   siteId: string;
   page: number;
@@ -83,6 +94,8 @@ export interface FindManyBySiteInput {
   type?: ArticleType;
   /** `undefined` = sem filtro por Categoria. */
   categoryId?: string;
+  /** `undefined` = comportamento atual (`createdAt desc, id asc`), ver `findManyBySite`. */
+  orderBy?: ArticleListOrderBy;
 }
 
 export interface FindManyBySiteResult {
@@ -246,7 +259,8 @@ export class PrismaArticleRepository {
   }
 
   /**
-   * Lista paginada de `Article` de um Site (EDT-007). Mesmo padrão de
+   * Lista paginada de `Article` de um Site (EDT-007; `orderBy`
+   * parametrizável desde UXF-012). Mesmo padrão de
    * `PrismaProductRepository.findManyBySite` (CAT-009): `findMany` +
    * `count` no mesmo `where` via `prisma.$transaction([...])` (mesmo
    * snapshot consistente).
@@ -257,14 +271,24 @@ export class PrismaArticleRepository {
    * deste Site (lista vazia, sem tratamento especial), mesmo raciocínio já
    * usado no filtro `categoryId` de Produto. Os três filtros combinam com
    * `AND` implícito do `where` — nenhuma regra de exclusividade entre
-   * eles documentada.
+   * eles documentada. `orderBy` nunca interfere no `where`: os dois são
+   * montados de forma independente.
    *
-   * `orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]` — decisão explícita
-   * desta tarefa (diferente de Categoria/Produto/Autor, que ordenam por
-   * `name asc`): Artigo é conteúdo editorial, não cadastro, e o painel
-   * administrativo prioriza visualizar os itens criados recentemente
-   * primeiro. `id asc` só como desempate determinístico, mesmo critério
-   * das demais listagens.
+   * Este repository é a autoridade sobre o `orderBy` de fato aplicado —
+   * `input.orderBy` ausente (`undefined`) resolve para o comportamento
+   * histórico (`createdAt desc, id asc`, decisão original desta tarefa:
+   * Artigo é conteúdo editorial, não cadastro, e o painel administrativo
+   * prioriza visualizar os itens criados recentemente primeiro).
+   * `'updatedAt_desc'` (UXF-012, para o Dashboard futuro, UXA-017) resolve
+   * para `updatedAt desc, id asc`.
+   *
+   * Em ambos os casos, `id asc` não é um desempate cosmético: é o que
+   * torna a ordenação **total**, nunca parcial. Sem ele, dois Artigos com
+   * o mesmo `createdAt`/`updatedAt` (empate real, não hipotético) não
+   * teriam ordem relativa garantida pelo Postgres entre chamadas — o que
+   * quebraria a estabilidade da paginação entre página 1 e página 2
+   * quando há empate no campo principal, não apenas a previsibilidade da
+   * ordenação isolada.
    */
   async findManyBySite(input: FindManyBySiteInput): Promise<FindManyBySiteResult> {
     const where: Prisma.ArticleWhereInput = {
@@ -274,10 +298,15 @@ export class PrismaArticleRepository {
       ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
     };
 
+    const orderBy: Prisma.ArticleOrderByWithRelationInput[] =
+      input.orderBy === 'updatedAt_desc'
+        ? [{ updatedAt: 'desc' }, { id: 'asc' }]
+        : [{ createdAt: 'desc' }, { id: 'asc' }];
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.article.findMany({
         where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        orderBy,
         skip: (input.page - 1) * input.pageSize,
         take: input.pageSize,
       }),

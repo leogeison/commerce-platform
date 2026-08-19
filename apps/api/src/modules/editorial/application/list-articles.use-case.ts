@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaArticleRepository } from '../infrastructure/prisma-article.repository';
+import {
+  PrismaArticleRepository,
+  type ArticleListOrderBy,
+} from '../infrastructure/prisma-article.repository';
 import type { Article, ArticleStatus, ArticleType } from '../../../generated/prisma/client';
 
 /**
@@ -17,6 +20,8 @@ export interface ListArticlesInput {
   status?: ArticleStatus;
   type?: ArticleType;
   categoryId?: string;
+  /** `undefined` = comportamento atual do repository (UXF-012). */
+  orderBy?: ArticleListOrderBy;
 }
 
 export interface ListArticlesResult {
@@ -40,6 +45,15 @@ export class ListArticlesUseCase {
   constructor(private readonly articleRepository: PrismaArticleRepository) {}
 
   async execute(input: ListArticlesInput): Promise<ListArticlesResult> {
+    /**
+     * `orderBy` montado condicionalmente (UXF-012) — não `orderBy:
+     * input.orderBy` direto. Quando `input.orderBy` é `undefined`, o
+     * objeto passado a `findManyBySite` fica literalmente idêntico ao de
+     * antes da UXF-012 (sem a chave `orderBy`), não com uma chave presente
+     * valendo `undefined` — preserva o shape histórico da chamada por
+     * igualdade estrutural real, sem depender de `toEqual`/
+     * `toHaveBeenCalledWith` do Jest ignorarem chaves `undefined`.
+     */
     const { items, total } = await this.articleRepository.findManyBySite({
       siteId: input.siteId,
       page: input.page,
@@ -47,6 +61,7 @@ export class ListArticlesUseCase {
       status: input.status,
       type: input.type,
       categoryId: input.categoryId,
+      ...(input.orderBy === undefined ? {} : { orderBy: input.orderBy }),
     });
 
     return {
