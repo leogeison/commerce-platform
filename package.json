@@ -9,14 +9,17 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "verify:tailwind-scan": "node scripts/verify-tailwind-cross-package-scan.mjs",
+    "measure:performance-baseline": "node scripts/measure-performance-baseline.mjs",
     "dev:api": "node scripts/dev-api.mjs",
     "dev:admin": "pnpm --filter admin dev",
     "dev:fastcompre": "pnpm --filter fastcompre dev"
   },
   "devDependencies": {
     "@leogeison/eslint-config": "^0.1.1",
+    "chrome-launcher": "1.2.1",
     "cross-spawn": "^7.0.6",
     "eslint": "^9.39.5",
+    "lighthouse": "13.4.1",
     "tree-kill": "^1.2.2"
   }
 }
