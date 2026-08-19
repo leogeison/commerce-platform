@@ -48,6 +48,7 @@ const validArticleDetail = {
       ],
     },
   ],
+  author: null,
 };
 
 const validCategory = { name: 'Comparativos', slug: 'comparativos' };

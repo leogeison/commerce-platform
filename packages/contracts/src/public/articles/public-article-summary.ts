@@ -15,9 +15,10 @@ import { articleTypeSchema } from '../../common/article-type.js';
  *   `PUBLISHED` (regra de comportamento da PUB-002/003, não desta forma);
  *   expor o enum cru seria redundante e administrativo.
  * - `siteId` — já resolvido via `:siteSlug` na própria rota.
- * - `authorId`/dados de Autor — nenhum endpoint público de Autor existe no
- *   backlog, nem exigência documentada de exibir byline; não adicionado
- *   sem requisito.
+ * - `authorId`/dados de Autor — a listagem continua sem Autor: só o
+ *   detalhe (`publicArticleSchema`, UXF-011) inclui `author: { name,
+ *   avatarUrl } | null`. Aqui seria informação a mais numa listagem que só
+ *   mostra metadados leves (mesmo critério de `bodyMdx`, abaixo).
  * - `createdAt`/`updatedAt` — bookkeeping interno, sem consumidor público
  *   documentado (diferente de `publishedAt`, que é a data relevante para
  *   ordenação da Home, Architecture.md §31).

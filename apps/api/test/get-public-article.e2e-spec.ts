@@ -6,7 +6,7 @@ import { publicArticleSchema } from '@commerce-platform/contracts';
 import { EditorialModule } from '../src/modules/editorial/editorial.module';
 import { PrismaService } from '../src/shared/database/prisma.service';
 import { ArticleType, Marketplace } from '../src/generated/prisma/enums';
-import type { Article, Category, Product, Site } from '../src/generated/prisma/client';
+import type { Article, Author, Category, Product, Site } from '../src/generated/prisma/client';
 
 /**
  * `GET /public/sites/:siteSlug/articles/:slug` (e2e, PUB-003). Exige
@@ -67,6 +67,9 @@ describe('GET /public/sites/:siteSlug/articles/:slug (e2e)', () => {
     await prisma.article.deleteMany({
       where: { site: { slug: { startsWith: 'pub003-' } } },
     });
+    await prisma.author.deleteMany({
+      where: { site: { slug: { startsWith: 'pub003-' } } },
+    });
     await prisma.category.deleteMany({
       where: { site: { slug: { startsWith: 'pub003-' } } },
     });
@@ -85,6 +88,7 @@ describe('GET /public/sites/:siteSlug/articles/:slug (e2e)', () => {
       status: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'ARCHIVED';
       categoryId: string;
       publishedAt: Date;
+      authorId: string;
     }> = {},
   ): Promise<Article> {
     return prisma.article.create({
@@ -95,11 +99,33 @@ describe('GET /public/sites/:siteSlug/articles/:slug (e2e)', () => {
         type: ArticleType.REVIEW,
         status: overrides.status ?? 'PUBLISHED',
         categoryId: overrides.categoryId ?? category.id,
+        authorId: overrides.authorId,
         publishedAt:
           overrides.status === undefined || overrides.status === 'PUBLISHED'
             ? (overrides.publishedAt ?? new Date())
             : undefined,
         bodyMdx: '# Conteúdo do Artigo',
+      },
+    });
+  }
+
+  /**
+   * Cria um `Author` real no banco (UXF-011) — inclui `bio` deliberadamente
+   * preenchida por padrão, para que o teste de não-vazamento tenha um
+   * campo interno real disponível na linha e prove que a resposta HTTP não
+   * o expõe (não bastaria testar contra um Author sem `bio`/`userId`
+   * preenchidos).
+   */
+  async function createAuthor(
+    site: Site,
+    overrides: Partial<{ name: string; avatarUrl: string | null; bio: string | null }> = {},
+  ): Promise<Author> {
+    return prisma.author.create({
+      data: {
+        siteId: site.id,
+        name: overrides.name ?? 'Autora Pub003',
+        avatarUrl: overrides.avatarUrl ?? null,
+        bio: overrides.bio ?? 'Bio interna, nunca deve aparecer na API pública.',
       },
     });
   }
@@ -301,5 +327,57 @@ describe('GET /public/sites/:siteSlug/articles/:slug (e2e)', () => {
     expect(response.status).toBe(200);
     expect(response.body.products[0].offers[0].price).toBe('1234.50');
     expect(typeof response.body.products[0].offers[0].price).toBe('string');
+  });
+
+  it('Artigo com Autor vinculado: author com name/avatarUrl corretos (UXF-011)', async () => {
+    const author = await createAuthor(siteA, {
+      name: 'Autora Exemplo',
+      avatarUrl: 'https://cdn.test.com/avatar.jpg',
+    });
+    const article = await createArticle(siteA, 'artigo-com-autor', { authorId: author.id });
+
+    const response = await request(app!.getHttpServer()).get(
+      `/public/sites/${siteA.slug}/articles/${article.slug}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(publicArticleSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.author).toEqual({
+      name: 'Autora Exemplo',
+      avatarUrl: 'https://cdn.test.com/avatar.jpg',
+    });
+  });
+
+  it('Artigo sem Autor vinculado: author null, nunca erro (UXF-011)', async () => {
+    const article = await createArticle(siteA, 'artigo-sem-autor');
+
+    const response = await request(app!.getHttpServer()).get(
+      `/public/sites/${siteA.slug}/articles/${article.slug}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(publicArticleSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.author).toBeNull();
+  });
+
+  it('author nunca expõe id/siteId/userId/bio, mesmo com todos preenchidos no banco (UXF-011)', async () => {
+    const author = await createAuthor(siteA, {
+      name: 'Autora Com Campos Internos',
+      bio: 'Bio interna real, preenchida de propósito.',
+    });
+    const article = await createArticle(siteA, 'artigo-autor-sem-campos-internos', {
+      authorId: author.id,
+    });
+
+    const response = await request(app!.getHttpServer()).get(
+      `/public/sites/${siteA.slug}/articles/${article.slug}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(response.body.author)).toEqual(['name', 'avatarUrl']);
+    expect(response.body.author).not.toHaveProperty('id');
+    expect(response.body.author).not.toHaveProperty('siteId');
+    expect(response.body.author).not.toHaveProperty('userId');
+    expect(response.body.author).not.toHaveProperty('bio');
   });
 });

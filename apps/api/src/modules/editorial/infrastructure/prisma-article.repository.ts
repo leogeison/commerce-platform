@@ -130,16 +130,23 @@ export type PublishedArticleProductWithOffers = Prisma.ArticleProductGetPayload<
 }>;
 
 /**
- * Um Artigo publicado com `category` (para `categorySlug`) e `products`
+ * Um Artigo publicado com `category` (para `categorySlug`), `products`
  * (join `ArticleProduct`, já ordenado por `position` e com Ofertas
- * filtradas) — usado só pelo detalhe público (PUB-003). Mesma disciplina de
- * `PublishedArticleWithCategorySlug`: o tipo reflete a relação Prisma como
- * ela é (nulável), quem consome trata ausência de `category` como
- * inconsistência real, nunca mascara com fallback.
+ * filtradas) e `author` (UXF-011) — usado só pelo detalhe público
+ * (PUB-003). Mesma disciplina de `PublishedArticleWithCategorySlug`: o
+ * tipo reflete a relação Prisma como ela é (nulável), quem consome trata
+ * ausência de `category` como inconsistência real, nunca mascara com
+ * fallback — diferente de `author`, cuja ausência é um estado válido e
+ * esperado (`Article.authorId` é opcional), não uma inconsistência.
+ *
+ * `author` já reflete o `select: { name: true, avatarUrl: true } }` da
+ * consulta (`findOnePublishedBySite`, abaixo) — nunca o registro completo
+ * de `Author` (`id`/`siteId`/`userId`/`bio` nunca são buscados).
  */
 export type PublishedArticleWithProducts = Article & {
   category: { slug: string } | null;
   products: PublishedArticleProductWithOffers[];
+  author: { name: string; avatarUrl: string | null } | null;
 };
 
 /**
@@ -357,6 +364,16 @@ export class PrismaArticleRepository {
    * `id asc` é só o desempate determinístico já usado em toda listagem do
    * projeto quando não há critério de negócio definido — sem ele a ordem
    * devolvida pelo Postgres não seria garantida entre chamadas.
+   *
+   * `author: { select: { name: true, avatarUrl: true } } }` (UXF-011) —
+   * mesmo critério de `category: { select: { slug: true } } }` acima:
+   * busca só os campos públicos, nunca `include: { author: true }` (que
+   * traria também `id`/`siteId`/`userId`/`bio`). A FK composta
+   * `Article.author` (`[authorId, siteId] → [id, siteId]`, ver schema
+   * Prisma) torna estruturalmente impossível esta relação trazer um Autor
+   * de outro Site — nenhum filtro adicional de isolamento é necessário
+   * aqui. `null` quando `Article.authorId` é `null` (Autor não vinculado),
+   * estado válido, nunca um erro.
    */
   async findOnePublishedBySite(
     siteId: string,
@@ -366,6 +383,7 @@ export class PrismaArticleRepository {
       where: { siteId, slug, status: 'PUBLISHED' },
       include: {
         category: { select: { slug: true } },
+        author: { select: { name: true, avatarUrl: true } },
         products: {
           orderBy: { position: 'asc' },
           include: {

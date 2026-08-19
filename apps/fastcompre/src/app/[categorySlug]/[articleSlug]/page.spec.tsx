@@ -108,6 +108,7 @@ describe('ArticlePage', () => {
           offers: [],
         },
       ],
+      author: null,
     });
 
     expect(html).toContain('Melhor fone bluetooth 2026');
@@ -190,6 +191,7 @@ describe('ArticlePage', () => {
           ],
         },
       ],
+      author: null,
     });
 
     expect(html).toContain(
@@ -222,6 +224,7 @@ describe('ArticlePage', () => {
       publishedAt: '2026-01-01T00:00:00.000Z',
       bodyMdx: '# Introdução',
       products: [],
+      author: null,
     };
 
     // Requisição veio com "categoria-errada", mas o Artigo pertence de
@@ -248,6 +251,7 @@ describe('generateMetadata', () => {
     publishedAt: '2026-01-01T00:00:00.000Z',
     bodyMdx: '# Introdução',
     products: [],
+    author: null,
   };
 
   async function generateMetadataWith(article: PublicArticle | null) {

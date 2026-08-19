@@ -1,4 +1,5 @@
 export * from './public-offer.js';
+export * from './public-article-author.js';
 export * from './public-article-product.js';
 export * from './public-article-summary.js';
 export * from './public-article.js';

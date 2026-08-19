@@ -1,5 +1,6 @@
 import type {
   PublicArticle,
+  PublicArticleAuthor,
   PublicArticleProduct,
   PublicArticleSummary,
   PublicOffer,
@@ -82,19 +83,42 @@ function toPublicArticleProduct(
 }
 
 /**
- * Converte um Artigo publicado (com `category`/`products` já carregados)
- * para o formato HTTP público `PublicArticle` (PUB-003) — corpo completo de
- * `GET /public/sites/:siteSlug/articles/:slug`.
+ * Converte o Autor vinculado (já selecionado só com `name`/`avatarUrl` na
+ * própria consulta, `findOnePublishedBySite` — `select`, nunca `include:
+ * true`) para o formato público `PublicArticleAuthor` (UXF-011). `null`
+ * quando o Artigo não tem Autor vinculado (`Article.authorId` é opcional)
+ * — nunca lançado como erro, mesmo critério do restante da API pública
+ * para dado ausente e não obrigatório.
+ */
+function toPublicArticleAuthor(
+  author: { name: string; avatarUrl: string | null } | null,
+): PublicArticleAuthor | null {
+  if (!author) {
+    return null;
+  }
+
+  return {
+    name: author.name,
+    avatarUrl: author.avatarUrl,
+  };
+}
+
+/**
+ * Converte um Artigo publicado (com `category`/`products`/`author` já
+ * carregados) para o formato HTTP público `PublicArticle` (PUB-003) —
+ * corpo completo de `GET /public/sites/:siteSlug/articles/:slug`.
  *
  * Reaproveita `toPublicArticleSummary` (mesmos campos, mesmas invariantes
  * de `category`/`publishedAt` sem fallback) e acrescenta `bodyMdx` (só faz
- * sentido no detalhe) e `products` (mapeados por `toPublicArticleProduct`,
- * já na ordem de `position asc` devolvida pelo repository).
+ * sentido no detalhe), `products` (mapeados por `toPublicArticleProduct`,
+ * já na ordem de `position asc` devolvida pelo repository) e `author`
+ * (UXF-011, mapeado por `toPublicArticleAuthor`).
  */
 export function toPublicArticle(article: PublishedArticleWithProducts): PublicArticle {
   return {
     ...toPublicArticleSummary(article),
     bodyMdx: article.bodyMdx,
     products: article.products.map(toPublicArticleProduct),
+    author: toPublicArticleAuthor(article.author),
   };
 }
