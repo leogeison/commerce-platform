@@ -337,6 +337,9 @@ importers:
 
   spikes/lexical-editorial:
     dependencies:
+      '@lexical/code-core':
+        specifier: 0.49.0
+        version: 0.49.0(typescript@6.0.3)
       '@lexical/headless':
         specifier: 0.49.0
         version: 0.49.0(typescript@6.0.3)

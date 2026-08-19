@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "round-trip": "node round-trip.mjs"
+    "round-trip": "node round-trip.mjs",
+    "compare-corpus": "node compare-corpus.mjs"
   },
   "dependencies": {
+    "@lexical/code-core": "0.49.0",
     "@lexical/headless": "0.49.0",
     "@lexical/link": "0.49.0",
     "@lexical/list": "0.49.0",
