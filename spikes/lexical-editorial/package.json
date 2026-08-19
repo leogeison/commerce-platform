@@ -1,0 +1,17 @@
+{
+  "name": "@commerce-platform/spike-lexical-editorial",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "round-trip": "node round-trip.mjs"
+  },
+  "dependencies": {
+    "@lexical/headless": "0.49.0",
+    "@lexical/link": "0.49.0",
+    "@lexical/list": "0.49.0",
+    "@lexical/markdown": "0.49.0",
+    "@lexical/rich-text": "0.49.0",
+    "lexical": "0.49.0"
+  }
+}
