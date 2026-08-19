@@ -17,6 +17,7 @@ import { GetOfferUseCase } from './application/get-offer.use-case';
 import { GetProductUseCase } from './application/get-product.use-case';
 import { GetPublicCategoryUseCase } from './application/get-public-category.use-case';
 import { ListCategoriesUseCase } from './application/list-categories.use-case';
+import { ListPublicCategoriesUseCase } from './application/list-public-categories.use-case';
 import { ListOffersUseCase } from './application/list-offers.use-case';
 import { ListProductsUseCase } from './application/list-products.use-case';
 import { UnarchiveCategoryUseCase } from './application/unarchive-category.use-case';
@@ -82,6 +83,12 @@ import { PublicCategoryController } from './presentation/public-category.control
  * `EditorialModule` (PUB-002/PUB-003). Usa `PublicTenantGuard`, já
  * disponível via `TenancyModule` (importado desde CAT-001); nenhum wiring
  * novo de módulo necessário. Nenhum export novo.
+ *
+ * `ListPublicCategoriesUseCase` (UXF-010) — `list()` de
+ * `PublicCategoryController`, mesmo `PublicTenantGuard`, mesmo módulo,
+ * mesmo raciocínio de por que nenhum wiring novo de módulo foi necessário
+ * para PUB-004. Nenhum export novo: nada em `application`/outro módulo
+ * consome este caso de uso.
  */
 @Module({
   imports: [DatabaseModule, HttpModule, IdentityModule, TenancyModule],
@@ -92,6 +99,7 @@ import { PublicCategoryController } from './presentation/public-category.control
     ListCategoriesUseCase,
     GetCategoryUseCase,
     GetPublicCategoryUseCase,
+    ListPublicCategoriesUseCase,
     ArchiveCategoryUseCase,
     UnarchiveCategoryUseCase,
     DeleteCategoryUseCase,

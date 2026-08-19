@@ -43,6 +43,17 @@ export interface FindManyBySiteResult {
   total: number;
 }
 
+export interface FindManyUnarchivedBySiteInput {
+  siteId: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface FindManyUnarchivedBySiteResult {
+  items: Category[];
+  total: number;
+}
+
 /**
  * Repository concreto (Prisma) de `Category` (CAT-001). `PrismaCategoryRepository`,
  * não `CategoryRepository` — mesmo padrão do `PrismaUserRepository` (AUTH-001):
@@ -113,6 +124,50 @@ export class PrismaCategoryRepository {
       ...(input.archived === undefined
         ? {}
         : { archivedAt: input.archived ? { not: null } : null }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.category.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      this.prisma.category.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  /**
+   * Lista paginada de `Category` NÃO arquivada de um Site (UXF-010) —
+   * método dedicado para a listagem pública
+   * (`GET /public/sites/:siteSlug/categories`), separado de
+   * `findManyBySite`.
+   *
+   * `findManyBySite` (CAT-002, acima) aceita `archived?: boolean`
+   * *opcional* porque a listagem administrativa precisa enxergar ativas e
+   * arquivadas conforme o filtro escolhido no admin. A pública nunca deve
+   * devolver uma Categoria arquivada — por isso `archivedAt: null` é
+   * estrutural neste método (sempre no `where`, nunca um parâmetro), em vez
+   * de reutilizar `findManyBySite(..., archived: false)` e depender de quem
+   * chama lembrar de passar esse filtro. Mesmo raciocínio de
+   * `findManyPublishedBySite`/`PrismaArticleRepository` (PUB-002): o
+   * invariante público vive no método do repository, não numa flag opcional
+   * compartilhada com o admin.
+   *
+   * `findMany` + `count` no mesmo `where` via `prisma.$transaction([...])`
+   * e ordenação `name asc, id asc`: mesma técnica e mesmo raciocínio de
+   * `findManyBySite` — `id asc` aqui é só desempate determinístico interno
+   * (evita ordem instável quando dois nomes coincidem); o contrato público
+   * normativo desta listagem é apenas `name asc`.
+   */
+  async findManyUnarchivedBySite(
+    input: FindManyUnarchivedBySiteInput,
+  ): Promise<FindManyUnarchivedBySiteResult> {
+    const where: Prisma.CategoryWhereInput = {
+      siteId: input.siteId,
+      archivedAt: null,
     };
 
     const [items, total] = await this.prisma.$transaction([

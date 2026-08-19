@@ -3,6 +3,7 @@ import type { PrismaCategoryRepository } from '../infrastructure/prisma-category
 import { CreateCategoryUseCase } from './create-category.use-case';
 import { GetCategoryUseCase } from './get-category.use-case';
 import { ListCategoriesUseCase } from './list-categories.use-case';
+import { ListPublicCategoriesUseCase } from './list-public-categories.use-case';
 import { ArchiveCategoryUseCase } from './archive-category.use-case';
 import { UnarchiveCategoryUseCase } from './unarchive-category.use-case';
 import { DeleteCategoryUseCase } from './delete-category.use-case';
@@ -91,6 +92,36 @@ describe('ListCategoriesUseCase', () => {
   it('total 0 resulta em totalPages 0 (nunca NaN)', async () => {
     const findManyBySite = jest.fn().mockResolvedValue({ items: [], total: 0 });
     const useCase = new ListCategoriesUseCase(buildFakeRepository({ findManyBySite }));
+
+    const result = await useCase.execute({ siteId: SITE_ID, page: 1, pageSize: 20 });
+
+    expect(result.totalPages).toBe(0);
+  });
+});
+
+describe('ListPublicCategoriesUseCase', () => {
+  it('delega findManyUnarchivedBySite e calcula totalPages a partir do total devolvido', async () => {
+    const items = [{ id: CATEGORY_ID }] as unknown as Category[];
+    const findManyUnarchivedBySite = jest.fn().mockResolvedValue({ items, total: 21 });
+    const useCase = new ListPublicCategoriesUseCase(
+      buildFakeRepository({ findManyUnarchivedBySite }),
+    );
+
+    const result = await useCase.execute({ siteId: SITE_ID, page: 2, pageSize: 10 });
+
+    expect(findManyUnarchivedBySite).toHaveBeenCalledWith({
+      siteId: SITE_ID,
+      page: 2,
+      pageSize: 10,
+    });
+    expect(result).toEqual({ items, page: 2, pageSize: 10, total: 21, totalPages: 3 });
+  });
+
+  it('total 0 resulta em totalPages 0 (nunca NaN)', async () => {
+    const findManyUnarchivedBySite = jest.fn().mockResolvedValue({ items: [], total: 0 });
+    const useCase = new ListPublicCategoriesUseCase(
+      buildFakeRepository({ findManyUnarchivedBySite }),
+    );
 
     const result = await useCase.execute({ siteId: SITE_ID, page: 1, pageSize: 20 });
 
