@@ -290,3 +290,187 @@ válida, ignorada quando não casa com o opener, e rejeitada explicitamente
 quando o opener casa mas o corpo é inválido. Mesmo assim, nunca para no
 primeiro cenário que falha — todos os 11 rodam sempre, e o relatório final
 (JSON, impresso no console) lista todos os resultados.
+
+---
+
+# UXE-004 — Round-trip 2: bloco Produto/Oferta → sintaxe → pipeline FastCompre → componente público
+
+Prova o ciclo completo `bodyMdx → Lexical → bodyMdx → remark/MDX →
+resolução → renderização`, ou seja: que o bloco `:::product` da `UXE-003`
+sobrevive ao pipeline público real (`@mdx-js/mdx` com `format: 'md'`, as
+mesmas versões de produção — ver `Dependências`), que só `productId`
+atravessa a fronteira até o componente de renderização, e que Produto/Oferta
+são sempre resolvidos a partir da projeção estrutural real do Artigo
+(nunca de uma tabela global). Esta tarefa **não** toca `apps/fastcompre`
+nem `apps/admin`, **não** decide a UI de produção do bloco, e **não**
+resolve os gaps abertos pela UXE-002.
+
+## Gramática compartilhada — extração mecânica
+
+`product-block-grammar.mjs` (novo) concentra a validação pura da gramática
+`:::product` v1 (regexes, `parseProductBlockBody`, `serializeProductBlock`,
+`ProductBlockSyntaxError`), extraída sem nenhuma alteração de semântica de
+`product-block-transformer.mjs` (UXE-003). O transformer Lexical e o novo
+`product-block-remark-plugin.mjs` importam e usam a **mesma** função de
+validação — nunca duas implementações independentes da mesma gramática. A
+prova de que a extração não mudou comportamento é a repetição integral dos
+11 cenários de `product-block-round-trip.mjs`, que continuam 11/11 após a
+extração (ver `Testes e verificações`).
+
+## Como o remark plugin reconhece o bloco
+
+Sob `format: 'md'` (a mesma flag do pipeline real, `compile-article-body.ts`),
+`:::product`/`version: 1`/`productId: <uuid>`/`:::` não tem significado
+sintático próprio — quatro linhas consecutivas sem linha em branco colapsam,
+pela regra padrão do CommonMark, em um único parágrafo mdast com um nó
+`text` cujo valor preserva as quebras internas (`\n`). `remarkProductBlock`
+(`product-block-remark-plugin.mjs`) visita parágrafos com essa forma,
+separa as linhas, valida com `OPENER_REGEXP`/`CLOSER_REGEXP` (gramática
+compartilhada) e, em caso de sucesso, substitui o nó por um
+`mdxJsxFlowElement { name: 'ProductBlock', attributes: [{ name: 'productId', value }] }`.
+Um parágrafo cuja primeira linha não casa com o opener é ignorado, sem
+nenhuma alteração — mesma garantia de não interferência já provada pela
+UXE-002 (cenário `02` da matriz abaixo, agora com o corpus real reprocessado
+com o plugin presente).
+
+Fail-closed simétrico à UXE-003: opener reconhecido sem closer válido na
+mesma unidade (parágrafo) lança `ProductBlockSyntaxError`, que se propaga
+até rejeitar a Promise de `evaluate()` — nunca um fallback silencioso.
+
+## Só `productId` atravessa — como é provado
+
+Duas verificações independentes, nunca uma inferência sobre o HTML final:
+
+1. **Estrutural, antes de qualquer avaliação MDX**: o cenário `11` da
+   matriz inspeciona a árvore mdast produzida só pelo `remarkProductBlock`
+   (via `unified`+`remark-parse`, sem `@mdx-js/mdx`) e afirma
+   `mdxJsxFlowElement.attributes.length === 1` com
+   `attributes[0].name === 'productId'`.
+2. **Tentativas de contrabando**: entradas que tentam colar um campo extra
+   (`name: Produto Fake`) ou quebrar a validação posicional do `productId`
+   são rejeitadas por `parseProductBlockBody` antes de qualquer
+   `mdxJsxFlowElement` ser construído — nunca chegam a existir como AST.
+
+## Resolução — sempre da projeção estrutural real do Artigo
+
+`product-block-component.mjs` (`ProductBlock`) recebe `productId` e uma
+função `resolveProduct` injetada externamente — nunca importa uma fonte de
+dados própria. O runner só injeta
+`createScopedResolver(REAL_PROJECTION_BY_PRODUCT_ID)`
+(`product-block-real-projection.fixture.mjs`), escopada a **um único**
+Artigo real. Isso é o que torna o cenário `04` uma prova estrutural, não
+uma coincidência: um `productId` real, existente, mas vinculado a outro
+Artigo real, resolve `not-found` porque o resolver nem tem acesso ao
+restante do universo de Produtos — não porque uma checagem manual o
+excluiu.
+
+`not-found` aqui (`data-product-block-status="not-found"`) é só um
+marcador de diagnóstico para os testes deste spike — a decisão de UI de
+produção para "produto não encontrado" fica para o contrato/implementação
+posterior.
+
+## Dado real congelado — e o que ele NÃO prova
+
+`product-block-real-projection.fixture.mjs` congela, a partir de uma
+consulta SQL somente-leitura real (documentada no cabeçalho do próprio
+arquivo, executada localmente em ambiente de desenvolvimento em
+2026-08-20): o Artigo `jbl-tune-520bt-vale-a-pena`
+(`29c4577f-206d-4f57-8aef-eac60985f036`) com seus dois `ArticleProduct`
+reais e Ofertas reais, e um terceiro Produto real
+(`Carregador USB-C 65W GaN`) de fato vinculado a outro Artigo real, usado
+só para a prova de `not-found`. São dados de ambiente de
+desenvolvimento/teste — não um histórico editorial de produção, mesma
+ressalva já feita para o corpus `persisted-current` da UXE-002.
+
+Todos os registros disponíveis no ambiente pertencem ao mesmo `siteId`
+— nenhum segundo Site foi criado para este spike. Por isso a UXE-004
+comprova empiricamente **isolamento por Artigo/projeção**, não isolamento
+de Site: isso continua sendo uma propriedade herdada do contrato de
+tenancy da API pública (`TenantContext`, `PublicArticle.products[]` já
+escopado por Site+Artigo), não testada por esta fixture.
+
+`uxe-004-real-projection.json`, na raiz do repositório, é só o artefato
+operacional bruto da consulta — nunca importado em runtime por nenhum
+arquivo deste spike, e não deve ser commitado.
+
+## Achado desta rodada — corrige a investigação anterior (link `javascript:`)
+
+A investigação da UXE-004 (antes da implementação) havia testado o link
+`[texto](javascript:alert(1))` contra um protótipo descartável rodando
+`react@18.3.1`, fora do repositório, e observado que o href cru
+sobrevivia (`href="javascript:alert(1)"`). Ao implementar esta tarefa
+usando as versões REAIS de produção (`react@19.2.4`/`react-dom@19.2.4`,
+confirmadas em `pnpm-lock.yaml`), o resultado é diferente: o próprio
+React 19 já neutraliza esse href em tempo de renderização, substituindo-o
+por um stub que lança
+`"React has blocked a javascript: URL as a security precaution."`. Ou
+seja, a versão real de produção já mitiga esse comportamento — isso não
+estava confirmado antes desta implementação, e a UXE-004 não introduz nem
+altera essa mitigação (cenário `10`: `remarkProductBlock` não muda esse
+comportamento, com ou sem o plugin presente). Fica registrado aqui como
+achado corrigido, não como algo que esta tarefa corrigiu.
+
+## Matriz de cenários (`product-block-round-trip-full-cycle.mjs`)
+
+| # | Cenário | Prova |
+|---|---|---|
+| 01 | Round-trip básico com dado real | Lexical import/export byte-idêntico; MDX renderiza nome/ofertas reais |
+| 02 | Corpus comum sem interferência | 5 casos de Markdown comum idênticos com/sem o plugin |
+| 03 | Blocos repetidos, mesmo `productId` | 3 ocorrências → 3 nodes/elementos independentes, sem dedup |
+| 04 | UUID real, não vinculado ao artigo | `not-found`; nenhum dado de nenhum produto vaza |
+| 05 | Bloco sem fechamento (remark) | Fail-closed, `ProductBlockSyntaxError` |
+| 06 | Simetria Lexical × remark | 6 corpos malformados rejeitados identicamente nas duas camadas |
+| 07 | Expressão `{alert(1)}` | Inerte, texto literal |
+| 08 | `import`/`export` | Inerte, texto literal escapado |
+| 09 | HTML bruto (`<script>`, `onerror`) | Descartado, nunca chega ao HTML final |
+| 10 | Link `javascript:` (baseline) | Comportamento idêntico com/sem o plugin (ver achado acima) |
+| 11 | Contrabando de atributo extra | Rejeitado antes da AST; sucesso tem exatamente 1 atributo (`productId`) |
+| 12 | Múltiplos produtos diferentes | Os 2 `ArticleProduct` reais do artigo resolvem e renderizam corretamente |
+| 13 | Ciclo completo, conteúdo misto | Round-trip Lexical + renderização MDX corretos sobre o mesmo documento |
+
+Mesma filosofia PASS/FAIL de `product-block-round-trip.mjs` — nunca a
+diagnóstica de `compare-corpus.mjs`. Nunca para no primeiro cenário que
+falha.
+
+## Arquivos
+
+- `product-block-grammar.mjs` — gramática pura, compartilhada.
+- `product-block-transformer.mjs` — inalterado em comportamento; passa a
+  delegar a validação para o módulo de gramática.
+- `product-block-remark-plugin.mjs` — plugin remark, gramática
+  compartilhada, `mdxJsxFlowElement` com só `productId`.
+- `product-block-component.mjs` — componente de renderização do spike
+  (não é a UI de produção).
+- `product-block-real-projection.fixture.mjs` — dado real congelado, com
+  proveniência documentada.
+- `product-block-round-trip-full-cycle.mjs` — prova PASS/FAIL do ciclo
+  completo, 13 cenários.
+
+`product-block-round-trip.mjs`, `round-trip.mjs`, `compare-corpus.mjs` e os
+corpora da UXE-002 permanecem intocados.
+
+## Dependências novas
+
+`@mdx-js/mdx@3.1.1`, `react@19.2.4`, `react-dom@19.2.4`,
+`unist-util-visit@5.1.0` — todas pinadas exatamente na mesma versão
+resolvida em `pnpm-lock.yaml` para `apps/fastcompre` (confirmado antes de
+adicionar), nunca uma versão diferente "equivalente".
+
+## Executar
+
+```
+pnpm --filter @commerce-platform/spike-lexical-editorial product-block-round-trip-full-cycle
+```
+
+## Testes e verificações executados
+
+- `product-block-round-trip.mjs` (UXE-003, intocado): **11/11** cenários
+  passando após a extração da gramática compartilhada.
+- `round-trip.mjs` (UXE-001, intocado): sem regressão — mesmas 5
+  construções básicas identificadas, mesma observação de
+  `byte-identical: false` já conhecida.
+- `compare-corpus.mjs` (UXE-002, intocado): sem regressão — mesma
+  classificação por arquivo já conhecida (3 arquivos `persisted-current`
+  byte-idênticos; gaps de `representative-common-markdown` inalterados).
+- `product-block-round-trip-full-cycle.mjs` (novo, UXE-004): **13/13**
+  cenários passando.

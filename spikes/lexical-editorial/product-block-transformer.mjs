@@ -11,7 +11,20 @@
  *   productId: <uuid>
  *   :::
  *
- * Regras exatas:
+ * A partir da UXE-004, a validação pura da gramática (regexes, contagem de
+ * linhas, checagem de version/UUID e serialização) vive em
+ * `product-block-grammar.mjs`, para ser reutilizada sem duplicação pelo
+ * novo remark plugin (`product-block-remark-plugin.mjs`). Esta extração foi
+ * mecânica — nenhuma regra de validação, mensagem de erro ou ordem de
+ * checagem mudou. Este arquivo continua sendo a única autoridade sobre:
+ *   - a forma do node Lexical (`ProductBlockNode`) e seu payload;
+ *   - a integração com a API de `MultilineElementTransformer` do
+ *     `@lexical/markdown` (`regExpStart`/`regExpEnd`/`replace`), incluindo a
+ *     checagem de bloco sem fechamento (`!endMatch`), que é específica
+ *     dessa API e não faz parte da gramática pura.
+ *
+ * Regras exatas da gramática (ver `product-block-grammar.mjs` para o
+ * detalhamento normativo):
  *   - Opener `:::product` no início da linha, sem indentação (trailing
  *     whitespace tolerado). Opener indentado não casa com esta sintaxe —
  *     continua sendo Markdown comum, tratado por outro caminho de
@@ -35,9 +48,9 @@
  *
  * Payload do node — decisão fechada: `ProductBlockNode` carrega, como
  * único estado editorial de domínio, `productId`. O `version` da gramática
- * Markdown pertence exclusivamente a este transformer/parser — nunca é
- * armazenado como estado do node. Isso é conceitualmente distinto da
- * propriedade `version` que o próprio Lexical grava em todo
+ * Markdown pertence exclusivamente à camada de parsing (Lexical ou
+ * remark) — nunca é armazenado como estado do node. Isso é conceitualmente
+ * distinto da propriedade `version` que o próprio Lexical grava em todo
  * `LexicalNode.exportJSON()` (versionamento interno do formato de
  * serialização JSON do Lexical, sem nenhuma relação com a versão desta
  * sintaxe Markdown).
@@ -50,15 +63,19 @@
  * `createState.parse` aqui é só normalização de tipo (mesmo padrão de
  * `listMarkerState`/`codeFenceState` em @lexical/markdown) — nunca um
  * mecanismo de rejeição de gramática. Toda validação de conteúdo acontece
- * em `PRODUCT_BLOCK.replace`, antes do node ser criado.
+ * em `parseProductBlockBody` (`product-block-grammar.mjs`), antes do node
+ * ser criado.
  *
  * Node headless — sem DecoratorNode/React nesta tarefa (decisão fechada no
- * desenho). `createDOM`/`updateDOM` têm implementação mínima, exigida pela
- * classe-base `ElementNode`/`LexicalNode`, sem nenhum propósito visual
- * neste spike.
+ * desenho).
  */
 
 import { $applyNodeReplacement, ElementNode, createState, $getState, $setState } from 'lexical';
+import {
+  ProductBlockSyntaxError,
+  parseProductBlockBody,
+  serializeProductBlock,
+} from './product-block-grammar.mjs';
 
 export const PRODUCT_BLOCK_NODE_TYPE = 'product-block';
 
@@ -123,32 +140,10 @@ export function $isProductBlockNode(node) {
   return node instanceof ProductBlockNode;
 }
 
-export class ProductBlockSyntaxError extends Error {
-  constructor(message) {
-    super(`Sintaxe :::product inválida: ${message}`);
-    this.name = 'ProductBlockSyntaxError';
-  }
-}
-
-// Gramática v1 — regexes exatos por linha/posição fixa. Note que esta
-// abordagem (posição fixa + contagem exata de 2 linhas) já enforça, sem
-// checagens adicionais, várias regras da gramática ao mesmo tempo: campo
-// extra ou linha em branco interna (contagem != 2), ordem trocada (a
-// linha 1 só casa com VERSION_LINE_REGEXP, a linha 2 só com
-// PRODUCT_ID_LINE_REGEXP) e campo duplicado do mesmo tipo na posição
-// errada (ex.: duas linhas "productId:" faz a linha 1 falhar contra
-// VERSION_LINE_REGEXP). Isso é intencional: a gramática v1 aprovada já é
-// posicional e estrita, então validar por posição é a forma mais direta
-// de espelhá-la — não uma simplificação que esconde casos.
-const OPENER_REGEXP = /^:::product[ \t]*$/;
-const CLOSER_REGEXP = /^:::[ \t]*$/;
-const VERSION_LINE_REGEXP = /^version:\s*(.*?)\s*$/;
-const PRODUCT_ID_LINE_REGEXP = /^productId:\s*(.*?)\s*$/;
-const UUID_REGEXP = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Versão da gramática Markdown suportada por este transformer — não é
-// estado do node (ver nota no cabeçalho do arquivo).
-const SUPPORTED_SYNTAX_VERSION = '1';
+// Re-exportado para manter compatibilidade com quem já importa
+// `ProductBlockSyntaxError` a partir deste arquivo (ex.:
+// `product-block-round-trip.mjs`, UXE-003, intocado nesta tarefa).
+export { ProductBlockSyntaxError };
 
 export const PRODUCT_BLOCK = {
   dependencies: [ProductBlockNode],
@@ -157,15 +152,10 @@ export const PRODUCT_BLOCK = {
     if (!$isProductBlockNode(node)) {
       return null;
     }
-    return [
-      ':::product',
-      `version: ${SUPPORTED_SYNTAX_VERSION}`,
-      `productId: ${node.getProductId()}`,
-      ':::',
-    ].join('\n');
+    return serializeProductBlock(node.getProductId());
   },
 
-  regExpStart: OPENER_REGEXP,
+  regExpStart: /^:::product[ \t]*$/,
 
   // `optional: true` é o que faz $importMultiline invocar `replace` mesmo
   // ao atingir o fim do documento sem encontrar o closer — com `endMatch`
@@ -177,7 +167,7 @@ export const PRODUCT_BLOCK = {
   // desta tarefa proíbe.
   regExpEnd: {
     optional: true,
-    regExp: CLOSER_REGEXP,
+    regExp: /^:::[ \t]*$/,
   },
 
   replace: (rootNode, children, startMatch, endMatch, linesInBetween) => {
@@ -185,6 +175,10 @@ export const PRODUCT_BLOCK = {
     // `false` faria o Lexical tentar o próximo transformer e, no limite,
     // degradar a linha para texto — por isso todo caminho de rejeição
     // abaixo lança `ProductBlockSyntaxError` em vez de retornar `false`.
+    //
+    // Esta checagem é específica da API `MultilineElementTransformer`
+    // (não existe conceito de "endMatch ausente" na gramática pura) —
+    // por isso permanece aqui, e não em `product-block-grammar.mjs`.
     if (!endMatch) {
       throw new ProductBlockSyntaxError(
         'bloco sem fechamento (":::" ausente antes do fim do documento).',
@@ -200,41 +194,7 @@ export const PRODUCT_BLOCK = {
     const rawLines = linesInBetween ?? [];
     const bodyLines = rawLines.slice(1, -1);
 
-    if (bodyLines.length !== 2) {
-      throw new ProductBlockSyntaxError(
-        `número de linhas inválido no corpo do bloco (esperado exatamente 2 — "version" e "productId", sem linhas em branco nem campos extras — encontrado ${bodyLines.length}).`,
-      );
-    }
-
-    const [firstLine, secondLine] = bodyLines;
-
-    const versionMatch = firstLine.match(VERSION_LINE_REGEXP);
-    if (!versionMatch) {
-      throw new ProductBlockSyntaxError(
-        `primeira linha do corpo deve ser "version: <valor>" (recebido: ${JSON.stringify(firstLine)}).`,
-      );
-    }
-
-    const productIdMatch = secondLine.match(PRODUCT_ID_LINE_REGEXP);
-    if (!productIdMatch) {
-      throw new ProductBlockSyntaxError(
-        `segunda linha do corpo deve ser "productId: <valor>" (recebido: ${JSON.stringify(secondLine)}).`,
-      );
-    }
-
-    const version = versionMatch[1];
-    if (version !== SUPPORTED_SYNTAX_VERSION) {
-      throw new ProductBlockSyntaxError(
-        `versão de sintaxe não suportada (esperado "${SUPPORTED_SYNTAX_VERSION}", encontrado ${JSON.stringify(version)}).`,
-      );
-    }
-
-    const productId = productIdMatch[1];
-    if (!UUID_REGEXP.test(productId)) {
-      throw new ProductBlockSyntaxError(
-        `productId não é um UUID válido (recebido ${JSON.stringify(productId)}).`,
-      );
-    }
+    const { productId } = parseProductBlockBody(bodyLines);
 
     rootNode.append($createProductBlockNode(productId));
 
