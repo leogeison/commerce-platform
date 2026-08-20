@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "round-trip": "node round-trip.mjs",
-    "compare-corpus": "node compare-corpus.mjs"
+    "compare-corpus": "node compare-corpus.mjs",
+    "product-block-round-trip": "node product-block-round-trip.mjs"
   },
   "dependencies": {
     "@lexical/code-core": "0.49.0",

@@ -170,3 +170,123 @@ normalizada para fabricar igualdade. O código de saída do script só
 reflete falha técnica de execução (`classification: 'error'`); divergências
 de conteúdo nunca decidem PASS/FAIL sozinhas — isso é decisão humana,
 registrada fora deste script.
+
+---
+
+# UXE-003 — Sintaxe customizada versionável + transformers Lexical (Produto)
+
+Escolhe e implementa, para este spike, a sintaxe versionada do bloco
+editorial de Produto e o `MultilineElementTransformer`/`ElementNode`
+correspondentes — a base sobre a qual `UXE-004` (validação completa de
+round-trip/segurança) e `UXE-005` (gate que a consolida como Editorial
+Serialization Contract normativo) vão trabalhar. Esta tarefa **não**
+valida segurança, **não** integra com `apps/admin`/`apps/fastcompre`, e
+**não** resolve os gaps abertos pela UXE-002 (lista aninhada, imagem,
+horizontal rule).
+
+## Gramática v1 — canônica
+
+```
+:::product
+version: 1
+productId: <uuid>
+:::
+```
+
+- Opener `:::product` no início da linha, sem indentação (trailing
+  whitespace tolerado). Opener indentado **não** casa com esta sintaxe —
+  permanece Markdown comum, sem erro (ver cenário de controle abaixo).
+- Corpo com exatamente 2 linhas, nesta ordem fixa: `version` primeiro,
+  `productId` segundo. Nenhuma linha em branco interna. Nenhuma outra
+  linha/campo.
+- `version` só aceita o literal `1` nesta v1.
+- `productId` validado como UUID (formato RFC 4122).
+- Closer `:::` obrigatório, sozinho na linha (trailing whitespace
+  tolerado).
+
+## Payload do node — só `productId`
+
+`ProductBlockNode extends ElementNode` carrega, como único estado
+editorial de domínio, `productId` — via `createState`/`$getState`/
+`$setState` do próprio Lexical (mesmo padrão de `codeFenceState`/
+`listMarkerState` em `@lexical/markdown`). Nenhum `offerId`, nome, preço,
+link ou snapshot é armazenado — `ArticleProduct` continua sendo a única
+fonte estrutural de verdade sobre Produtos referenciados pelo Artigo;
+Oferta continua resolvida dinamicamente a partir do Produto, nunca
+persistida no bloco.
+
+`version: 1` da gramática Markdown pertence exclusivamente a este
+transformer/parser — nunca é armazenado como estado do node. Isso é
+conceitualmente distinto da propriedade `version` que o próprio
+`LexicalNode.exportJSON()` grava em todo node (versionamento interno do
+formato de serialização JSON do Lexical), sem nenhuma relação com a
+versão desta sintaxe. `createState.parse` aqui é só normalização de tipo,
+nunca mecanismo de rejeição de gramática — toda validação de conteúdo
+acontece em `PRODUCT_BLOCK.replace`, antes do node ser criado.
+
+Confirmado por execução real: o JSON serializado do node namespacia
+estado customizado sob a chave `$` (`NODE_STATE_KEY`, definida em
+`LexicalConstants.ts`) — ou seja, `exportJSON()` do node produz
+`{ children, direction, format, indent, type: 'product-block', version: 1, $: { productId: '<uuid>' } }`.
+Os campos `children`/`direction`/`format`/`indent`/`version` (fora de `$`)
+são metadados estruturais do próprio `ElementNode`/Lexical, não estado de
+domínio do bloco.
+
+## Falha explícita e determinística — não fallback silencioso
+
+Decisão fechada no desenho: uma vez que o opener exato `:::product` foi
+reconhecido, qualquer desvio da gramática acima — incluindo bloco sem
+fechamento — é uma falha explícita (`ProductBlockSyntaxError` lançado
+dentro de `PRODUCT_BLOCK.replace`), nunca um retorno `false`/fallback
+silencioso para Markdown comum. A exceção se propaga por
+`editor.update()` até o `onError` do editor headless, interrompendo a
+importação de forma visível.
+
+Mecanismo confirmado por leitura direta de `MarkdownImport.ts`
+(`@lexical/markdown@0.49.0`) e por execução real: `regExpEnd` é declarado
+como `{ optional: true, regExp: /^:::[ \t]*$/ }`, o que faz
+`$importMultiline` invocar `replace` mesmo ao atingir o fim do documento
+sem encontrar o closer — com `endMatch` ausente (`null`) nesse caso.
+`PRODUCT_BLOCK.replace` verifica `!endMatch` e lança
+`ProductBlockSyntaxError` explicitamente para o cenário de bloco sem
+fechamento, exatamente pelo mesmo mecanismo usado para os demais desvios
+de gramática — sem nenhuma varredura pós-importação do Markdown
+serializado.
+
+A validação por posição fixa (linha 1 = `version`, linha 2 = `productId`,
+contagem exata de 2 linhas) cobre, sem checagens adicionais, campo extra
+ou linha em branco interna (contagem ≠ 2), ordem trocada (cada linha só
+casa com o regex da posição esperada) e campo duplicado do tipo errado na
+posição errada.
+
+## Arquivos
+
+- `product-block-transformer.mjs` — `ProductBlockNode`, `PRODUCT_BLOCK`
+  (`MultilineElementTransformer`) e `ProductBlockSyntaxError`.
+- `product-block-round-trip.mjs` — prova dedicada, independente de
+  `compare-corpus.mjs`. 11 cenários: 2 positivos (bloco isolado; bloco
+  cercado por Markdown comum — ambos provam round-trip íntegro e que o
+  estado editorial do node contém somente `productId`), 1 de controle
+  (opener indentado permanece Markdown comum) e 8 negativos (version
+  ausente/desconhecida, productId ausente/UUID inválido, campo/linha
+  extra, campo duplicado, ordem inválida, bloco sem fechamento — todos
+  devem lançar `ProductBlockSyntaxError`).
+
+`round-trip.mjs`, `compare-corpus.mjs` e os dois corpora da UXE-002
+permanecem intocados.
+
+## Executar
+
+```
+pnpm --filter @commerce-platform/spike-lexical-editorial product-block-round-trip
+```
+
+## Critério de sucesso
+
+Diferente de `compare-corpus.mjs` (cujo papel é só diagnóstico), este
+runner tem critério real de PASS/FAIL por cenário — é exatamente isso que
+a prova precisa demonstrar: a sintaxe é reconhecida corretamente quando
+válida, ignorada quando não casa com o opener, e rejeitada explicitamente
+quando o opener casa mas o corpo é inválido. Mesmo assim, nunca para no
+primeiro cenário que falha — todos os 11 rodam sempre, e o relatório final
+(JSON, impresso no console) lista todos os resultados.
