@@ -8,6 +8,7 @@ import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
+import { ErrorState, LoadingState } from '../async-state';
 import { CategoryForm } from '../category-form';
 import { CategoryReadOnly } from './category-read-only';
 import styles from './category-detail.module.css';
@@ -135,15 +136,11 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
   }
 
   if (state.status === 'loading') {
-    return <p className={styles.status}>Carregando...</p>;
+    return <LoadingState>Carregando...</LoadingState>;
   }
 
   if (state.status === 'error') {
-    return (
-      <p role="alert" className={styles.status}>
-        {state.message}
-      </p>
-    );
+    return <ErrorState>{state.message}</ErrorState>;
   }
 
   const { category } = state;
@@ -177,11 +174,7 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
         </div>
       )}
 
-      {actionError && (
-        <p role="alert" className={styles.status}>
-          {actionError}
-        </p>
-      )}
+      {actionError && <ErrorState>{actionError}</ErrorState>}
     </div>
   );
 }

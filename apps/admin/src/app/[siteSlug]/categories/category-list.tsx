@@ -7,6 +7,7 @@ import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
 import { useSiteRole } from '../site-role-context';
+import { EmptyState, ErrorState, LoadingState } from './async-state';
 import styles from './category-list.module.css';
 
 interface CategoryListProps {
@@ -125,18 +126,14 @@ export function CategoryList({ siteSlug }: CategoryListProps) {
         )}
       </div>
 
-      {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}
+      {state.status === 'loading' && <LoadingState>Carregando...</LoadingState>}
 
-      {state.status === 'error' && (
-        <p role="alert" className={styles.status}>
-          {state.message}
-        </p>
-      )}
+      {state.status === 'error' && <ErrorState>{state.message}</ErrorState>}
 
       {state.status === 'ready' && (
         <>
           {state.data.items.length === 0 ? (
-            <p className={styles.status}>Nenhuma Categoria encontrada.</p>
+            <EmptyState>Nenhuma Categoria encontrada.</EmptyState>
           ) : (
             <ul className={styles.items}>
               {state.data.items.map((category) => (

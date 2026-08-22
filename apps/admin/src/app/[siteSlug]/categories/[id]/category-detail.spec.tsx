@@ -2,6 +2,7 @@ import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import type { Role } from '@commerce-platform/contracts';
 import { CategoryDetail } from './category-detail';
@@ -224,5 +225,51 @@ describe('CategoryDetail', () => {
     expect(await screen.findByRole('heading', { name: 'Eletrônicos' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  // --- UXA-001: LoadingState/ErrorState compartilhados ---
+
+  it('UXA-001: estado de loading não usa role="alert" e não trava foco (sem violação de acessibilidade)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
+    const { container } = renderDetail();
+
+    const loadingNode = screen.getByText('Carregando...');
+    expect(loadingNode).not.toHaveAttribute('role', 'alert');
+    expect(loadingNode).not.toHaveAttribute('tabindex');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('UXA-001: erro de carregamento (404) é anunciado via role="alert" (sem violação de acessibilidade)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(404, {
+        statusCode: 404,
+        code: 'NOT_FOUND',
+        error: 'Not Found',
+        message: 'Categoria não encontrada.',
+      }),
+    );
+    const { container } = renderDetail();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Categoria não encontrada.');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('UXA-001: erro de ação (falha ao arquivar) é anunciado via role="alert"', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'POST') {
+        return jsonResponse(500, { unexpected: 'shape' });
+      }
+      return jsonResponse(200, baseCategory);
+    });
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível concluir esta ação. Tente novamente em instantes.',
+    );
   });
 });

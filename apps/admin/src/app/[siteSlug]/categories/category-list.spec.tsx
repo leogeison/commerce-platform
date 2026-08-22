@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import type { Role } from '@commerce-platform/contracts';
 import { CategoryList } from './category-list';
 import { SiteRoleProvider } from '../site-role-context';
@@ -179,5 +180,41 @@ describe('CategoryList', () => {
 
     await screen.findByText('Nenhuma Categoria encontrada.');
     expect(screen.queryByRole('link', { name: 'Nova Categoria' })).not.toBeInTheDocument();
+  });
+
+  // --- UXA-001: LoadingState/ErrorState/EmptyState compartilhados ---
+
+  it('UXA-001: estado de loading não usa role="alert" e não trava foco (sem violação de acessibilidade)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
+    const { container } = renderList();
+
+    const loadingNode = screen.getByText('Carregando...');
+    expect(loadingNode).not.toHaveAttribute('role', 'alert');
+    expect(loadingNode).not.toHaveAttribute('tabindex');
+    expect(await screen.findByRole('link', { name: 'Nova Categoria' })).toBeInTheDocument();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('UXA-001: estado de erro é anunciado via role="alert" (sem violação de acessibilidade)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(500, { unexpected: 'shape' }));
+    const { container } = renderList();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar as Categorias. Tente novamente em instantes.',
+    );
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('UXA-001: estado vazio sem violação de acessibilidade', async () => {
+    global.fetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(200, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }));
+    const { container } = renderList();
+
+    await screen.findByText('Nenhuma Categoria encontrada.');
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

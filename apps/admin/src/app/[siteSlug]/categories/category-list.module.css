@@ -29,11 +29,6 @@
   border-radius: 4px;
 }
 
-.status {
-  font-size: 1rem;
-  margin: 0;
-}
-
 .items {
   display: flex;
   flex-direction: column;
