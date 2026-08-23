@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
+import { Button } from '@commerce-platform/ui';
 import { categoryAdminSchema, type CategoryAdmin, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
@@ -12,7 +13,6 @@ import { useToast } from '../../toast-context';
 import { ErrorState, LoadingState } from '../async-state';
 import { CategoryForm } from '../category-form';
 import { CategoryReadOnly } from './category-read-only';
-import styles from './category-detail.module.css';
 
 interface CategoryDetailProps {
   siteSlug: string;
@@ -62,6 +62,14 @@ function categoryPath(siteSlug: string, id: string): string {
  * Esconder isso é puramente UX — a API continua sendo a autoridade real;
  * uma tentativa sem Role suficiente (forçada por fora da UI) volta como
  * `403`, tratado pelo mesmo caminho genérico de erro.
+ *
+ * UXA-005 — apresentação migrada de CSS Module para Tailwind v4 + tokens do
+ * design system. Os três botões de ciclo de vida (Arquivar/Desarquivar/
+ * Excluir) passam a usar `Button` (`variant="secondary" size="sm"`),
+ * preservando individualmente `type="button"`, `onClick` e `disabled` de
+ * cada um — nenhuma variante `destructive` foi criada para Excluir (decisão
+ * #5 da aprovação): os três recebem o mesmo tratamento visual que já tinham
+ * no CSS Module original.
  */
 export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
   const router = useRouter();
@@ -160,7 +168,7 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
   }
 
   return (
-    <div className={styles.detail}>
+    <div className="flex max-w-xs flex-col gap-6">
       <CategoryForm
         initialValues={{ name: category.name, slug: category.slug }}
         submitLabel="Salvar"
@@ -169,19 +177,31 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
       />
 
       {roleMeetsMinimum(role, 'OWNER') && (
-        <div className={styles.actions}>
+        <div className="flex gap-3">
           {category.archivedAt ? (
-            <button type="button" onClick={() => handleArchiveToggle('unarchive')} disabled={isProcessingLifecycle}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleArchiveToggle('unarchive')}
+              disabled={isProcessingLifecycle}
+            >
               Desarquivar
-            </button>
+            </Button>
           ) : (
-            <button type="button" onClick={() => handleArchiveToggle('archive')} disabled={isProcessingLifecycle}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleArchiveToggle('archive')}
+              disabled={isProcessingLifecycle}
+            >
               Arquivar
-            </button>
+            </Button>
           )}
-          <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
+          <Button type="button" variant="secondary" size="sm" onClick={handleDelete} disabled={isProcessingLifecycle}>
             Excluir
-          </button>
+          </Button>
         </div>
       )}
 

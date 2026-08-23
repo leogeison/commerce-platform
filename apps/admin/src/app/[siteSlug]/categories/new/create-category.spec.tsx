@@ -2,6 +2,7 @@ import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { ToastProvider } from '../../toast-context';
 import { UnsavedChangesProvider } from '../../unsaved-changes-context';
@@ -195,5 +196,11 @@ describe('CreateCategory', () => {
     );
 
     expect(screen.getByText('Categoria salva.')).toBeInTheDocument();
+  });
+
+  it('UXA-005: sem violação de acessibilidade (jest-axe)', async () => {
+    const { container } = renderCreateCategory();
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

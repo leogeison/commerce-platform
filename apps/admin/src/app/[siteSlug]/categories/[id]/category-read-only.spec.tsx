@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import { CategoryReadOnly } from './category-read-only';
 
 const baseCategory = {
@@ -27,5 +28,11 @@ describe('CategoryReadOnly', () => {
     render(<CategoryReadOnly category={{ ...baseCategory, archivedAt: '2026-01-02T00:00:00.000Z' }} />);
 
     expect(screen.getByText('Arquivada')).toBeInTheDocument();
+  });
+
+  it('UXA-005: sem violação de acessibilidade (jest-axe)', async () => {
+    const { container } = render(<CategoryReadOnly category={baseCategory} />);
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

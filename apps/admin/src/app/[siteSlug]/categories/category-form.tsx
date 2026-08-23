@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { Button, Text } from '@commerce-platform/ui';
 import { createCategoryRequestSchema, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { AdminApiError } from '../../../lib/api-error';
 import { useSyncFormDirty } from '../unsaved-changes-context';
-import styles from './category-form.module.css';
 
 interface CategoryFormProps {
   initialValues: CreateCategoryRequest;
@@ -91,6 +91,20 @@ function resolveErrorMessage(error: unknown): string {
  * `onSuccess`, e essa navegação só acontece depois que a RHF já
  * estabeleceu o novo baseline limpo — nunca antes, mesmo que nenhum
  * mecanismo atual dependa dessa ordem para funcionar corretamente.
+ *
+ * UXA-005 — apresentação migrada de CSS Module para Tailwind v4 + tokens
+ * do design system + primitives `Button`/`Text` (`packages/ui`). `<input>`
+ * permanece HTML nativo com classes Tailwind locais: não existe primitive
+ * de campo de formulário em `packages/ui` nesta tarefa (decisão #5 da
+ * aprovação). `border-outline`/`rounded-control` mapeiam para os tokens
+ * semânticos `--color-border-default`/`--radius-md` (bridge Tailwind,
+ * `tailwind-theme.css`); a borda de erro usa
+ * `var(--color-feedback-danger-fill)` via valor arbitrário, pois não existe
+ * bridge Tailwind dedicado a borda de erro — mesmo token já usado por
+ * `Text tone="danger"` na mensagem de erro correspondente. O botão de
+ * submit passa a usar `Button` (variant "primary" por padrão): preserva
+ * `type="submit"`, `disabled={isSaving}` e o texto condicional; `self-start`
+ * reproduz o `align-self: flex-start` original dentro do form em coluna.
  */
 export function CategoryForm({ initialValues, onSubmit, onSuccess, submitLabel }: CategoryFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
@@ -123,50 +137,56 @@ export function CategoryForm({ initialValues, onSubmit, onSuccess, submitLabel }
   }
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit(onValid)} noValidate>
-      <div className={styles.field}>
-        <label htmlFor="category-name">Nome</label>
+    <form className="flex w-full max-w-xs flex-col gap-4" onSubmit={handleSubmit(onValid)} noValidate>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="category-name" className="font-ui text-body-sm font-action">
+          Nome
+        </label>
         <input
           id="category-name"
           type="text"
           disabled={isSaving}
           aria-invalid={errors.name ? true : undefined}
           aria-describedby={errors.name ? 'category-name-error' : undefined}
+          className="rounded-control border border-outline px-3 py-2 font-ui text-body aria-[invalid=true]:border-[var(--color-feedback-danger-fill)]"
           {...register('name')}
         />
         {errors.name && (
-          <p id="category-name-error" role="alert" className={styles.fieldError}>
+          <Text id="category-name-error" role="alert" tone="danger" variant="body-sm" className="m-0">
             {errors.name.message}
-          </p>
+          </Text>
         )}
       </div>
 
-      <div className={styles.field}>
-        <label htmlFor="category-slug">Slug</label>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="category-slug" className="font-ui text-body-sm font-action">
+          Slug
+        </label>
         <input
           id="category-slug"
           type="text"
           disabled={isSaving}
           aria-invalid={errors.slug ? true : undefined}
           aria-describedby={errors.slug ? 'category-slug-error' : undefined}
+          className="rounded-control border border-outline px-3 py-2 font-ui text-body aria-[invalid=true]:border-[var(--color-feedback-danger-fill)]"
           {...register('slug')}
         />
         {errors.slug && (
-          <p id="category-slug-error" role="alert" className={styles.fieldError}>
+          <Text id="category-slug-error" role="alert" tone="danger" variant="body-sm" className="m-0">
             {errors.slug.message}
-          </p>
+          </Text>
         )}
       </div>
 
       {formError && (
-        <p role="alert" className={styles.formError}>
+        <Text role="alert" tone="danger" variant="body-sm" className="m-0">
           {formError}
-        </p>
+        </Text>
       )}
 
-      <button type="submit" disabled={isSaving}>
+      <Button type="submit" disabled={isSaving} className="self-start">
         {isSaving ? 'Salvando...' : submitLabel}
-      </button>
+      </Button>
     </form>
   );
 }

@@ -2,13 +2,13 @@
 
 import { useEffect, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
+import { Button, Text } from '@commerce-platform/ui';
 import { listCategoriesResponseSchema, type ListCategoriesResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
 import { useSiteRole } from '../site-role-context';
 import { EmptyState, ErrorState, LoadingState } from './async-state';
-import styles from './category-list.module.css';
 
 interface CategoryListProps {
   siteSlug: string;
@@ -61,6 +61,16 @@ function categoryHref(siteSlug: string, categoryId: string): string {
   return `/${encodeURIComponent(siteSlug)}/categories/${encodeURIComponent(categoryId)}`;
 }
 
+/**
+ * UXA-005 — apresentação migrada de CSS Module para Tailwind v4 + tokens do
+ * design system. `<select>` permanece HTML nativo com classes Tailwind
+ * locais (sem primitive de campo em `packages/ui` nesta tarefa). Os botões
+ * de paginação passam a usar `Button` (`variant="secondary" size="sm"`):
+ * preservam `type="button"`, `onClick` e `disabled` originais; o texto
+ * "Página X de Y" passa a usar `Text as="span"` para herdar a tipografia do
+ * design system. O link "Nova Categoria" não é tocado — nunca teve estilo
+ * próprio no CSS Module original.
+ */
 export function CategoryList({ siteSlug }: CategoryListProps) {
   const role = useSiteRole();
   const [page, setPage] = useState(1);
@@ -111,11 +121,18 @@ export function CategoryList({ siteSlug }: CategoryListProps) {
   }
 
   return (
-    <div className={styles.list}>
-      <div className={styles.toolbar}>
-        <div className={styles.field}>
-          <label htmlFor="archived-filter">Status</label>
-          <select id="archived-filter" value={filter} onChange={handleFilterChange}>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <label htmlFor="archived-filter" className="font-ui text-body-sm font-action">
+            Status
+          </label>
+          <select
+            id="archived-filter"
+            value={filter}
+            onChange={handleFilterChange}
+            className="rounded-control border border-outline px-2 py-1.5 font-ui text-body-sm"
+          >
             <option value="all">Todas</option>
             <option value="active">Ativas</option>
             <option value="archived">Arquivadas</option>
@@ -135,7 +152,7 @@ export function CategoryList({ siteSlug }: CategoryListProps) {
           {state.data.items.length === 0 ? (
             <EmptyState>Nenhuma Categoria encontrada.</EmptyState>
           ) : (
-            <ul className={styles.items}>
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {state.data.items.map((category) => (
                 <li key={category.id}>
                   <Link href={categoryHref(siteSlug, category.id)}>
@@ -147,22 +164,30 @@ export function CategoryList({ siteSlug }: CategoryListProps) {
             </ul>
           )}
 
-          <div className={styles.pagination}>
-            <button type="button" onClick={() => handlePageChange(page - 1)} disabled={page <= 1}>
-              Anterior
-            </button>
-            {state.data.totalPages > 0 && (
-              <span>
-                Página {state.data.page} de {state.data.totalPages}
-              </span>
-            )}
-            <button
+          <div className="flex items-center gap-4">
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page <= 1}
+            >
+              Anterior
+            </Button>
+            {state.data.totalPages > 0 && (
+              <Text as="span">
+                Página {state.data.page} de {state.data.totalPages}
+              </Text>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => handlePageChange(page + 1)}
               disabled={page >= state.data.totalPages}
             >
               Próxima
-            </button>
+            </Button>
           </div>
         </>
       )}

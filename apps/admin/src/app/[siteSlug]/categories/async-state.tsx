@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import styles from './async-state.module.css';
+import { Text } from '@commerce-platform/ui';
 
 interface AsyncStateProps {
   children: ReactNode;
@@ -24,9 +24,15 @@ interface AsyncStateProps {
  * módulo com os três exports, sem fragmentação em arquivos separados:
  * decisão explícita desta rodada para não antecipar a organização física
  * que uma eventual promoção futura exigiria.
+ *
+ * UXA-005 — apresentação migrada de CSS Module para o primitive `Text`
+ * (`packages/ui`, variant="body", tone="primary" por padrão) mantendo
+ * exatamente a mesma semântica de elemento (`<p>`) e o mesmo `role="alert"`
+ * em `ErrorState`. `className="m-0"` reproduz o `margin: 0` do CSS Module
+ * original, que `Text` não zera por padrão.
  */
 export function LoadingState({ children }: AsyncStateProps) {
-  return <p className={styles.status}>{children}</p>;
+  return <Text className="m-0">{children}</Text>;
 }
 
 /**
@@ -37,9 +43,9 @@ export function LoadingState({ children }: AsyncStateProps) {
  */
 export function ErrorState({ children }: AsyncStateProps) {
   return (
-    <p role="alert" className={styles.status}>
+    <Text role="alert" className="m-0">
       {children}
-    </p>
+    </Text>
   );
 }
 
@@ -48,5 +54,5 @@ export function ErrorState({ children }: AsyncStateProps) {
  * detalhe de um recurso único não tem noção de "vazio".
  */
 export function EmptyState({ children }: AsyncStateProps) {
-  return <p className={styles.status}>{children}</p>;
+  return <Text className="m-0">{children}</Text>;
 }
