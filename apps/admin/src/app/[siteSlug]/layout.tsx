@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AuthenticatedShell } from './authenticated-shell';
+import { UnsavedChangesProvider } from './unsaved-changes-context';
 
 interface SiteLayoutProps {
   children: ReactNode;
@@ -14,9 +15,18 @@ interface SiteLayoutProps {
  * navegação, seletor de Site, logout) fica em `AuthenticatedShell`
  * (`"use client"`) — mesma fronteira estreita já usada em
  * `LoginForm`/`Home`.
+ *
+ * `UnsavedChangesProvider` (UXA-003) envolve `AuthenticatedShell` — não o
+ * contrário — porque o próprio `AuthenticatedShell` consome o guard
+ * (`GuardedLink` na navegação, `confirmLeave()` na troca de Site e no
+ * Logout); um componente não alcança um Context que ele mesmo declara.
  */
 export default async function SiteLayout({ children, params }: SiteLayoutProps) {
   const { siteSlug } = await params;
 
-  return <AuthenticatedShell siteSlug={siteSlug}>{children}</AuthenticatedShell>;
+  return (
+    <UnsavedChangesProvider>
+      <AuthenticatedShell siteSlug={siteSlug}>{children}</AuthenticatedShell>
+    </UnsavedChangesProvider>
+  );
 }

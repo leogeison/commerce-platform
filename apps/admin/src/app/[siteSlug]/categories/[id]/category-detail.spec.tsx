@@ -7,6 +7,7 @@ import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared
 import type { Role } from '@commerce-platform/contracts';
 import { CategoryDetail } from './category-detail';
 import { SiteRoleProvider } from '../../site-role-context';
+import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -27,9 +28,11 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
 function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <SiteRoleProvider value={role}>
-        <CategoryDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
-      </SiteRoleProvider>
+      <UnsavedChangesProvider>
+        <SiteRoleProvider value={role}>
+          <CategoryDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+        </SiteRoleProvider>
+      </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
 }

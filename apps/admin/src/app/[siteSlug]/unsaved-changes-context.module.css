@@ -1,0 +1,25 @@
+.dialog {
+  border: none;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  max-width: 24rem;
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.message {
+  margin: 0 0 1.5rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

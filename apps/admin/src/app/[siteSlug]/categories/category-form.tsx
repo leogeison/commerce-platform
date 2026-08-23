@@ -5,11 +5,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { createCategoryRequestSchema, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { AdminApiError } from '../../../lib/api-error';
+import { useSyncFormDirty } from '../unsaved-changes-context';
 import styles from './category-form.module.css';
 
 interface CategoryFormProps {
   initialValues: CreateCategoryRequest;
   onSubmit: (values: CreateCategoryRequest) => Promise<void>;
+  onSuccess?: () => void;
   submitLabel: string;
 }
 
@@ -77,20 +79,34 @@ function resolveErrorMessage(error: unknown): string {
  * `reset(data)` só roda depois que a persistência é bem-sucedida,
  * estabelecendo os valores salvos como novo baseline do formulário; em
  * erro (negócio ou rede), os valores digitados permanecem.
+ *
+ * `useSyncFormDirty(isDirty)` (UXA-003) publica `formState.isDirty` —
+ * autoridade única de dirty-state — para o guard de navegação
+ * compartilhado; este componente nunca sabe como esse guard é consumido
+ * (`GuardedLink`, troca de Site, Logout), só publica o valor real.
+ *
+ * `onSuccess`, quando informado, só é chamado depois de `reset(data)` —
+ * nunca antes. Isso importa especificamente para o modo criação: é quem
+ * chama `CategoryForm` (`CreateCategory`) quem decide navegar dentro de
+ * `onSuccess`, e essa navegação só acontece depois que a RHF já
+ * estabeleceu o novo baseline limpo — nunca antes, mesmo que nenhum
+ * mecanismo atual dependa dessa ordem para funcionar corretamente.
  */
-export function CategoryForm({ initialValues, onSubmit, submitLabel }: CategoryFormProps) {
+export function CategoryForm({ initialValues, onSubmit, onSuccess, submitLabel }: CategoryFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<CreateCategoryRequest>({
     resolver: zodResolver(createCategoryRequestSchema),
     defaultValues: initialValues,
     shouldFocusError: true,
   });
+
+  useSyncFormDirty(isDirty);
 
   async function onValid(data: CreateCategoryRequest) {
     setFormError(null);
@@ -98,6 +114,7 @@ export function CategoryForm({ initialValues, onSubmit, submitLabel }: CategoryF
     try {
       await onSubmit(data);
       reset(data);
+      onSuccess?.();
     } catch (error) {
       setFormError(resolveErrorMessage(error));
     } finally {

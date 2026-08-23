@@ -3,9 +3,25 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { AdminApiError } from '../../../lib/api-error';
+import { UnsavedChangesProvider } from '../unsaved-changes-context';
 import { CategoryForm } from './category-form';
 
 type SubmitFn = (values: { name: string; slug: string }) => Promise<void>;
+
+/**
+ * `CategoryForm` publica `isDirty` via `useSyncFormDirty` (UXA-003), que
+ * exige `UnsavedChangesProvider` — mesmo padrão de wrapper obrigatório já
+ * usado por `useSiteRole`/`SiteRoleProvider` neste projeto. Todo teste
+ * deste arquivo passa por este helper, mesmo os que não testam o guard
+ * diretamente.
+ */
+function renderCategoryForm(props: Parameters<typeof CategoryForm>[0]) {
+  return render(
+    <UnsavedChangesProvider>
+      <CategoryForm {...props} />
+    </UnsavedChangesProvider>,
+  );
+}
 
 describe('CategoryForm', () => {
   afterEach(() => {
@@ -13,13 +29,11 @@ describe('CategoryForm', () => {
   });
 
   it('renderiza os campos com os valores iniciais', () => {
-    render(
-      <CategoryForm
-        initialValues={{ name: 'Eletrônicos', slug: 'eletronicos' }}
-        submitLabel="Salvar"
-        onSubmit={jest.fn<SubmitFn>()}
-      />,
-    );
+    renderCategoryForm({
+      initialValues: { name: 'Eletrônicos', slug: 'eletronicos' },
+      submitLabel: 'Salvar',
+      onSubmit: jest.fn<SubmitFn>(),
+    });
 
     expect(screen.getByLabelText('Nome')).toHaveValue('Eletrônicos');
     expect(screen.getByLabelText('Slug')).toHaveValue('eletronicos');
@@ -29,7 +43,7 @@ describe('CategoryForm', () => {
   it('campos vazios: mostra erro em cada campo, não chama onSubmit', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>();
-    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={onSubmit} />);
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
@@ -40,7 +54,7 @@ describe('CategoryForm', () => {
   it('submit válido: chama onSubmit com os valores digitados', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={onSubmit} />);
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit });
 
     await user.type(screen.getByLabelText('Nome'), 'Eletrônicos');
     await user.type(screen.getByLabelText('Slug'), 'eletronicos');
@@ -56,7 +70,7 @@ describe('CategoryForm', () => {
       resolveSubmit = resolve;
     });
     const onSubmit = jest.fn<SubmitFn>().mockReturnValue(pending);
-    render(<CategoryForm initialValues={{ name: 'Nome', slug: 'slug' }} submitLabel="Salvar" onSubmit={onSubmit} />);
+    renderCategoryForm({ initialValues: { name: 'Nome', slug: 'slug' }, submitLabel: 'Salvar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -78,7 +92,7 @@ describe('CategoryForm', () => {
           code: 'CONFLICT',
         }),
       );
-    render(<CategoryForm initialValues={{ name: 'Nome', slug: 'slug' }} submitLabel="Salvar" onSubmit={onSubmit} />);
+    renderCategoryForm({ initialValues: { name: 'Nome', slug: 'slug' }, submitLabel: 'Salvar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -88,7 +102,7 @@ describe('CategoryForm', () => {
   it('erro inesperado (rede/500): mostra mensagem genérica fixa, não o texto da API', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockRejectedValue(new Error('network down'));
-    render(<CategoryForm initialValues={{ name: 'Nome', slug: 'slug' }} submitLabel="Salvar" onSubmit={onSubmit} />);
+    renderCategoryForm({ initialValues: { name: 'Nome', slug: 'slug' }, submitLabel: 'Salvar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -101,7 +115,7 @@ describe('CategoryForm', () => {
 
   it('UXA-002: submissão inválida move o foco para o primeiro campo inválido (Nome)', async () => {
     const user = userEvent.setup();
-    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />);
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
 
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
@@ -110,7 +124,7 @@ describe('CategoryForm', () => {
 
   it('UXA-002: submissão inválida marca aria-invalid e aria-describedby nos dois campos', async () => {
     const user = userEvent.setup();
-    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />);
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
 
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
@@ -128,9 +142,11 @@ describe('CategoryForm', () => {
 
   it('UXA-002: estado inválido sem violação de acessibilidade (jest-axe)', async () => {
     const user = userEvent.setup();
-    const { container } = render(
-      <CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />,
-    );
+    const { container } = renderCategoryForm({
+      initialValues: { name: '', slug: '' },
+      submitLabel: 'Criar',
+      onSubmit: jest.fn<SubmitFn>(),
+    });
 
     await user.click(screen.getByRole('button', { name: 'Criar' }));
     await screen.findAllByRole('alert');
@@ -146,7 +162,7 @@ describe('CategoryForm', () => {
         statusCode: 409,
         code: 'CONFLICT',
       }));
-    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={onSubmit} />);
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit });
 
     await user.type(screen.getByLabelText('Nome'), 'Eletrônicos Portáteis');
     await user.type(screen.getByLabelText('Slug'), 'eletronicos-portateis');
@@ -156,5 +172,51 @@ describe('CategoryForm', () => {
 
     expect(screen.getByLabelText('Nome')).toHaveValue('Eletrônicos Portáteis');
     expect(screen.getByLabelText('Slug')).toHaveValue('eletronicos-portateis');
+  });
+
+  // --- UXA-003: dirty-state guard ---
+
+  it('UXA-003: onSubmit resolvendo com sucesso chama onSuccess', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
+    const onSuccess = jest.fn();
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit, onSuccess });
+
+    await user.type(screen.getByLabelText('Nome'), 'Eletrônicos');
+    await user.type(screen.getByLabelText('Slug'), 'eletronicos');
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+  });
+
+  it('UXA-003: onSuccess só é chamado depois que onSubmit resolveu (nunca antes)', async () => {
+    const callOrder: string[] = [];
+    const user = userEvent.setup();
+    const onSubmit = jest.fn<SubmitFn>(async () => {
+      callOrder.push('onSubmit');
+    });
+    const onSuccess = jest.fn(() => {
+      callOrder.push('onSuccess');
+    });
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit, onSuccess });
+
+    await user.type(screen.getByLabelText('Nome'), 'Eletrônicos');
+    await user.type(screen.getByLabelText('Slug'), 'eletronicos');
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(callOrder).toEqual(['onSubmit', 'onSuccess']);
+  });
+
+  it('UXA-003: falha na submissão nunca chama onSuccess', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn<SubmitFn>().mockRejectedValue(new Error('network down'));
+    const onSuccess = jest.fn();
+    renderCategoryForm({ initialValues: { name: 'Nome', slug: 'slug' }, submitLabel: 'Salvar', onSubmit, onSuccess });
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await screen.findByText('Não foi possível salvar a Categoria. Tente novamente em instantes.');
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 });

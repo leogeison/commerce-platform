@@ -2,12 +2,13 @@
 
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { z } from 'zod';
 import { meResponseSchema, type MeResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
+import { GuardedLink } from './guarded-link';
 import { SiteRoleProvider } from './site-role-context';
+import { useUnsavedChangesGuard } from './unsaved-changes-context';
 import styles from './authenticated-shell.module.css';
 
 interface AuthenticatedShellProps {
@@ -55,10 +56,18 @@ const NAV_ITEMS = [
  * `children` só é alcançável depois de `state.status === 'ready'`, então
  * `useSiteRole()` nunca é chamado fora do Provider por um descendente real
  * desta árvore.
+ *
+ * `useUnsavedChangesGuard()` (UXA-003) — este componente é filho de
+ * `UnsavedChangesProvider` (`layout.tsx`), então pode consumir o guard
+ * diretamente: os 4 links de navegação usam `GuardedLink`; troca de Site e
+ * Logout chamam `confirmLeave()` antes de navegar/deslogar, já que nenhum
+ * dos dois passa por um `<Link>` (são `router.push`/lógica própria
+ * disparados por `<select onChange>`/`<button onClick>`).
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { confirmLeave } = useUnsavedChangesGuard();
   const [state, setState] = useState<ShellState>({ status: 'loading' });
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
@@ -98,6 +107,9 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
     if (isLoggingOut) {
       return;
     }
+    if (!(await confirmLeave())) {
+      return;
+    }
     setIsLoggingOut(true);
     setLogoutError(false);
     try {
@@ -109,8 +121,15 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
     }
   }
 
-  function handleSiteChange(event: ChangeEvent<HTMLSelectElement>) {
-    router.push(categoriesHref(event.target.value));
+  async function handleSiteChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextSiteSlug = event.target.value;
+    if (!(await confirmLeave())) {
+      // Componente controlado por `siteSlug` (prop, inalterada aqui) — o
+      // próprio React restaura o valor exibido do <select>, sem precisar
+      // reverter `event.target.value` manualmente.
+      return;
+    }
+    router.push(categoriesHref(nextSiteSlug));
   }
 
   if (state.status === 'loading') {
@@ -141,9 +160,9 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
               const isActive = pathname === href || pathname?.startsWith(`${href}/`);
               return (
                 <li key={item.segment}>
-                  <Link href={href} aria-current={isActive ? 'page' : undefined}>
+                  <GuardedLink href={href} aria-current={isActive ? 'page' : undefined}>
                     {item.label}
-                  </Link>
+                  </GuardedLink>
                 </li>
               );
             })}

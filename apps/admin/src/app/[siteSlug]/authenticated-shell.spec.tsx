@@ -1,11 +1,14 @@
-import type { ContextType } from 'react';
+import type { ContextType, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import { PathnameContext } from 'next/dist/shared/lib/hooks-client-context.shared-runtime';
 import { AuthenticatedShell } from './authenticated-shell';
+import { CategoryForm } from './categories/category-form';
 import { useSiteRole } from './site-role-context';
+import { UnsavedChangesProvider } from './unsaved-changes-context';
 
 /**
  * `NEXT_PUBLIC_API_URL` já vem fixado por `jest.setup.ts`. `global.fetch` é
@@ -17,6 +20,11 @@ import { useSiteRole } from './site-role-context';
  * do `next/jest` não intercepta esse import quando feito de dentro de um
  * componente. `AppRouterContext.Provider`/`PathnameContext.Provider` reais
  * fornecem os contextos que esses hooks leem internamente.
+ *
+ * `UnsavedChangesProvider` (UXA-003) envolve `AuthenticatedShell` em todo
+ * teste — em produção isso é feito por `layout.tsx`; aqui,
+ * `AuthenticatedShell` consome `useUnsavedChangesGuard()` diretamente
+ * (troca de Site, Logout, `GuardedLink` na navegação).
  */
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
@@ -30,18 +38,41 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
   prefetch: jest.fn(),
 };
 
+/**
+ * `next/link` (usado por `GuardedLink`) lê internamente o `RouterContext`
+ * legado antes de decidir se intercepta o clique — ver comentário
+ * equivalente em `guarded-link.spec.tsx`. Sem este Provider, `onNavigate`
+ * nunca é chamado e a navegação por clique nunca é exercida nos testes.
+ */
+const mockLegacyRouter = {
+  pathname: '/fastcompre/categories',
+  asPath: '/fastcompre/categories',
+  push: mockPush,
+  replace: mockReplace,
+  // `next/link` chama `router.prefetch(...).catch(...)` no `onMouseEnter`
+  // (o `userEvent.click` do Testing Library simula um hover antes do
+  // clique) — precisa resolver uma Promise, não só existir, senão o
+  // `.catch()` interno do próprio `next/link` falha com
+  // "Cannot read properties of undefined (reading 'catch')".
+  prefetch: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+};
+
 function RoleProbe() {
   const role = useSiteRole();
   return <p>Role via Context: {role}</p>;
 }
 
-function renderShell(pathname: string, children: React.ReactNode = <p>Conteúdo da página</p>) {
+function renderShell(pathname: string, children: ReactNode = <p>Conteúdo da página</p>) {
   return render(
-    <AppRouterContext.Provider value={mockRouter}>
+    <RouterContext.Provider value={mockLegacyRouter as never}>
+      <AppRouterContext.Provider value={mockRouter}>
       <PathnameContext.Provider value={pathname}>
-        <AuthenticatedShell siteSlug="fastcompre">{children}</AuthenticatedShell>
+        <UnsavedChangesProvider>
+          <AuthenticatedShell siteSlug="fastcompre">{children}</AuthenticatedShell>
+        </UnsavedChangesProvider>
       </PathnameContext.Provider>
-    </AppRouterContext.Provider>,
+      </AppRouterContext.Provider>
+    </RouterContext.Provider>,
   );
 }
 
@@ -130,13 +161,17 @@ describe('AuthenticatedShell', () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
 
     render(
-      <AppRouterContext.Provider value={mockRouter}>
+      <RouterContext.Provider value={mockLegacyRouter as never}>
+        <AppRouterContext.Provider value={mockRouter}>
         <PathnameContext.Provider value="/site-sem-acesso/categories">
-          <AuthenticatedShell siteSlug="site-sem-acesso">
-            <p>Conteúdo</p>
-          </AuthenticatedShell>
+          <UnsavedChangesProvider>
+            <AuthenticatedShell siteSlug="site-sem-acesso">
+              <p>Conteúdo</p>
+            </AuthenticatedShell>
+          </UnsavedChangesProvider>
         </PathnameContext.Provider>
-      </AppRouterContext.Provider>,
+        </AppRouterContext.Provider>
+      </RouterContext.Provider>,
     );
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'));
@@ -173,25 +208,33 @@ describe('AuthenticatedShell', () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
 
     const { rerender } = render(
-      <AppRouterContext.Provider value={mockRouter}>
+      <RouterContext.Provider value={mockLegacyRouter as never}>
+        <AppRouterContext.Provider value={mockRouter}>
         <PathnameContext.Provider value="/fastcompre/categories">
-          <AuthenticatedShell siteSlug="fastcompre">
-            <RoleProbe />
-          </AuthenticatedShell>
+          <UnsavedChangesProvider>
+            <AuthenticatedShell siteSlug="fastcompre">
+              <RoleProbe />
+            </AuthenticatedShell>
+          </UnsavedChangesProvider>
         </PathnameContext.Provider>
-      </AppRouterContext.Provider>,
+        </AppRouterContext.Provider>
+      </RouterContext.Provider>,
     );
 
     expect(await screen.findByText('Role via Context: OWNER')).toBeInTheDocument();
 
     rerender(
-      <AppRouterContext.Provider value={mockRouter}>
+      <RouterContext.Provider value={mockLegacyRouter as never}>
+        <AppRouterContext.Provider value={mockRouter}>
         <PathnameContext.Provider value="/outra-marca/categories">
-          <AuthenticatedShell siteSlug="outra-marca">
-            <RoleProbe />
-          </AuthenticatedShell>
+          <UnsavedChangesProvider>
+            <AuthenticatedShell siteSlug="outra-marca">
+              <RoleProbe />
+            </AuthenticatedShell>
+          </UnsavedChangesProvider>
         </PathnameContext.Provider>
-      </AppRouterContext.Provider>,
+        </AppRouterContext.Provider>
+      </RouterContext.Provider>,
     );
 
     expect(await screen.findByText('Role via Context: EDITOR')).toBeInTheDocument();
@@ -283,5 +326,105 @@ describe('AuthenticatedShell', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/login'));
 
     expect(logoutCallCount).toBe(1);
+  });
+
+  // --- UXA-003: dirty-state guard ---
+
+  /**
+   * `children` de `renderShell` é um `CategoryForm` real (não um dublê) —
+   * é a única forma de deixar `isDirty` verdadeiramente `true` via
+   * `formState.isDirty` da RHF, a mesma autoridade que o guard publica.
+   */
+  function dirtyCategoryFormChildren() {
+    return (
+      <CategoryForm
+        initialValues={{ name: '', slug: '' }}
+        submitLabel="Salvar"
+        onSubmit={jest.fn<(values: { name: string; slug: string }) => Promise<void>>().mockResolvedValue(undefined)}
+      />
+    );
+  }
+
+  async function renderShellWithDirtyForm() {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+    const user = userEvent.setup();
+
+    renderShell('/fastcompre/categories', dirtyCategoryFormChildren());
+
+    await user.type(await screen.findByLabelText('Nome'), 'Eletrônicos');
+
+    return user;
+  }
+
+  it('UXA-003: sem alteração no formulário, clicar num link de navegação não abre confirmação', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+    renderShell('/fastcompre/categories', dirtyCategoryFormChildren());
+
+    await user.click(await screen.findByRole('link', { name: 'Produtos' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Sem estado sujo, quem navega é o próprio `next/link` (via
+    // `RouterContext`), que inclui um segundo argumento de opções interno
+    // do Next — por isso `expect.anything()` no lugar de um valor exato.
+    expect(mockPush).toHaveBeenCalledWith('/fastcompre/products', expect.anything());
+  });
+
+  it('UXA-003: link de navegação com formulário sujo abre confirmação; Cancelar mantém na página', async () => {
+    const user = await renderShellWithDirtyForm();
+
+    await user.click(screen.getByRole('link', { name: 'Produtos' }));
+
+    await screen.findByRole('dialog', { name: 'Alterações não salvas' });
+    await user.click(screen.getByRole('button', { name: 'Ficar' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mockPush).not.toHaveBeenCalledWith('/fastcompre/products');
+    expect(screen.getByLabelText('Nome')).toHaveValue('Eletrônicos');
+  });
+
+  it('UXA-003: link de navegação com formulário sujo abre confirmação; Sair sem salvar navega', async () => {
+    const user = await renderShellWithDirtyForm();
+
+    await user.click(screen.getByRole('link', { name: 'Produtos' }));
+
+    await screen.findByRole('dialog', { name: 'Alterações não salvas' });
+    await user.click(screen.getByRole('button', { name: 'Sair sem salvar' }));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/fastcompre/products'));
+  });
+
+  it('UXA-003: troca de Site com formulário sujo pede confirmação antes de navegar', async () => {
+    const user = await renderShellWithDirtyForm();
+
+    const select = screen.getByRole('combobox', { name: 'Site' });
+    await user.selectOptions(select, 'Outra Marca');
+
+    await screen.findByRole('dialog', { name: 'Alterações não salvas' });
+    expect(mockPush).not.toHaveBeenCalledWith('/outra-marca/categories');
+
+    await user.click(screen.getByRole('button', { name: 'Sair sem salvar' }));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/outra-marca/categories'));
+  });
+
+  it('UXA-003: logout com formulário sujo pede confirmação antes de deslogar', async () => {
+    const user = await renderShellWithDirtyForm();
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'POST') {
+        return emptyResponse(204);
+      }
+      return jsonResponse(200, meResponse);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Sair' }));
+
+    await screen.findByRole('dialog', { name: 'Alterações não salvas' });
+    expect(mockReplace).not.toHaveBeenCalledWith('/login');
+
+    await user.click(screen.getByRole('button', { name: 'Sair sem salvar' }));
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/login'));
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 import { CreateCategory } from './create-category';
 
 const mockReplace = jest.fn();
@@ -23,10 +24,17 @@ function jsonResponse(status: number, body: unknown): Response {
   } as Response;
 }
 
+/**
+ * `UnsavedChangesProvider` (UXA-003) — `CategoryForm`, usado internamente
+ * por `CreateCategory`, publica `isDirty` via `useSyncFormDirty`, que
+ * exige o Provider como ancestral.
+ */
 function renderCreateCategory() {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <CreateCategory siteSlug="fastcompre" />
+      <UnsavedChangesProvider>
+        <CreateCategory siteSlug="fastcompre" />
+      </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
 }
