@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { categoryAdminSchema, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
+import { useToast } from '../../toast-context';
 import { CategoryForm } from '../category-form';
 
 interface CreateCategoryProps {
@@ -18,9 +19,17 @@ interface CreateCategoryProps {
  * `onSuccess` depois de `reset(data)` já ter estabelecido o novo baseline
  * (formulário limpo) internamente na RHF. `router.replace` (não `push`):
  * evita que "voltar" leve de novo ao formulário de criação vazio.
+ *
+ * `showToast` (UXA-004) é chamado no mesmo `onSuccess`, antes do
+ * `router.replace` — a ordem entre os dois não é observável (ambos
+ * disparam a partir do mesmo evento síncrono), mas o toast sobrevive à
+ * navegação porque `ToastProvider` está montado em `layout.tsx`, acima da
+ * árvore roteada: `router.replace` desmonta este componente, nunca o
+ * Provider.
  */
 export function CreateCategory({ siteSlug }: CreateCategoryProps) {
   const router = useRouter();
+  const { showToast } = useToast();
   const createdIdRef = useRef<string | null>(null);
 
   async function handleSubmit(values: CreateCategoryRequest) {
@@ -37,6 +46,7 @@ export function CreateCategory({ siteSlug }: CreateCategoryProps) {
     if (!id) {
       return;
     }
+    showToast('Categoria salva.');
     router.replace(`/${encodeURIComponent(siteSlug)}/categories/${encodeURIComponent(id)}`);
   }
 

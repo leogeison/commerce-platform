@@ -8,6 +8,7 @@ import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
+import { useToast } from '../../toast-context';
 import { ErrorState, LoadingState } from '../async-state';
 import { CategoryForm } from '../category-form';
 import { CategoryReadOnly } from './category-read-only';
@@ -65,6 +66,7 @@ function categoryPath(siteSlug: string, id: string): string {
 export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
   const router = useRouter();
   const role = useSiteRole();
+  const { showToast } = useToast();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessingLifecycle, setIsProcessingLifecycle] = useState(false);
@@ -97,6 +99,14 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
       body: values,
     });
     setState({ status: 'ready', category });
+  }
+
+  // UXA-004 — dispara depois que `CategoryForm` já chamou `reset(data)`
+  // internamente (mesma ordem já garantida para a criação); a edição hoje
+  // não navega em lugar nenhum, então este é só o gatilho do toast, sem
+  // nenhuma outra consequência.
+  function handleFormSuccess() {
+    showToast('Categoria salva.');
   }
 
   async function handleArchiveToggle(action: 'archive' | 'unarchive') {
@@ -155,6 +165,7 @@ export function CategoryDetail({ siteSlug, id }: CategoryDetailProps) {
         initialValues={{ name: category.name, slug: category.slug }}
         submitLabel="Salvar"
         onSubmit={handleUpdate}
+        onSuccess={handleFormSuccess}
       />
 
       {roleMeetsMinimum(role, 'OWNER') && (

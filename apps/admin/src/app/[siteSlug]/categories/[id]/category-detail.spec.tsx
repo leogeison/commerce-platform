@@ -7,6 +7,7 @@ import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared
 import type { Role } from '@commerce-platform/contracts';
 import { CategoryDetail } from './category-detail';
 import { SiteRoleProvider } from '../../site-role-context';
+import { ToastProvider } from '../../toast-context';
 import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 
 const mockReplace = jest.fn();
@@ -29,9 +30,11 @@ function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
       <UnsavedChangesProvider>
-        <SiteRoleProvider value={role}>
-          <CategoryDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
-        </SiteRoleProvider>
+        <ToastProvider>
+          <SiteRoleProvider value={role}>
+            <CategoryDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+          </SiteRoleProvider>
+        </ToastProvider>
       </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
@@ -274,5 +277,44 @@ describe('CategoryDetail', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Não foi possível concluir esta ação. Tente novamente em instantes.',
     );
+  });
+
+  // --- UXA-004: toast de sucesso ---
+
+  it('UXA-004: editar com sucesso dispara o toast "Categoria salva."', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'PATCH') {
+        return jsonResponse(200, { ...baseCategory, name: 'Eletrônicos e Acessórios' });
+      }
+      return jsonResponse(200, baseCategory);
+    });
+    renderDetail();
+
+    const nameInput = await screen.findByLabelText('Nome');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Eletrônicos e Acessórios');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await screen.findByText('Categoria salva.');
+  });
+
+  it('UXA-004: editar com erro não dispara o toast', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'PATCH') {
+        return jsonResponse(500, { unexpected: 'shape' });
+      }
+      return jsonResponse(200, baseCategory);
+    });
+    renderDetail();
+
+    const nameInput = await screen.findByLabelText('Nome');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Eletrônicos e Acessórios');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await screen.findByText('Não foi possível salvar a Categoria. Tente novamente em instantes.');
+    expect(screen.queryByText('Categoria salva.')).not.toBeInTheDocument();
   });
 });
