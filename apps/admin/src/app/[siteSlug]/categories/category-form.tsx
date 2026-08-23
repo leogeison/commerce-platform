@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
 import { createCategoryRequestSchema, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { AdminApiError } from '../../../lib/api-error';
 import styles from './category-form.module.css';
@@ -10,8 +12,6 @@ interface CategoryFormProps {
   onSubmit: (values: CreateCategoryRequest) => Promise<void>;
   submitLabel: string;
 }
-
-type FieldErrors = Partial<Record<keyof CreateCategoryRequest, string>>;
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível salvar a Categoria. Tente novamente em instantes.';
 
@@ -25,6 +25,11 @@ const GENERIC_ERROR_MESSAGE = 'Não foi possível salvar a Categoria. Tente nova
  * `LoginForm` (ADM-002): erro de rede, resposta inválida ou `500`
  * inesperado sempre cai na mensagem genérica fixa deste componente, nunca
  * no texto vindo da API.
+ *
+ * Deliberadamente mantido fora do `formState` do `react-hook-form`:
+ * nunca `setError('root', ...)`. Erro de negócio/API é estado próprio
+ * deste componente; erro de validação de campo é estado do RHF — as duas
+ * fronteiras nunca se misturam no mesmo mecanismo.
  */
 const BUSINESS_ERROR_STATUS_CODES = new Set([403, 404, 409, 422]);
 
@@ -44,75 +49,77 @@ function resolveErrorMessage(error: unknown): string {
  * (ADM-005) — único componente reaproveitado, específico de Categoria
  * (`name`/`slug`), sem abstração genérica entre entidades.
  *
- * Valida com `createCategoryRequestSchema` mesmo no modo edição: este form
- * sempre envia os dois campos preenchidos (nunca edição parcial de um
- * campo isolado), então "ambos obrigatórios, min(1)" já é exatamente o que
- * ele garante na prática — não é uma regra nova, nem uso indevido do
- * schema de update (que só é `.optional()` por causa do PATCH parcial da
- * API, não porque este form produza corpos parciais).
+ * `react-hook-form` + `zodResolver(createCategoryRequestSchema)` — mesmo
+ * schema que já validava manualmente, agora como resolver. Continua sendo
+ * usado também no modo edição: este form sempre envia os dois campos
+ * preenchidos (nunca edição parcial de um campo isolado), então "ambos
+ * obrigatórios, min(1)" já é exatamente o que ele garante na prática —
+ * não é uso indevido do schema de update (que só é `.optional()` por
+ * causa do PATCH parcial da API, não porque este form produza corpos
+ * parciais). Nenhum schema local é criado; `updateCategoryRequestSchema`
+ * nunca é usado aqui.
  *
- * `isSubmitting` volta a `false` após `onSubmit` (sucesso ou erro): tanto
- * faz para o modo criar (a página redireciona logo em seguida) quanto para
- * o modo editar (permanece na própria página — precisa reabilitar o
- * formulário).
+ * `defaultValues: initialValues`, lido só na montagem — sem
+ * `useEffect`/`values` ressincronizando a partir de props.
+ *
+ * `shouldFocusError: true` é o padrão do RHF, declarado aqui de forma
+ * explícita porque é o mecanismo real que move o foco para o primeiro
+ * campo inválido na submissão falha.
+ *
+ * `isSaving` (estado próprio, não `formState.isSubmitting` do RHF)
+ * representa exclusivamente a chamada assíncrona real de persistência.
+ * `formState.isSubmitting` alterna true→false mesmo numa tentativa que
+ * falha só na validação, e vincular `disabled` a ele desabilitaria os
+ * campos no instante em que o RHF tentaria focar o primeiro campo
+ * inválido — elemento desabilitado não recebe foco. `isSaving` evita
+ * isso, ficando `true` só ao redor da chamada real a `onSubmit`.
+ *
+ * `reset(data)` só roda depois que a persistência é bem-sucedida,
+ * estabelecendo os valores salvos como novo baseline do formulário; em
+ * erro (negócio ou rede), os valores digitados permanecem.
  */
 export function CategoryForm({ initialValues, onSubmit, submitLabel }: CategoryFormProps) {
-  const [name, setName] = useState(initialValues.name);
-  const [slug, setSlug] = useState(initialValues.slug);
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<CreateCategoryRequest>({
+    resolver: zodResolver(createCategoryRequestSchema),
+    defaultValues: initialValues,
+    shouldFocusError: true,
+  });
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (isSubmitting) {
-      return;
-    }
-
+  async function onValid(data: CreateCategoryRequest) {
     setFormError(null);
-
-    const parsed = createCategoryRequestSchema.safeParse({ name, slug });
-    if (!parsed.success) {
-      const errors: FieldErrors = {};
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (field === 'name' || field === 'slug') {
-          errors[field] = issue.message;
-        }
-      }
-      setFieldErrors(errors);
-      return;
-    }
-
-    setFieldErrors({});
-    setIsSubmitting(true);
-
+    setIsSaving(true);
     try {
-      await onSubmit(parsed.data);
-      setIsSubmitting(false);
+      await onSubmit(data);
+      reset(data);
     } catch (error) {
       setFormError(resolveErrorMessage(error));
-      setIsSubmitting(false);
+    } finally {
+      setIsSaving(false);
     }
   }
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit} noValidate>
+    <form className={styles.form} onSubmit={handleSubmit(onValid)} noValidate>
       <div className={styles.field}>
         <label htmlFor="category-name">Nome</label>
         <input
           id="category-name"
           type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          disabled={isSubmitting}
-          aria-invalid={fieldErrors.name ? true : undefined}
-          aria-describedby={fieldErrors.name ? 'category-name-error' : undefined}
+          disabled={isSaving}
+          aria-invalid={errors.name ? true : undefined}
+          aria-describedby={errors.name ? 'category-name-error' : undefined}
+          {...register('name')}
         />
-        {fieldErrors.name && (
+        {errors.name && (
           <p id="category-name-error" role="alert" className={styles.fieldError}>
-            {fieldErrors.name}
+            {errors.name.message}
           </p>
         )}
       </div>
@@ -122,15 +129,14 @@ export function CategoryForm({ initialValues, onSubmit, submitLabel }: CategoryF
         <input
           id="category-slug"
           type="text"
-          value={slug}
-          onChange={(event) => setSlug(event.target.value)}
-          disabled={isSubmitting}
-          aria-invalid={fieldErrors.slug ? true : undefined}
-          aria-describedby={fieldErrors.slug ? 'category-slug-error' : undefined}
+          disabled={isSaving}
+          aria-invalid={errors.slug ? true : undefined}
+          aria-describedby={errors.slug ? 'category-slug-error' : undefined}
+          {...register('slug')}
         />
-        {fieldErrors.slug && (
+        {errors.slug && (
           <p id="category-slug-error" role="alert" className={styles.fieldError}>
-            {fieldErrors.slug}
+            {errors.slug.message}
           </p>
         )}
       </div>
@@ -141,8 +147,8 @@ export function CategoryForm({ initialValues, onSubmit, submitLabel }: CategoryF
         </p>
       )}
 
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Salvando...' : submitLabel}
+      <button type="submit" disabled={isSaving}>
+        {isSaving ? 'Salvando...' : submitLabel}
       </button>
     </form>
   );

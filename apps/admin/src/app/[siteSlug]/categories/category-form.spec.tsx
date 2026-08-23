@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AdminApiError } from '../../../lib/api-error';
 import { CategoryForm } from './category-form';
 
@@ -94,5 +95,66 @@ describe('CategoryForm', () => {
     expect(
       await screen.findByText('Não foi possível salvar a Categoria. Tente novamente em instantes.'),
     ).toBeInTheDocument();
+  });
+
+  // --- UXA-002: react-hook-form + zodResolver ---
+
+  it('UXA-002: submissão inválida move o foco para o primeiro campo inválido (Nome)', async () => {
+    const user = userEvent.setup();
+    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Nome')).toHaveFocus());
+  });
+
+  it('UXA-002: submissão inválida marca aria-invalid e aria-describedby nos dois campos', async () => {
+    const user = userEvent.setup();
+    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    const nameInput = await screen.findByLabelText('Nome');
+    const slugInput = screen.getByLabelText('Slug');
+
+    expect(nameInput).toHaveAttribute('aria-invalid', 'true');
+    expect(nameInput).toHaveAttribute('aria-describedby', 'category-name-error');
+    expect(document.getElementById('category-name-error')).toBeInTheDocument();
+    expect(document.getElementById('category-slug-error')).toBeInTheDocument();
+
+    expect(slugInput).toHaveAttribute('aria-invalid', 'true');
+    expect(slugInput).toHaveAttribute('aria-describedby', 'category-slug-error');
+  });
+
+  it('UXA-002: estado inválido sem violação de acessibilidade (jest-axe)', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+    await screen.findAllByRole('alert');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('UXA-002: falha na submissão ao servidor preserva os valores digitados (não reseta o formulário)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest
+      .fn<SubmitFn>()
+      .mockRejectedValue(new AdminApiError('Já existe uma categoria com este slug neste Site.', {
+        statusCode: 409,
+        code: 'CONFLICT',
+      }));
+    render(<CategoryForm initialValues={{ name: '', slug: '' }} submitLabel="Criar" onSubmit={onSubmit} />);
+
+    await user.type(screen.getByLabelText('Nome'), 'Eletrônicos Portáteis');
+    await user.type(screen.getByLabelText('Slug'), 'eletronicos-portateis');
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    await screen.findByText('Já existe uma categoria com este slug neste Site.');
+
+    expect(screen.getByLabelText('Nome')).toHaveValue('Eletrônicos Portáteis');
+    expect(screen.getByLabelText('Slug')).toHaveValue('eletronicos-portateis');
   });
 });
