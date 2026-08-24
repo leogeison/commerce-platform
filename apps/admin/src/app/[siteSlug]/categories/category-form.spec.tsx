@@ -154,6 +154,28 @@ describe('CategoryForm', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  // --- UXA-005A: error map do Zod configurado no boundary do Admin ---
+
+  it('UXA-005A: Nome vazio mostra a copy amigável em PT-BR, não a mensagem técnica do Zod', async () => {
+    const user = userEvent.setup();
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
+
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    expect(await screen.findByText('Informe o nome.')).toBeInTheDocument();
+    expect(screen.queryByText(/Too small/i)).not.toBeInTheDocument();
+  });
+
+  it('UXA-005A: Slug vazio mostra a copy amigável em PT-BR, não a mensagem técnica do Zod', async () => {
+    const user = userEvent.setup();
+    renderCategoryForm({ initialValues: { name: '', slug: '' }, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
+
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    expect(await screen.findByText('Informe o slug.')).toBeInTheDocument();
+    expect(screen.queryByText(/Too small/i)).not.toBeInTheDocument();
+  });
+
   it('UXA-002: falha na submissão ao servidor preserva os valores digitados (não reseta o formulário)', async () => {
     const user = userEvent.setup();
     const onSubmit = jest

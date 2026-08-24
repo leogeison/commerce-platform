@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { Button, Text } from '@commerce-platform/ui';
 import { createCategoryRequestSchema, type CreateCategoryRequest } from '@commerce-platform/contracts';
 import { AdminApiError } from '../../../lib/api-error';
+import { adminZodErrorMap } from '../../../lib/validation-messages';
 import { useSyncFormDirty } from '../unsaved-changes-context';
 
 interface CategoryFormProps {
@@ -61,6 +62,14 @@ function resolveErrorMessage(error: unknown): string {
  * parciais). Nenhum schema local é criado; `updateCategoryRequestSchema`
  * nunca é usado aqui.
  *
+ * UXA-005A — `zodResolver` recebe `{ error: adminZodErrorMap }` como
+ * segundo argumento (`schemaOptions`). Isso não cria nenhum schema novo
+ * nem altera `createCategoryRequestSchema`: é a opção nativa do Zod 4 para
+ * customizar mensagens no momento do parse, configurada aqui — no boundary
+ * do Admin — para que `errors.name.message`/`errors.slug.message` cheguem
+ * amigáveis em PT-BR à UI, sem tocar em `packages/contracts` nem no
+ * contrato HTTP/422 da API (`validation-messages.ts`, `apps/admin/src/lib`).
+ *
  * `defaultValues: initialValues`, lido só na montagem — sem
  * `useEffect`/`values` ressincronizando a partir de props.
  *
@@ -115,7 +124,7 @@ export function CategoryForm({ initialValues, onSubmit, onSuccess, submitLabel }
     reset,
     formState: { errors, isDirty },
   } = useForm<CreateCategoryRequest>({
-    resolver: zodResolver(createCategoryRequestSchema),
+    resolver: zodResolver(createCategoryRequestSchema, { error: adminZodErrorMap }),
     defaultValues: initialValues,
     shouldFocusError: true,
   });
