@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { meResponseSchema, type MeResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
-import { GuardedLink } from './guarded-link';
+import { SidebarNav } from './sidebar-nav';
 import { SiteRoleProvider } from './site-role-context';
 import { useUnsavedChangesGuard } from './unsaved-changes-context';
 import styles from './authenticated-shell.module.css';
@@ -30,13 +30,6 @@ function categoriesHref(siteSlug: string): string {
   return `/${encodeURIComponent(siteSlug)}/categories`;
 }
 
-const NAV_ITEMS = [
-  { label: 'Categorias', segment: 'categories' },
-  { label: 'Produtos', segment: 'products' },
-  { label: 'Autores', segment: 'authors' },
-  { label: 'Artigos', segment: 'articles' },
-] as const;
-
 /**
  * Único Client Component do layout autenticado (ADM-004). Chama
  * `GET /admin/auth/me` de forma independente da `Home` (ADM-003) — árvores
@@ -59,14 +52,17 @@ const NAV_ITEMS = [
  *
  * `useUnsavedChangesGuard()` (UXA-003) — este componente é filho de
  * `UnsavedChangesProvider` (`layout.tsx`), então pode consumir o guard
- * diretamente: os 4 links de navegação usam `GuardedLink`; troca de Site e
- * Logout chamam `confirmLeave()` antes de navegar/deslogar, já que nenhum
- * dos dois passa por um `<Link>` (são `router.push`/lógica própria
- * disparados por `<select onChange>`/`<button onClick>`).
+ * diretamente: troca de Site e Logout chamam `confirmLeave()` antes de
+ * navegar/deslogar, já que nenhum dos dois passa por um `<Link>` (são
+ * `router.push`/lógica própria disparados por `<select onChange>`/
+ * `<button onClick>`). Os itens de navegação em si (`GuardedLink`,
+ * consumindo o mesmo guard) vivem em `SidebarNav` (UXA-006) — este
+ * componente não precisa mais de `usePathname()` para si mesmo, já que
+ * `SidebarNav` resolve o pathname internamente para o próprio estado
+ * ativo/atual.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
-  const pathname = usePathname();
   const { confirmLeave } = useUnsavedChangesGuard();
   const [state, setState] = useState<ShellState>({ status: 'loading' });
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -153,21 +149,7 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
-        <nav aria-label="Navegação do Site" className={styles.nav}>
-          <ul>
-            {NAV_ITEMS.map((item) => {
-              const href = `/${encodeURIComponent(siteSlug)}/${item.segment}`;
-              const isActive = pathname === href || pathname?.startsWith(`${href}/`);
-              return (
-                <li key={item.segment}>
-                  <GuardedLink href={href} aria-current={isActive ? 'page' : undefined}>
-                    {item.label}
-                  </GuardedLink>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+        <SidebarNav siteSlug={siteSlug} />
 
         <div className={styles.controls}>
           <div className={styles.field}>

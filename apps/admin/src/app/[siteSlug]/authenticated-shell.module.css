@@ -14,24 +14,6 @@
   border-bottom: 1px solid #e5e7eb;
 }
 
-.nav ul {
-  display: flex;
-  gap: 1rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.nav a {
-  color: #111827;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.nav a[aria-current='page'] {
-  text-decoration: underline;
-}
-
 .controls {
   display: flex;
   align-items: center;
