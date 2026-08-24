@@ -8,6 +8,7 @@ import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
 import { SidebarNav } from './sidebar-nav';
 import { SiteRoleProvider } from './site-role-context';
+import { Topbar } from './topbar';
 import { useUnsavedChangesGuard } from './unsaved-changes-context';
 import styles from './authenticated-shell.module.css';
 
@@ -19,7 +20,6 @@ interface AuthenticatedShellProps {
 type ShellState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; data: MeResponse };
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível carregar este Site. Tente novamente em instantes.';
-const LOGOUT_ERROR_MESSAGE = 'Não foi possível sair. Tente novamente em instantes.';
 
 /**
  * `siteSlug` (`meResponseSchema`) é `z.string()` puro, sem garantia de
@@ -60,6 +60,14 @@ function categoriesHref(siteSlug: string): string {
  * componente não precisa mais de `usePathname()` para si mesmo, já que
  * `SidebarNav` resolve o pathname internamente para o próprio estado
  * ativo/atual.
+ *
+ * `Topbar` (UXA-007) é puramente apresentacional: `sites`/`siteSlug`/
+ * `isLoggingOut`/`logoutError` e os handlers `handleSiteChange`/
+ * `handleLogout` (ambos já chamando `confirmLeave()`) continuam aqui,
+ * fonte única do fetch de `/admin/auth/me` — reproduzi-los dentro de
+ * `Topbar` duplicaria a chamada. `LOGOUT_ERROR_MESSAGE` migrou para
+ * `topbar.tsx`, já que a UI que a renderiza (o item "Sair" do menu de
+ * usuário) vive inteira lá agora.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
@@ -151,29 +159,14 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
       <header className={styles.header}>
         <SidebarNav siteSlug={siteSlug} />
 
-        <div className={styles.controls}>
-          <div className={styles.field}>
-            <label htmlFor="site-switcher">Site</label>
-            <select id="site-switcher" value={siteSlug} onChange={handleSiteChange}>
-              {sites.map((site) => (
-                <option key={site.siteId} value={site.siteSlug}>
-                  {site.siteName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.logout}>
-            <button type="button" onClick={handleLogout} disabled={isLoggingOut}>
-              {isLoggingOut ? 'Saindo...' : 'Sair'}
-            </button>
-            {logoutError && (
-              <p role="alert" className={styles.status}>
-                {LOGOUT_ERROR_MESSAGE}
-              </p>
-            )}
-          </div>
-        </div>
+        <Topbar
+          siteSlug={siteSlug}
+          sites={sites}
+          onSiteChange={handleSiteChange}
+          isLoggingOut={isLoggingOut}
+          logoutError={logoutError}
+          onLogout={handleLogout}
+        />
       </header>
 
       <main className={styles.content}>

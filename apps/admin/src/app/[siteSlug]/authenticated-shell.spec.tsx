@@ -262,6 +262,18 @@ describe('AuthenticatedShell', () => {
     expect(mockPush).toHaveBeenCalledWith('/outra-marca/categories');
   });
 
+  /**
+   * UXA-007 — "Sair" deixou de ser um botão solto na topbar e passou a
+   * ser item do menu de usuário (`aria-haspopup="menu"`/`role="menu"` em
+   * `Topbar`). Os quatro testes de logout abaixo abrem o menu antes de
+   * agir — nenhuma asserção downstream foi removida ou enfraquecida, só o
+   * caminho até o botão mudou. `role="menuitem"` (não `role="button"`)
+   * porque o elemento sobrescreve seu papel implícito via `role`.
+   */
+  async function openUserMenu(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: 'Menu do usuário' }));
+  }
+
   it('logout: sucesso chama POST /admin/auth/logout e redireciona para /login', async () => {
     const user = userEvent.setup();
     global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
@@ -272,9 +284,10 @@ describe('AuthenticatedShell', () => {
     });
 
     renderShell('/fastcompre/categories');
+    await openUserMenu(user);
 
-    const logoutButton = await screen.findByRole('button', { name: 'Sair' });
-    await user.click(logoutButton);
+    const logoutItem = await screen.findByRole('menuitem', { name: 'Sair' });
+    await user.click(logoutItem);
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/login'));
   });
@@ -289,14 +302,18 @@ describe('AuthenticatedShell', () => {
     });
 
     renderShell('/fastcompre/categories');
+    await openUserMenu(user);
 
-    const logoutButton = await screen.findByRole('button', { name: 'Sair' });
-    await user.click(logoutButton);
+    const logoutItem = await screen.findByRole('menuitem', { name: 'Sair' });
+    await user.click(logoutItem);
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Não foi possível sair. Tente novamente em instantes.');
     expect(mockReplace).not.toHaveBeenCalledWith('/login');
-    expect(logoutButton).not.toBeDisabled();
+    expect(logoutItem).not.toBeDisabled();
+    // Falha preserva o menu aberto (não fecha automaticamente ao ativar
+    // "Sair") — o alerta precisa continuar visível para nova tentativa.
+    expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 
   it('logout: não dispara segunda chamada enquanto a primeira ainda está pendente', async () => {
@@ -315,12 +332,13 @@ describe('AuthenticatedShell', () => {
     });
 
     renderShell('/fastcompre/categories');
+    await openUserMenu(user);
 
-    const logoutButton = await screen.findByRole('button', { name: 'Sair' });
-    await user.click(logoutButton);
-    expect(await screen.findByRole('button', { name: 'Saindo...' })).toBeDisabled();
+    const logoutItem = await screen.findByRole('menuitem', { name: 'Sair' });
+    await user.click(logoutItem);
+    expect(await screen.findByRole('menuitem', { name: 'Saindo...' })).toBeDisabled();
 
-    await user.click(screen.getByRole('button', { name: 'Saindo...' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Saindo...' }));
 
     resolveLogout(emptyResponse(204));
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/login'));
@@ -418,7 +436,8 @@ describe('AuthenticatedShell', () => {
       return jsonResponse(200, meResponse);
     });
 
-    await user.click(screen.getByRole('button', { name: 'Sair' }));
+    await openUserMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Sair' }));
 
     await screen.findByRole('dialog', { name: 'Alterações não salvas' });
     expect(mockReplace).not.toHaveBeenCalledWith('/login');
