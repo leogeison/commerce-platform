@@ -60,6 +60,12 @@ jobs:
       - name: Build contracts
         run: pnpm --filter @commerce-platform/contracts build
 
+      # @commerce-platform/ui exporta de `dist` (main/types/exports do seu
+      # package.json) e precisa estar buildado antes de qualquer consumidor
+      # — mesma razão do passo "Build contracts" acima.
+      - name: Build UI package
+        run: pnpm --filter @commerce-platform/ui build
+
       # UXF-007: gate real de packages/ui no CI — antes só era
       # exercitado indiretamente via `pnpm build`/`pnpm typecheck`
       # (que dependem dele), nunca com a suíte de teste (jest-axe
