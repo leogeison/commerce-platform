@@ -1,6 +1,6 @@
 import type { ContextType, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
@@ -445,5 +445,52 @@ describe('AuthenticatedShell', () => {
     await user.click(screen.getByRole('button', { name: 'Sair sem salvar' }));
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/login'));
+  });
+
+  // --- UXA-009: política de concorrência modal da Command Palette ---
+
+  it('UXA-009: atalho global (Ctrl+K) não abre a Command Palette com o drawer da UXA-008 aberto', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+    renderShell('/fastcompre/categories');
+
+    await user.click(await screen.findByRole('button', { name: 'Menu' }));
+    expect(await screen.findByRole('dialog', { name: 'Menu de navegação' })).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    });
+
+    expect(screen.queryByRole('combobox', { name: 'Buscar navegação' })).not.toBeInTheDocument();
+    // o drawer continua aberto — a paleta não assumiu o comando por cima dele.
+    expect(screen.getByRole('dialog', { name: 'Menu de navegação' })).toBeInTheDocument();
+  });
+
+  it('UXA-009: atalho global (Ctrl+K) não abre a Command Palette com a confirmação de alterações não salvas aberta', async () => {
+    const user = await renderShellWithDirtyForm();
+
+    await user.click(screen.getByRole('link', { name: 'Produtos' }));
+    await screen.findByRole('dialog', { name: 'Alterações não salvas' });
+
+    act(() => {
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    });
+
+    expect(screen.queryByRole('combobox', { name: 'Buscar navegação' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Alterações não salvas' })).toBeInTheDocument();
+  });
+
+  it('UXA-009: sem nenhum outro modal aberto, o atalho global abre a Command Palette normalmente', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+    renderShell('/fastcompre/categories');
+    await screen.findByRole('link', { name: 'Categorias' });
+
+    act(() => {
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    });
+
+    expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
   });
 });

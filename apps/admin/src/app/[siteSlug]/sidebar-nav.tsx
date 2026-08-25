@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { GuardedLink } from './guarded-link';
+import { NAV_DESTINATIONS, navDestinationHref } from './nav-destinations';
 
 interface SidebarNavProps {
   siteSlug: string;
@@ -64,9 +65,14 @@ interface SidebarNavProps {
  * trigger do drawer (`lg:hidden`) usam `lg`, nunca `md`.
  *
  * Mesma origem de dados para as duas apresentações: `renderNavList()`
- * mapeia `NAV_ITEMS` uma única vez, chamado tanto para a navegação
+ * mapeia `NAV_DESTINATIONS` uma única vez, chamado tanto para a navegação
  * persistente quanto para o conteúdo do drawer — nunca uma segunda lista
- * divergente.
+ * divergente. Desde UXA-009, `NAV_DESTINATIONS`/`navDestinationHref` vivem
+ * em `nav-destinations.ts`, não mais aqui — a Command Palette se tornou um
+ * segundo consumidor real da mesma lista, e mantê-la só neste componente
+ * duplicaria exatamente o dado que este comentário já protegia de
+ * duplicação interna. Extração sem alteração de comportamento: mesmos 4
+ * itens, mesmos rótulos/segmentos, mesma ordem.
  *
  * Drawer via `<dialog>` nativo + `showModal()` (mesmo padrão já
  * comprovado em `unsaved-changes-context.tsx`/UXA-003, com o mesmo
@@ -124,13 +130,6 @@ interface SidebarNavProps {
  * por `lg:hidden` e portanto não focável — cai em `document.body` (nenhum
  * elemento preso), sem travar em nada invisível.
  */
-const NAV_ITEMS = [
-  { label: 'Artigos', segment: 'articles' },
-  { label: 'Produtos', segment: 'products' },
-  { label: 'Categorias', segment: 'categories' },
-  { label: 'Autores', segment: 'authors' },
-] as const;
-
 const BUTTON_CLASSES =
   'rounded-control border border-outline bg-surface px-control-x py-control-y text-body-sm font-ui font-action text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus';
 
@@ -186,8 +185,8 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
   function renderNavList(listClassName: string): ReactNode {
     return (
       <ul className={listClassName}>
-        {NAV_ITEMS.map((item) => {
-          const href = `/${encodeURIComponent(siteSlug)}/${item.segment}`;
+        {NAV_DESTINATIONS.map((item) => {
+          const href = navDestinationHref(siteSlug, item.segment);
           const isActive = pathname === href || pathname?.startsWith(`${href}/`);
           return (
             <li key={item.segment}>

@@ -10,6 +10,9 @@ interface TopbarProps {
   isLoggingOut: boolean;
   logoutError: boolean;
   onLogout: () => void;
+  isPaletteOpen: boolean;
+  onOpenPalette: () => void;
+  paletteId: string;
 }
 
 const LOGOUT_ERROR_MESSAGE = 'Não foi possível sair. Tente novamente em instantes.';
@@ -28,13 +31,18 @@ const LOGOUT_ERROR_MESSAGE = 'Não foi possível sair. Tente novamente em instan
  * UI que a renderiza agora vive inteira aqui; `GENERIC_ERROR_MESSAGE`
  * (erro do próprio shell, sem relação com logout) permanece no shell.
  *
- * Trigger da Command Palette entregue como controle explicitamente
- * indisponível (`disabled`, sem `onClick`, sem `aria-keyshortcuts`, sem
- * listener de atalho global) — decisão desta rodada: um botão focável/
- * clicável sem nenhuma ação por trás seria uma affordance quebrada.
- * Habilitar o controle, abrir a paleta ao clicar, implementar o atalho
- * global e anunciá-lo (`aria-keyshortcuts` ou equivalente) são
- * responsabilidade de UXA-009.
+ * Trigger da Command Palette — habilitado nesta rodada (UXA-009): o
+ * controle deixa de ser `disabled` e passa a abrir `CommandPalette` via
+ * `onOpenPalette` (callback recebido de `AuthenticatedShell`, que também
+ * é quem monta a instância de `CommandPalette` e possui `isPaletteOpen`
+ * — nenhum Context novo, mesmo padrão já usado para `onSiteChange`/
+ * `onLogout`). `aria-controls={paletteId}` aponta para o `id` real do
+ * `<dialog>` da paleta — `paletteId` é gerado uma única vez em
+ * `AuthenticatedShell` (ancestral comum) e passado como prop para os dois
+ * lados, a forma mínima de ligação explícita entre trigger e diálogo sem
+ * criar Context/registro compartilhado. `aria-keyshortcuts` já pode ser
+ * estático agora — o atalho global (`Ctrl+K`/`Cmd+K`, implementado dentro
+ * de `CommandPalette`) passa a existir de fato nesta mesma tarefa.
  *
  * Menu de usuário — padrão `aria-haspopup="menu"`/`role="menu"` mínimo e
  * local a este componente (sem primitiva nova em `packages/ui`, sem
@@ -66,7 +74,17 @@ const LOGOUT_ERROR_MESSAGE = 'Não foi possível sair. Tente novamente em instan
  * o gatilho/o item de menu precisam de `ref` para gestão de foco; alterar
  * `Button` para isso está fora do escopo aprovado desta tarefa.
  */
-export function Topbar({ siteSlug, sites, onSiteChange, isLoggingOut, logoutError, onLogout }: TopbarProps) {
+export function Topbar({
+  siteSlug,
+  sites,
+  onSiteChange,
+  isLoggingOut,
+  logoutError,
+  onLogout,
+  isPaletteOpen,
+  onOpenPalette,
+  paletteId,
+}: TopbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const triggerId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -133,7 +151,15 @@ export function Topbar({ siteSlug, sites, onSiteChange, isLoggingOut, logoutErro
         </select>
       </div>
 
-      <button type="button" disabled className={`${buttonBaseClasses} text-fg-muted opacity-50 cursor-not-allowed`}>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={isPaletteOpen}
+        aria-controls={paletteId}
+        aria-keyshortcuts="Meta+K Control+K"
+        onClick={onOpenPalette}
+        className={buttonBaseClasses}
+      >
         Busca rápida
       </button>
 

@@ -23,6 +23,7 @@ const sites = [
 function renderTopbar(overrides: Partial<ComponentProps<typeof Topbar>> = {}) {
   const onSiteChange = jest.fn();
   const onLogout = jest.fn();
+  const onOpenPalette = jest.fn();
   const utils = render(
     <Topbar
       siteSlug="fastcompre"
@@ -31,10 +32,13 @@ function renderTopbar(overrides: Partial<ComponentProps<typeof Topbar>> = {}) {
       isLoggingOut={false}
       logoutError={false}
       onLogout={onLogout}
+      isPaletteOpen={false}
+      onOpenPalette={onOpenPalette}
+      paletteId="command-palette-test"
       {...overrides}
     />,
   );
-  return { ...utils, onSiteChange, onLogout };
+  return { ...utils, onSiteChange, onLogout, onOpenPalette };
 }
 
 describe('Topbar', () => {
@@ -50,18 +54,41 @@ describe('Topbar', () => {
     expect(onSiteChange).toHaveBeenCalled();
   });
 
-  it('trigger da Command Palette é um botão real, visível e explicitamente desabilitado', () => {
+  it('trigger da Command Palette é um botão real, habilitado, com aria-haspopup/aria-controls/aria-keyshortcuts', () => {
     renderTopbar();
 
     const trigger = screen.getByRole('button', { name: 'Busca rápida' });
-    expect(trigger).toBeDisabled();
+    expect(trigger).toBeEnabled();
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveAttribute('aria-controls', 'command-palette-test');
+    expect(trigger).toHaveAttribute('aria-keyshortcuts', 'Meta+K Control+K');
   });
 
-  it('ordem de tabulação pula o trigger desabilitado da Command Palette', async () => {
+  it('clique no trigger da Command Palette chama onOpenPalette', async () => {
+    const user = userEvent.setup();
+    const { onOpenPalette } = renderTopbar();
+
+    await user.click(screen.getByRole('button', { name: 'Busca rápida' }));
+
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('isPaletteOpen=true reflete aria-expanded do trigger', () => {
+    renderTopbar({ isPaletteOpen: true });
+
+    expect(screen.getByRole('button', { name: 'Busca rápida' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('ordem de tabulação inclui o trigger da Command Palette (agora habilitado) antes do menu de usuário', async () => {
     const user = userEvent.setup();
     renderTopbar();
 
     screen.getByRole('combobox', { name: 'Site' }).focus();
+    await user.tab();
+
+    expect(screen.getByRole('button', { name: 'Busca rápida' })).toHaveFocus();
+
     await user.tab();
 
     expect(screen.getByRole('button', { name: 'Menu do usuário' })).toHaveFocus();
@@ -119,6 +146,9 @@ describe('Topbar', () => {
           isLoggingOut={false}
           logoutError={false}
           onLogout={jest.fn()}
+          isPaletteOpen={false}
+          onOpenPalette={jest.fn()}
+          paletteId="command-palette-test"
         />
       </div>,
     );
@@ -142,6 +172,9 @@ describe('Topbar', () => {
           isLoggingOut={false}
           logoutError={false}
           onLogout={jest.fn()}
+          isPaletteOpen={false}
+          onOpenPalette={jest.fn()}
+          paletteId="command-palette-test"
         />
         <button type="button">Depois</button>
       </div>,

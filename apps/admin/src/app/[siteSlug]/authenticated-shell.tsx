@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { meResponseSchema, type MeResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
+import { CommandPalette } from './command-palette';
 import { SidebarNav } from './sidebar-nav';
 import { SiteRoleProvider } from './site-role-context';
 import { Topbar } from './topbar';
@@ -68,6 +69,17 @@ function categoriesHref(siteSlug: string): string {
  * `Topbar` duplicaria a chamada. `LOGOUT_ERROR_MESSAGE` migrou para
  * `topbar.tsx`, já que a UI que a renderiza (o item "Sair" do menu de
  * usuário) vive inteira lá agora.
+ *
+ * `CommandPalette` (UXA-009) — este componente é o dono do estado
+ * `isPaletteOpen` (decisão de revisão: sem Context novo). `Topbar` só
+ * recebe `onOpenPalette`/`isPaletteOpen`/`paletteId` como props, mesmo
+ * padrão já usado para `onSiteChange`/`onLogout`; `CommandPalette` é
+ * montado aqui como um terceiro irmão de `SidebarNav`/`Topbar`, controlado
+ * via `isOpen`/`onOpenChange`. `paletteId` (`useId()`, gerado uma única
+ * vez aqui) é a única informação içada a este ancestral comum além do
+ * próprio estado — liga `aria-controls` do trigger em `Topbar` ao `id`
+ * real do `<dialog>` em `CommandPalette`, sem Context/registro
+ * compartilhado.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
@@ -75,6 +87,8 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
   const [state, setState] = useState<ShellState>({ status: 'loading' });
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const paletteId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -166,12 +180,17 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
           isLoggingOut={isLoggingOut}
           logoutError={logoutError}
           onLogout={handleLogout}
+          isPaletteOpen={isPaletteOpen}
+          onOpenPalette={() => setIsPaletteOpen(true)}
+          paletteId={paletteId}
         />
       </header>
 
       <main className={styles.content}>
         <SiteRoleProvider value={currentSite.role}>{children}</SiteRoleProvider>
       </main>
+
+      <CommandPalette id={paletteId} siteSlug={siteSlug} isOpen={isPaletteOpen} onOpenChange={setIsPaletteOpen} />
     </div>
   );
 }
