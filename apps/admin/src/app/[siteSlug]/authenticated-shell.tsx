@@ -79,7 +79,12 @@ function categoriesHref(siteSlug: string): string {
  * vez aqui) é a única informação içada a este ancestral comum além do
  * próprio estado — liga `aria-controls` do trigger em `Topbar` ao `id`
  * real do `<dialog>` em `CommandPalette`, sem Context/registro
- * compartilhado.
+ * compartilhado. UXA-010: `role={currentSite.role}` é passado direto para
+ * `CommandPalette` aqui — mesmo valor já usado por `SiteRoleProvider`
+ * acima, sem novo cálculo. `CommandPalette` fica fora da árvore desse
+ * Provider (irmão de `<main>`, não descendente), então não pode usar
+ * `useSiteRole()`; a prop direta é a forma mínima de levar a Role até lá
+ * sem ampliar o Provider nem criar um Context novo.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
@@ -190,7 +195,13 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
         <SiteRoleProvider value={currentSite.role}>{children}</SiteRoleProvider>
       </main>
 
-      <CommandPalette id={paletteId} siteSlug={siteSlug} isOpen={isPaletteOpen} onOpenChange={setIsPaletteOpen} />
+      <CommandPalette
+        id={paletteId}
+        siteSlug={siteSlug}
+        role={currentSite.role}
+        isOpen={isPaletteOpen}
+        onOpenChange={setIsPaletteOpen}
+      />
     </div>
   );
 }

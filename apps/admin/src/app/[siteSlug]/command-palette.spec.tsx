@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { PathnameContext } from 'next/dist/shared/lib/hooks-client-context.shared-runtime';
+import type { Role } from '@commerce-platform/contracts';
 import { CommandPalette, matchesQuery } from './command-palette';
 import { UnsavedChangesProvider, useSyncFormDirty } from './unsaved-changes-context';
 
@@ -37,23 +38,45 @@ function DirtyPublisher({ isDirty }: { isDirty: boolean }) {
  * `data-testid`/callback não é necessário: os testes abrem/fecham a
  * paleta pelos mesmos caminhos reais (atalho global, `Escape`, backdrop),
  * exatamente como um usuário faria.
+ *
+ * UXA-010: `role` é um parâmetro novo, com default `'VIEWER'` — não
+ * `'EDITOR'`/`'OWNER'` — deliberadamente, para que todos os testes
+ * herdados da UXA-009 (que não passam `role` e esperam exatamente os 4
+ * destinos de navegação, sem grupo "Criar") continuem válidos sem
+ * nenhuma alteração: com `VIEWER`, `createResults` é sempre vazio, então
+ * o comportamento observado é idêntico ao de antes desta tarefa. Os
+ * testes específicos da matriz de Role passam `role` explicitamente.
  */
-function ControlledPalette({ pathname, isDirty = false }: { pathname: string; isDirty?: boolean }) {
+function ControlledPalette({
+  pathname,
+  isDirty = false,
+  role = 'VIEWER',
+}: {
+  pathname: string;
+  isDirty?: boolean;
+  role?: Role;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <PathnameContext.Provider value={pathname}>
       <AppRouterContext.Provider value={mockRouter}>
         <UnsavedChangesProvider>
           <DirtyPublisher isDirty={isDirty} />
-          <CommandPalette id="command-palette-test" siteSlug="fastcompre" isOpen={isOpen} onOpenChange={setIsOpen} />
+          <CommandPalette
+            id="command-palette-test"
+            siteSlug="fastcompre"
+            role={role}
+            isOpen={isOpen}
+            onOpenChange={setIsOpen}
+          />
         </UnsavedChangesProvider>
       </AppRouterContext.Provider>
     </PathnameContext.Provider>
   );
 }
 
-function buildTree(pathname: string, isDirty = false): ReactElement {
-  return <ControlledPalette pathname={pathname} isDirty={isDirty} />;
+function buildTree(pathname: string, isDirty = false, role: Role = 'VIEWER'): ReactElement {
+  return <ControlledPalette pathname={pathname} isDirty={isDirty} role={role} />;
 }
 
 function pressShortcut() {
@@ -404,5 +427,122 @@ describe('CommandPalette', () => {
     await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'xyz');
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  /**
+   * UXA-010 — matriz de Role × visibilidade dos 4 atalhos de criação, e
+   * comportamento de agrupamento/busca/navegação/dirty-state associado.
+   */
+  describe('UXA-010 — ações de criação', () => {
+    it('VIEWER: só os 4 destinos de navegação, sem grupo "Criar"', () => {
+      render(buildTree('/fastcompre/categories', false, 'VIEWER'));
+      act(() => pressShortcut());
+
+      expect(screen.getAllByRole('option')).toHaveLength(4);
+      expect(screen.getByRole('group', { name: 'Navegar' })).toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Criar' })).not.toBeInTheDocument();
+    });
+
+    it.each<Role>(['EDITOR', 'OWNER'])(
+      '%s: os 4 destinos de navegação e os 4 atalhos de criação, em dois grupos',
+      (role) => {
+        render(buildTree('/fastcompre/categories', false, role));
+        act(() => pressShortcut());
+
+        const options = screen.getAllByRole('option');
+        expect(options).toHaveLength(8);
+        expect(screen.getByRole('group', { name: 'Navegar' })).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: 'Criar' })).toBeInTheDocument();
+
+        const createGroup = screen.getByRole('group', { name: 'Criar' });
+        expect(createGroup.textContent).toContain('Novo Artigo');
+        expect(createGroup.textContent).toContain('Novo Produto');
+        expect(createGroup.textContent).toContain('Nova Categoria');
+        expect(createGroup.textContent).toContain('Novo Autor');
+      },
+    );
+
+    it('busca "produto" casa com item de navegação e de criação — ambos os grupos aparecem (EDITOR)', async () => {
+      const user = userEvent.setup();
+      render(buildTree('/fastcompre/categories', false, 'EDITOR'));
+      act(() => pressShortcut());
+
+      await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'produto');
+
+      expect(screen.getByRole('group', { name: 'Navegar' }).textContent).toContain('Produtos');
+      expect(screen.getByRole('group', { name: 'Criar' }).textContent).toContain('Novo Produto');
+      expect(screen.getAllByRole('option')).toHaveLength(2);
+    });
+
+    it('busca "novo" só casa com ações de criação — grupo "Navegar" some, "Criar" permanece (OWNER)', async () => {
+      const user = userEvent.setup();
+      render(buildTree('/fastcompre/categories', false, 'OWNER'));
+      act(() => pressShortcut());
+
+      await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'novo');
+
+      expect(screen.queryByRole('group', { name: 'Navegar' })).not.toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'Criar' })).toBeInTheDocument();
+    });
+
+    it('VIEWER + busca "novo produto": nenhum resultado, sem grupo "Criar" vazio', async () => {
+      const user = userEvent.setup();
+      render(buildTree('/fastcompre/categories', false, 'VIEWER'));
+      act(() => pressShortcut());
+
+      await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'novo produto');
+
+      expect(screen.queryByRole('option')).not.toBeInTheDocument();
+      expect(screen.queryByRole('group')).not.toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Nenhum resultado encontrado');
+    });
+
+    it('ArrowDown atravessa a fronteira entre grupos: do último item de "Navegar" para o primeiro de "Criar" (EDITOR)', async () => {
+      const user = userEvent.setup();
+      render(buildTree('/fastcompre/categories', false, 'EDITOR'));
+      act(() => pressShortcut());
+
+      const input = screen.getByRole('combobox', { name: 'Buscar navegação' });
+      await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}'); // Artigos -> Produtos -> Categorias -> Autores
+      const autores = screen.getByRole('option', { name: 'Autores' });
+      expect(input).toHaveAttribute('aria-activedescendant', autores.id);
+
+      await user.keyboard('{ArrowDown}'); // atravessa a fronteira para o primeiro item de "Criar"
+      const novoArtigo = screen.getByRole('option', { name: 'Novo Artigo' });
+      expect(input).toHaveAttribute('aria-activedescendant', novoArtigo.id);
+    });
+
+    it('Enter numa ação de criação navega para a rota /new correspondente (sem alteração pendente, EDITOR)', async () => {
+      const user = userEvent.setup();
+      render(buildTree('/fastcompre/categories', false, 'EDITOR'));
+      act(() => pressShortcut());
+
+      await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'Novo Produto');
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/fastcompre/products/new'));
+    });
+
+    it('com alterações não salvas, Enter numa ação de criação + "Ficar" mantém a paleta aberta e não navega (OWNER)', async () => {
+      const user = userEvent.setup();
+      render(buildTree('/fastcompre/categories', true, 'OWNER'));
+      act(() => pressShortcut());
+
+      await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'Novo Produto');
+      await user.keyboard('{Enter}');
+
+      const stayButton = await screen.findByRole('button', { name: 'Ficar' });
+      await user.click(stayButton);
+
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
+    });
+
+    it('jest-axe: nenhuma violação com os dois grupos renderizados (EDITOR)', async () => {
+      const { container } = render(buildTree('/fastcompre/categories', false, 'EDITOR'));
+      act(() => pressShortcut());
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });
