@@ -3,15 +3,23 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
-import { productDetailAdminSchema, type ProductDetailAdmin, type UpdateProductRequest } from '@commerce-platform/contracts';
+import { Button } from '@commerce-platform/ui';
+import {
+  productAdminSchema,
+  productDetailAdminSchema,
+  type ProductAdmin,
+  type ProductDetailAdmin,
+  type UpdateProductRequest,
+} from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
+import { ErrorState, LoadingState } from '../../async-state';
 import { useSiteRole } from '../../site-role-context';
+import { useToast } from '../../toast-context';
 import { ProductForm, type ProductFormValues } from '../product-form';
 import { OfferSection } from './offer-section';
 import { ProductReadOnly } from './product-read-only';
-import styles from './product-detail.module.css';
 
 interface ProductDetailProps {
   siteSlug: string;
@@ -43,11 +51,36 @@ function productPath(siteSlug: string, id: string): string {
 }
 
 /**
+ * `PATCH .../products/:id` e `POST .../archive`|`.../unarchive` persistem
+ * de fato (confirmado por investigação de causa raiz), mas devolvem
+ * `ProductAdmin` "raso" — mesmo formato de `create()`/`list()`; só o `GET`
+ * de detalhe inclui `offers` (`productDetailAdminSchema`). Antes desta
+ * correção, as três chamadas validavam a resposta com
+ * `productDetailAdminSchema`, que exige `offers` — a validação client-side
+ * falhava depois da persistência já ter ocorrido no servidor, produzindo
+ * um erro falso na UI mesmo com o Produto salvo com sucesso.
+ *
+ * A correção não é validar a mutation com um schema mais permissivo e
+ * perder `offers` do estado: `DetailState.ready.product` continua
+ * `ProductDetailAdmin` (é o que `ProductReadOnly` espera, e é o retrato
+ * real do recurso carregado pelo `GET`). Este helper incorpora o
+ * `ProductAdmin` raso devolvido pela mutation sobre o `ProductDetailAdmin`
+ * já carregado — nenhuma mutation de Produto altera `offers` (quem
+ * gerencia Oferta é exclusivamente `OfferSection`, via seus próprios
+ * endpoints `/offers`, com busca independente), então o merge nunca perde
+ * nem envelhece esse campo.
+ */
+function mergeMutationResult(current: ProductDetailAdmin, mutated: ProductAdmin): ProductDetailAdmin {
+  return { ...current, ...mutated };
+}
+
+/**
  * `/:siteSlug/products/:id` (ADM-006) — concentra carregamento, edição
  * (via `ProductForm` compartilhado, `PATCH` com `null` explícito nos
  * campos limpos), arquivar/desarquivar, exclusão e a seção de Ofertas
- * embutida (`OfferSection`). Nenhuma rota de detalhe separada, nenhuma
- * rota própria de Oferta — não existem no mapa de páginas (§32).
+ * embutida (`OfferSection`, UXA-014 — intocada por esta tarefa). Nenhuma
+ * rota de detalhe separada, nenhuma rota própria de Oferta — não existem
+ * no mapa de páginas (§32).
  *
  * Visibilidade por Role (ADM-012): `VIEWER` vê `ProductReadOnly` — nunca
  * `ProductForm` (mesmo princípio de `CategoryDetail`/`ArticleReadOnly`).
@@ -55,10 +88,21 @@ function productPath(siteSlug: string, id: string): string {
  * Desarquivar/Excluir. `OfferSection` continua renderizado nas duas
  * composições — ela trata sua própria visibilidade por Role internamente.
  * A API continua sendo a autoridade real.
+ *
+ * UXA-013 — apresentação migrada de CSS Module para Tailwind v4 + tokens
+ * do design system + primitives `Button` (`packages/ui`) e
+ * `LoadingState`/`ErrorState` (`../../async-state`, promovido nesta
+ * tarefa). `handleFormSuccess` (novo) dispara `showToast('Produto
+ * salvo.')` depois que `ProductForm` já chamou `reset(data)` internamente
+ * (mesma ordem já garantida para a criação) — mesmo padrão de
+ * `CategoryDetail.handleFormSuccess` (UXA-004); a edição não navega em
+ * lugar nenhum, então este é só o gatilho do toast, sem nenhuma outra
+ * consequência.
  */
 export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
   const router = useRouter();
   const role = useSiteRole();
+  const { showToast } = useToast();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessingLifecycle, setIsProcessingLifecycle] = useState(false);
@@ -92,11 +136,17 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
       imageUrl: values.imageUrl,
     };
 
-    const product = await apiRequest(productPath(siteSlug, id), productDetailAdminSchema, {
+    const mutated = await apiRequest(productPath(siteSlug, id), productAdminSchema, {
       method: 'PATCH',
       body,
     });
-    setState({ status: 'ready', product });
+    setState((prev) =>
+      prev.status === 'ready' ? { status: 'ready', product: mergeMutationResult(prev.product, mutated) } : prev,
+    );
+  }
+
+  function handleFormSuccess() {
+    showToast('Produto salvo.');
   }
 
   async function handleArchiveToggle(action: 'archive' | 'unarchive') {
@@ -106,10 +156,12 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
     setIsProcessingLifecycle(true);
     setActionError(null);
     try {
-      const product = await apiRequest(`${productPath(siteSlug, id)}/${action}`, productDetailAdminSchema, {
+      const mutated = await apiRequest(`${productPath(siteSlug, id)}/${action}`, productAdminSchema, {
         method: 'POST',
       });
-      setState({ status: 'ready', product });
+      setState((prev) =>
+        prev.status === 'ready' ? { status: 'ready', product: mergeMutationResult(prev.product, mutated) } : prev,
+      );
     } catch (error) {
       setActionError(resolveErrorMessage(error, GENERIC_ACTION_ERROR_MESSAGE));
     } finally {
@@ -136,22 +188,18 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
   }
 
   if (state.status === 'loading') {
-    return <p className={styles.status}>Carregando...</p>;
+    return <LoadingState>Carregando...</LoadingState>;
   }
 
   if (state.status === 'error') {
-    return (
-      <p role="alert" className={styles.status}>
-        {state.message}
-      </p>
-    );
+    return <ErrorState>{state.message}</ErrorState>;
   }
 
   const { product } = state;
 
   if (!roleMeetsMinimum(role, 'EDITOR')) {
     return (
-      <div className={styles.detail}>
+      <div className="flex max-w-md flex-col gap-6">
         <ProductReadOnly siteSlug={siteSlug} product={product} />
         <OfferSection siteSlug={siteSlug} productId={id} />
       </div>
@@ -159,7 +207,7 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
   }
 
   return (
-    <div className={styles.detail}>
+    <div className="flex max-w-md flex-col gap-6">
       <ProductForm
         siteSlug={siteSlug}
         initialValues={{
@@ -171,30 +219,39 @@ export function ProductDetail({ siteSlug, id }: ProductDetailProps) {
         }}
         submitLabel="Salvar"
         onSubmit={handleUpdate}
+        onSuccess={handleFormSuccess}
       />
 
       {roleMeetsMinimum(role, 'OWNER') && (
-        <div className={styles.actions}>
+        <div className="flex gap-3">
           {product.archivedAt ? (
-            <button type="button" onClick={() => handleArchiveToggle('unarchive')} disabled={isProcessingLifecycle}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleArchiveToggle('unarchive')}
+              disabled={isProcessingLifecycle}
+            >
               Desarquivar
-            </button>
+            </Button>
           ) : (
-            <button type="button" onClick={() => handleArchiveToggle('archive')} disabled={isProcessingLifecycle}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleArchiveToggle('archive')}
+              disabled={isProcessingLifecycle}
+            >
               Arquivar
-            </button>
+            </Button>
           )}
-          <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
+          <Button type="button" variant="secondary" size="sm" onClick={handleDelete} disabled={isProcessingLifecycle}>
             Excluir
-          </button>
+          </Button>
         </div>
       )}
 
-      {actionError && (
-        <p role="alert" className={styles.status}>
-          {actionError}
-        </p>
-      )}
+      {actionError && <ErrorState>{actionError}</ErrorState>}
 
       <OfferSection siteSlug={siteSlug} productId={id} />
     </div>

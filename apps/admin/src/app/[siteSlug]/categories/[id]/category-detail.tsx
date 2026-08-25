@@ -10,7 +10,7 @@ import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
 import { useToast } from '../../toast-context';
-import { ErrorState, LoadingState } from '../async-state';
+import { ErrorState, LoadingState } from '../../async-state';
 import { CategoryForm } from '../category-form';
 import { CategoryReadOnly } from './category-read-only';
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, render, screen } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import { ProductReadOnly } from './product-read-only';
 
 const SITE_SLUG = 'fastcompre';
@@ -127,5 +128,16 @@ describe('ProductReadOnly', () => {
     );
 
     await flushPendingFetches();
+  });
+
+  // --- UXA-013: sem violação de acessibilidade (jest-axe) ---
+
+  it('UXA-013: sem violação de acessibilidade (jest-axe)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(emptyPaginated());
+    const { container } = render(<ProductReadOnly siteSlug={SITE_SLUG} product={baseProduct} />);
+
+    await flushPendingFetches();
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

@@ -2,13 +2,14 @@
 
 import { useEffect, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
+import { Button, Text } from '@commerce-platform/ui';
 import { listProductsResponseSchema, type CategoryAdmin, type ListProductsResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
 import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
+import { EmptyState, ErrorState, LoadingState } from '../async-state';
 import { useSiteRole } from '../site-role-context';
-import styles from './product-list.module.css';
 
 interface ProductListProps {
   siteSlug: string;
@@ -42,8 +43,8 @@ function resolveErrorMessage(error: unknown): string {
  * `siteSlug`/`categoryId` sem garantia de formato fixa no contrato de rota
  * — `encodeURIComponent` em todo segmento dinâmico, mesma cautela da
  * ADM-003/004/005. Filtro Status mapeia os 3 estados de
- * `listCategoriesQuerySchema`/`listProductsQuerySchema` (`archived`
- * ausente/`"false"`/`"true"`) — nenhum valor novo.
+ * `listProductsQuerySchema` (`archived` ausente/`"false"`/`"true"`) —
+ * nenhum valor novo.
  */
 function buildListPath(siteSlug: string, page: number, filter: ArchivedFilter, categoryId: string): string {
   const params = new URLSearchParams();
@@ -65,10 +66,21 @@ function productHref(siteSlug: string, productId: string): string {
 }
 
 /**
+ * UXA-013 — apresentação migrada de CSS Module para Tailwind v4 + tokens do
+ * design system, mesmo vocabulário já usado em `CategoryList` (UXA-005):
+ * `<select>` permanece HTML nativo com classes Tailwind locais; botões de
+ * paginação usam `Button variant="secondary" size="sm"`; "Página X de Y"
+ * usa `Text as="span"`; os três estados assíncronos usam
+ * `LoadingState`/`ErrorState`/`EmptyState`, agora promovidos para
+ * `../async-state` (ver doc comment do próprio módulo) — Produto é o
+ * segundo consumidor real que justifica a promoção. O link "Novo Produto"
+ * não é tocado — nunca teve estilo próprio no CSS Module original, mesmo
+ * critério já usado em `CategoryList`.
+ *
  * Filtro de Categoria mostra TODAS (ativas e arquivadas) — diferente do
  * vínculo no `ProductForm`: filtrar por uma Categoria arquivada é uma
  * consulta legítima (ex.: achar Produtos ainda ligados a ela), não um
- * vínculo novo a evitar.
+ * vínculo novo a evitar. Comportamento inalterado por esta tarefa.
  */
 export function ProductList({ siteSlug }: ProductListProps) {
   const role = useSiteRole();
@@ -136,25 +148,35 @@ export function ProductList({ siteSlug }: ProductListProps) {
   }
 
   return (
-    <div className={styles.list}>
-      <div className={styles.toolbar}>
-        <div className={styles.filters}>
-          <div className={styles.field}>
-            <label htmlFor="archived-filter">Status</label>
-            <select id="archived-filter" value={filter} onChange={handleFilterChange}>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="archived-filter" className="font-ui text-body-sm font-action">
+              Status
+            </label>
+            <select
+              id="archived-filter"
+              value={filter}
+              onChange={handleFilterChange}
+              className="rounded-control border border-outline px-2 py-1.5 font-ui text-body-sm"
+            >
               <option value="all">Todas</option>
               <option value="active">Ativas</option>
               <option value="archived">Arquivadas</option>
             </select>
           </div>
 
-          <div className={styles.field}>
-            <label htmlFor="category-filter">Categoria</label>
+          <div className="flex items-center gap-2">
+            <label htmlFor="category-filter" className="font-ui text-body-sm font-action">
+              Categoria
+            </label>
             <select
               id="category-filter"
               value={categoryId}
               onChange={handleCategoryChange}
               disabled={categoriesState.status !== 'ready'}
+              className="rounded-control border border-outline px-2 py-1.5 font-ui text-body-sm"
             >
               <option value="">Todas</option>
               {categoriesState.status === 'ready' &&
@@ -172,20 +194,16 @@ export function ProductList({ siteSlug }: ProductListProps) {
         )}
       </div>
 
-      {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}
+      {state.status === 'loading' && <LoadingState>Carregando...</LoadingState>}
 
-      {state.status === 'error' && (
-        <p role="alert" className={styles.status}>
-          {state.message}
-        </p>
-      )}
+      {state.status === 'error' && <ErrorState>{state.message}</ErrorState>}
 
       {state.status === 'ready' && (
         <>
           {state.data.items.length === 0 ? (
-            <p className={styles.status}>Nenhum Produto encontrado.</p>
+            <EmptyState>Nenhum Produto encontrado.</EmptyState>
           ) : (
-            <ul className={styles.items}>
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {state.data.items.map((product) => (
                 <li key={product.id}>
                   <Link href={productHref(siteSlug, product.id)}>
@@ -197,22 +215,30 @@ export function ProductList({ siteSlug }: ProductListProps) {
             </ul>
           )}
 
-          <div className={styles.pagination}>
-            <button type="button" onClick={() => handlePageChange(page - 1)} disabled={page <= 1}>
-              Anterior
-            </button>
-            {state.data.totalPages > 0 && (
-              <span>
-                Página {state.data.page} de {state.data.totalPages}
-              </span>
-            )}
-            <button
+          <div className="flex items-center gap-4">
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page <= 1}
+            >
+              Anterior
+            </Button>
+            {state.data.totalPages > 0 && (
+              <Text as="span">
+                Página {state.data.page} de {state.data.totalPages}
+              </Text>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => handlePageChange(page + 1)}
               disabled={page >= state.data.totalPages}
             >
               Próxima
-            </button>
+            </Button>
           </div>
         </>
       )}

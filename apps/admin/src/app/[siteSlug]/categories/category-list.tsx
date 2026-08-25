@@ -8,7 +8,7 @@ import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
 import { useSiteRole } from '../site-role-context';
-import { EmptyState, ErrorState, LoadingState } from './async-state';
+import { EmptyState, ErrorState, LoadingState } from '../async-state';
 
 interface CategoryListProps {
   siteSlug: string;
