@@ -2,6 +2,7 @@ import type { ContextType, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import { PathnameContext } from 'next/dist/shared/lib/hooks-client-context.shared-runtime';
@@ -492,5 +493,108 @@ describe('AuthenticatedShell', () => {
     });
 
     expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
+  });
+
+  // --- UXA-011: skip link, landmarks e foco do shell ---
+
+  describe('UXA-011 — skip link e landmarks', () => {
+    it('skip link é o primeiro elemento focável do shell — ordem de Tab segue a ordem do DOM', async () => {
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      // `userEvent.tab()` depende do algoritmo de "próximo tabbable" da
+      // biblioteca, que este projeto já evita para testes de ordem de Tab
+      // (`command-palette.spec.tsx` usa `fireEvent` com `KeyboardEvent`
+      // manual pelo mesmo motivo) — em vez disso, testamos diretamente o
+      // que determina a ordem real: nenhum elemento do shell usa
+      // `tabIndex` positivo, então a ordem de Tab É a ordem do DOM.
+      // `[tabindex="0"]` fica de fora do seletor de propósito — cobriria o
+      // próprio link (que não declara `tabIndex` nenhum, foco nativo de
+      // `<a href>`) sem risco de também capturar `<main tabIndex={-1}>`.
+      const { container } = renderShell('/fastcompre/categories');
+      await screen.findByRole('link', { name: 'Categorias' });
+
+      const focusable = container.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), select, input, textarea, [tabindex="0"]',
+      );
+
+      expect(focusable[0]).toBe(screen.getByRole('link', { name: 'Pular para o conteúdo principal' }));
+    });
+
+    it('skip link fica fora do fluxo (position fixed) e oculto por padrão, com a variante de foco cabeada nas classes', async () => {
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      renderShell('/fastcompre/categories');
+
+      const skipLink = await screen.findByRole('link', { name: 'Pular para o conteúdo principal' });
+      // Oculto por padrão via translateY(-100%) — proporcional à própria altura
+      // do elemento, não uma distância fixa (ver doc comment de
+      // SKIP_LINK_CLASSES). `fixed` garante que nunca participa do fluxo do
+      // `.shell`/`<header>`, nos dois estados — é isso que evita layout shift
+      // ao focar (verificado visualmente em Chromium real, jsdom não computa
+      // layout).
+      const classes = skipLink.className.split(/\s+/);
+      expect(classes).toContain('fixed');
+      expect(classes).toContain('-translate-y-full');
+      // Variante de foco: substitui o translateY por um valor proporcional ao
+      // token de espaçamento (`space-4`), não reintroduz o elemento no fluxo
+      // — e só essa forma prefixada existe (nenhum `translate-y-4` "solto").
+      expect(classes).toContain('focus:translate-y-4');
+      expect(classes).not.toContain('translate-y-4');
+    });
+
+    it('ativar o skip link (clique/Enter) move o foco para o <main>, sem preventDefault (href nativo preservado)', async () => {
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      renderShell('/fastcompre/categories');
+
+      const skipLink = await screen.findByRole('link', { name: 'Pular para o conteúdo principal' });
+      expect(skipLink).toHaveAttribute('href', '#main-content');
+
+      fireEvent.click(skipLink);
+
+      expect(screen.getByRole('main')).toHaveFocus();
+    });
+
+    it('<main> possui id="main-content" e tabIndex={-1}', async () => {
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      renderShell('/fastcompre/categories');
+
+      const main = await screen.findByRole('main');
+      expect(main).toHaveAttribute('id', 'main-content');
+      expect(main).toHaveAttribute('tabindex', '-1');
+    });
+
+    it('skip link não existe nos estados loading/error (não há <main> para apontar)', async () => {
+      const pending = new Promise<Response>(() => {
+        // nunca resolve durante o teste.
+      });
+      global.fetch = jest.fn<typeof fetch>().mockReturnValue(pending);
+
+      renderShell('/fastcompre/categories');
+
+      expect(screen.getByText('Carregando...')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Pular para o conteúdo principal' })).not.toBeInTheDocument();
+    });
+
+    it('jest-axe: nenhuma violação no shell completo (drawer fechado, palette fechada)', async () => {
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      const { container } = renderShell('/fastcompre/categories');
+      await screen.findByRole('link', { name: 'Categorias' });
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('jest-axe: nenhuma violação no shell completo com o drawer mobile (UXA-008) aberto', async () => {
+      const user = userEvent.setup();
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      const { container } = renderShell('/fastcompre/categories');
+      await user.click(await screen.findByRole('button', { name: 'Menu' }));
+      await screen.findByRole('dialog', { name: 'Menu de navegação' });
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { meResponseSchema, type MeResponse } from '@commerce-platform/contracts';
@@ -21,6 +21,39 @@ interface AuthenticatedShellProps {
 type ShellState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; data: MeResponse };
 
 const GENERIC_ERROR_MESSAGE = 'Não foi possível carregar este Site. Tente novamente em instantes.';
+
+/**
+ * UXA-011 — skip link.
+ *
+ * `fixed` + `top-0` combinados com `-translate-y-full`/`focus:translate-y-4`
+ * (não uma distância fixa como `-translate-y-24`): `translateY(-100%)` desloca
+ * o elemento pela sua PRÓPRIA altura renderizada, então ele fica inteiramente
+ * fora da viewport (borda inferior exatamente em `y=0`, nenhum pixel visível)
+ * não importa quantas linhas o texto ocupe em zoom alto/reflow — uma
+ * distância fixa em rem/px poderia deixar uma fatia visível se o link
+ * crescesse além do valor cravado. Ao focar, `focus:translate-y-4` substitui
+ * o valor de `translateY` para `1rem` (mesmo token `space-4` usado em
+ * `left-4`), pousando o link a `1rem` do topo — nenhuma outra combinação
+ * `top-4 + -translate-y-24` (a primeira versão deste desenho) sobrevive a
+ * essa correção.
+ *
+ * `position: fixed` nos dois estados (nunca alternando com `static`/
+ * `display: none`) é o que evita layout shift: o link nunca participa do
+ * fluxo do `<header>`/`.shell`, então aparecer ao focar nunca empurra nada.
+ * `max-w-[calc(100vw-2rem)]` é a mesma garantia aplicada ao eixo horizontal
+ * — em reflow a 400% de zoom (viewport efetivo de 320px, WCAG 1.4.10), o
+ * texto quebra em vez de vazar para fora da tela.
+ *
+ * `motion-safe:transition-transform` — mesma convenção já usada em
+ * `packages/ui` (`motion-safe:animate-pulse`) para respeitar
+ * `prefers-reduced-motion` sem precisar de um branch condicional dedicado.
+ *
+ * `focus-visible:ring-2 ring-focus` reaproveita o mesmo anel de foco já
+ * padronizado no shell (`Topbar`/`SidebarNav`/`CommandPalette`) — nenhuma
+ * linguagem visual nova.
+ */
+const SKIP_LINK_CLASSES =
+  'fixed left-4 top-0 z-50 max-w-[calc(100vw-2rem)] -translate-y-full rounded-control border border-outline bg-surface px-control-x py-control-y text-body-sm font-ui font-action text-fg no-underline motion-safe:transition-transform focus:translate-y-4 focus-visible:outline-none focus-visible:ring-2 ring-focus';
 
 /**
  * `siteSlug` (`meResponseSchema`) é `z.string()` puro, sem garantia de
@@ -85,6 +118,33 @@ function categoriesHref(siteSlug: string): string {
  * Provider (irmão de `<main>`, não descendente), então não pode usar
  * `useSiteRole()`; a prop direta é a forma mínima de levar a Role até lá
  * sem ampliar o Provider nem criar um Context novo.
+ *
+ * UXA-011 — skip link + landmarks do shell. O link (`SKIP_LINK_CLASSES`,
+ * ver doc comment próprio) é o primeiro filho de `.shell`, antes do
+ * `<header>` — única forma de garantir que seja a primeira parada de `Tab`
+ * em qualquer viewport, já que `position: fixed` não afeta ordem de
+ * tabulação (essa segue a ordem do DOM). Só existe no `return` do estado
+ * `ready`: os estados `loading`/`error` retornam antes disso (linhas
+ * acima) e nunca chegam a montar `<header>`/`<main>` — o skip link nunca
+ * apontaria para um `<main>` inexistente.
+ *
+ * `<main>` ganha `id="main-content"` (alvo do `href` do link) e
+ * `tabIndex={-1}` (torna um elemento normalmente não-focável em um alvo de
+ * foco programável — `<main>` não é focável nativamente sem isso).
+ * `handleSkipLinkClick` chama `mainRef.current?.focus()` explicitamente em
+ * vez de depender só do salto de âncora nativo: navegadores reais modernos
+ * movem o foco para um alvo `tabIndex={-1}` ao navegar para `#id`, mas esse
+ * comportamento não é replicado pelo jsdom usado nos testes — o `.focus()`
+ * explícito garante o mesmo destino de foco de forma determinística em
+ * qualquer engine, sem `preventDefault()`: o `href="#main-content"` continua
+ * disparando a navegação de âncora nativa (hash/scroll) em paralelo, como
+ * fallback semântico sem JS.
+ *
+ * Deliberadamente NENHUMA política de foco pós-navegação SPA é introduzida
+ * aqui (decisão explícita desta rodada) — `mainRef`/`handleSkipLinkClick`
+ * só reagem ao clique/ativação do skip link em si, nunca a uma mudança de
+ * `pathname`; este componente continua sem `usePathname()` próprio, mesma
+ * decisão já registrada em UXA-006.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
@@ -94,6 +154,11 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
   const [logoutError, setLogoutError] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const paletteId = useId();
+  const mainRef = useRef<HTMLElement>(null);
+
+  function handleSkipLinkClick() {
+    mainRef.current?.focus();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +240,10 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
 
   return (
     <div className={styles.shell}>
+      <a href="#main-content" onClick={handleSkipLinkClick} className={SKIP_LINK_CLASSES}>
+        Pular para o conteúdo principal
+      </a>
+
       <header className={styles.header}>
         <SidebarNav siteSlug={siteSlug} />
 
@@ -191,7 +260,7 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
         />
       </header>
 
-      <main className={styles.content}>
+      <main id="main-content" tabIndex={-1} ref={mainRef} className={styles.content}>
         <SiteRoleProvider value={currentSite.role}>{children}</SiteRoleProvider>
       </main>
 
