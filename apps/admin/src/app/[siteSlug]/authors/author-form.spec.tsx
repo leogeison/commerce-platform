@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AdminApiError } from '../../../lib/api-error';
+import { UnsavedChangesProvider } from '../unsaved-changes-context';
 import { AuthorForm, type AuthorFormValues } from './author-form';
 
 type SubmitFn = (values: AuthorFormValues) => Promise<void>;
@@ -50,6 +52,21 @@ const emptyInitialValues: AuthorFormValues = {
   avatarUrl: null,
 };
 
+/**
+ * UXA-015 — `AuthorForm` passa a chamar `useSyncFormDirty` incondicionalmente
+ * (dirty-guard, réplica do padrão já usado em `CategoryForm`/`ProductForm`/
+ * `OfferForm`), então todo render deste componente exige
+ * `UnsavedChangesProvider` como ancestral — mesmo critério já aplicado em
+ * `offer-form.spec.tsx`.
+ */
+function renderForm(props: Omit<Parameters<typeof AuthorForm>[0], 'siteSlug'> & { siteSlug?: string }) {
+  return render(
+    <UnsavedChangesProvider>
+      <AuthorForm siteSlug="fastcompre" {...props} />
+    </UnsavedChangesProvider>,
+  );
+}
+
 let createObjectURLCallCount = 0;
 
 describe('AuthorForm', () => {
@@ -63,46 +80,63 @@ describe('AuthorForm', () => {
     jest.restoreAllMocks();
   });
 
-  it('renderiza os valores iniciais, incluindo preview do avatar existente', () => {
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ name: 'Ana Souza', bio: 'Editora-chefe', avatarUrl: 'https://cdn.example.com/ana.jpg' }}
-        submitLabel="Salvar"
-        onSubmit={jest.fn<SubmitFn>()}
-      />,
-    );
+  it('renderiza os valores iniciais, incluindo preview do avatar existente com alt igual ao nome', () => {
+    renderForm({
+      initialValues: { name: 'Ana Souza', bio: 'Editora-chefe', avatarUrl: 'https://cdn.example.com/ana.jpg' },
+      submitLabel: 'Salvar',
+      onSubmit: jest.fn<SubmitFn>(),
+    });
 
     expect(screen.getByLabelText('Nome')).toHaveValue('Ana Souza');
     expect(screen.getByLabelText('Bio')).toHaveValue('Editora-chefe');
-    expect(screen.getByRole('img', { name: 'Avatar do Autor' })).toHaveAttribute(
-      'src',
-      'https://cdn.example.com/ana.jpg',
-    );
+    expect(screen.getByRole('img', { name: 'Ana Souza' })).toHaveAttribute('src', 'https://cdn.example.com/ana.jpg');
   });
 
-  it('nome vazio: mostra erro de campo, não chama onSubmit', async () => {
+  it('sem avatarUrl inicial: mostra o fallback de iniciais (nunca vazio), acompanhando o nome digitado', async () => {
+    const user = userEvent.setup();
+    renderForm({ initialValues: emptyInitialValues, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Nome'), 'Ana Silva');
+
+    expect(await screen.findByText('AS')).toBeInTheDocument();
+  });
+
+  it('nome vazio: mostra erro de campo, move o foco para o campo Nome, não chama onSubmit', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>();
-    render(<AuthorForm siteSlug="fastcompre" initialValues={emptyInitialValues} submitLabel="Criar" onSubmit={onSubmit} />);
+    renderForm({ initialValues: emptyInitialValues, submitLabel: 'Criar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome')).toHaveFocus();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('submit válido com bio vazia e sem avatar: chama onSubmit com bio/avatarUrl null', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(<AuthorForm siteSlug="fastcompre" initialValues={emptyInitialValues} submitLabel="Criar" onSubmit={onSubmit} />);
+    renderForm({ initialValues: emptyInitialValues, submitLabel: 'Criar', onSubmit });
 
     await user.type(screen.getByLabelText('Nome'), 'Ana Souza');
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Ana Souza', bio: null, avatarUrl: null }),
-    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ name: 'Ana Souza', bio: null, avatarUrl: null }));
+  });
+
+  it('submit bem-sucedido: chama onSuccess depois que o formulário já está limpo (isDirty false)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
+    const onSuccess = jest.fn<() => void>();
+    renderForm({ initialValues: emptyInitialValues, submitLabel: 'Criar', onSubmit, onSuccess });
+
+    await user.type(screen.getByLabelText('Nome'), 'Ana Souza');
+    await user.click(screen.getByRole('button', { name: 'Criar' }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it('durante o submit (sem avatar novo): desabilita campos e botão', async () => {
@@ -112,14 +146,7 @@ describe('AuthorForm', () => {
       resolveSubmit = resolve;
     });
     const onSubmit = jest.fn<SubmitFn>().mockReturnValue(pending);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Salvar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Salvar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -135,14 +162,7 @@ describe('AuthorForm', () => {
     const onSubmit = jest
       .fn<SubmitFn>()
       .mockRejectedValue(new AdminApiError('Este usuário já possui um Author neste Site.', { statusCode: 409 }));
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Salvar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Salvar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -152,14 +172,7 @@ describe('AuthorForm', () => {
   it('erro inesperado no submit: mostra mensagem genérica fixa', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockRejectedValue(new Error('network down'));
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Salvar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Salvar', onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -171,12 +184,12 @@ describe('AuthorForm', () => {
   it('selecionar arquivo: mostra preview local via URL.createObjectURL, sem nenhuma chamada de rede', async () => {
     const fetchMock = mockFetch();
     const user = userEvent.setup();
-    render(<AuthorForm siteSlug="fastcompre" initialValues={emptyInitialValues} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />);
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
 
     const file = new File(['conteudo'], 'avatar.jpg', { type: 'image/jpeg' });
     await user.upload(screen.getByLabelText('Avatar'), file);
 
-    expect(await screen.findByRole('img', { name: 'Avatar do Autor' })).toHaveAttribute('src', 'blob:mock-1');
+    expect(await screen.findByRole('img')).toHaveAttribute('src', 'blob:mock-1');
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(uploadCallCount(fetchMock)).toBe(0);
   });
@@ -184,7 +197,7 @@ describe('AuthorForm', () => {
   it('selecionar o mesmo arquivo várias vezes antes do submit: nenhuma chamada de upload é feita', async () => {
     const fetchMock = mockFetch();
     const user = userEvent.setup();
-    render(<AuthorForm siteSlug="fastcompre" initialValues={emptyInitialValues} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />);
+    renderForm({ initialValues: emptyInitialValues, submitLabel: 'Criar', onSubmit: jest.fn<SubmitFn>() });
 
     const file = new File(['conteudo'], 'avatar.jpg', { type: 'image/jpeg' });
     const input = screen.getByLabelText('Avatar');
@@ -200,14 +213,7 @@ describe('AuthorForm', () => {
     const fetchMock = mockFetch({ upload: 'success' });
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Criar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Criar', onSubmit });
 
     const file = new File(['conteudo'], 'avatar.jpg', { type: 'image/jpeg' });
     await user.upload(screen.getByLabelText('Avatar'), file);
@@ -225,14 +231,7 @@ describe('AuthorForm', () => {
     const fetchMock = mockFetch({ upload: 'fail' });
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Criar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Criar', onSubmit });
 
     const file = new File(['conteudo'], 'avatar.jpg', { type: 'image/jpeg' });
     await user.upload(screen.getByLabelText('Avatar'), file);
@@ -251,14 +250,7 @@ describe('AuthorForm', () => {
       .fn<SubmitFn>()
       .mockRejectedValueOnce(new AdminApiError('Este usuário já possui um Author neste Site.', { statusCode: 409 }))
       .mockResolvedValueOnce(undefined);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Criar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Criar', onSubmit });
 
     const file = new File(['conteudo'], 'avatar.jpg', { type: 'image/jpeg' });
     await user.upload(screen.getByLabelText('Avatar'), file);
@@ -280,14 +272,11 @@ describe('AuthorForm', () => {
     const fetchMock = mockFetch();
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ name: 'Ana', bio: null, avatarUrl: 'https://cdn.example.com/original.jpg' }}
-        submitLabel="Salvar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({
+      initialValues: { name: 'Ana', bio: null, avatarUrl: 'https://cdn.example.com/original.jpg' },
+      submitLabel: 'Salvar',
+      onSubmit,
+    });
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -299,21 +288,19 @@ describe('AuthorForm', () => {
     expect(uploadCallCount(fetchMock)).toBe(0);
   });
 
-  it('remover avatar: esconde o preview e envia avatarUrl null, sem chamada de upload', async () => {
+  it('remover avatar: substitui a imagem pelo fallback de iniciais e envia avatarUrl null, sem chamada de upload', async () => {
     const fetchMock = mockFetch();
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ name: 'Ana', bio: null, avatarUrl: 'https://cdn.example.com/original.jpg' }}
-        submitLabel="Salvar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({
+      initialValues: { name: 'Ana', bio: null, avatarUrl: 'https://cdn.example.com/original.jpg' },
+      submitLabel: 'Salvar',
+      onSubmit,
+    });
 
     await user.click(await screen.findByRole('button', { name: 'Remover avatar' }));
-    expect(screen.queryByRole('img', { name: 'Avatar do Autor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -335,14 +322,7 @@ describe('AuthorForm', () => {
     global.fetch = fetchMock;
     const user = userEvent.setup();
     const onSubmit = jest.fn<SubmitFn>().mockResolvedValue(undefined);
-    render(
-      <AuthorForm
-        siteSlug="fastcompre"
-        initialValues={{ ...emptyInitialValues, name: 'Ana' }}
-        submitLabel="Salvar"
-        onSubmit={onSubmit}
-      />,
-    );
+    renderForm({ initialValues: { ...emptyInitialValues, name: 'Ana' }, submitLabel: 'Salvar', onSubmit });
 
     const file = new File(['conteudo'], 'avatar.jpg', { type: 'image/jpeg' });
     await user.upload(screen.getByLabelText('Avatar'), file);
@@ -358,28 +338,40 @@ describe('AuthorForm', () => {
 
   it('cleanup: revoga a URL local ao trocar de arquivo, ao remover o avatar e ao desmontar', async () => {
     const user = userEvent.setup();
-    const { unmount } = render(
-      <AuthorForm siteSlug="fastcompre" initialValues={emptyInitialValues} submitLabel="Criar" onSubmit={jest.fn<SubmitFn>()} />,
-    );
+    const { unmount } = renderForm({
+      initialValues: { ...emptyInitialValues, name: 'Ana' },
+      submitLabel: 'Criar',
+      onSubmit: jest.fn<SubmitFn>(),
+    });
 
     const input = screen.getByLabelText('Avatar');
     const fileA = new File(['a'], 'a.jpg', { type: 'image/jpeg' });
     const fileB = new File(['b'], 'b.jpg', { type: 'image/jpeg' });
 
     await user.upload(input, fileA);
-    expect(await screen.findByRole('img', { name: 'Avatar do Autor' })).toHaveAttribute('src', 'blob:mock-1');
+    expect(await screen.findByRole('img')).toHaveAttribute('src', 'blob:mock-1');
 
     await user.upload(input, fileB);
     await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-1'));
-    expect(screen.getByRole('img', { name: 'Avatar do Autor' })).toHaveAttribute('src', 'blob:mock-2');
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:mock-2');
 
     await user.click(screen.getByRole('button', { name: 'Remover avatar' }));
     await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-2'));
 
     await user.upload(input, fileA);
-    expect(await screen.findByRole('img', { name: 'Avatar do Autor' })).toHaveAttribute('src', 'blob:mock-3');
+    expect(await screen.findByRole('img')).toHaveAttribute('src', 'blob:mock-3');
 
     unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-3');
+  });
+
+  it('não tem violação de acessibilidade (jest-axe)', async () => {
+    const { container } = renderForm({
+      initialValues: { name: 'Ana Souza', bio: 'Editora-chefe', avatarUrl: 'https://cdn.example.com/ana.jpg' },
+      submitLabel: 'Salvar',
+      onSubmit: jest.fn<SubmitFn>(),
+    });
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

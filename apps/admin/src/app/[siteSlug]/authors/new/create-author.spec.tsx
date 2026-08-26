@@ -4,6 +4,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { CreateAuthor } from './create-author';
+import { ToastProvider } from '../../toast-context';
+import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -23,10 +25,20 @@ function jsonResponse(status: number, body: unknown): Response {
   } as Response;
 }
 
+/**
+ * `UnsavedChangesProvider`/`ToastProvider` (UXA-015) — `AuthorForm` (via
+ * `CreateAuthor`) agora chama `useSyncFormDirty()` e `CreateAuthor` chama
+ * `useToast()` incondicionalmente; ambos exigem seus Providers como
+ * ancestrais, mesmo critério já usado em `create-product.spec.tsx`.
+ */
 function renderCreateAuthor() {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <CreateAuthor siteSlug="fastcompre" />
+      <UnsavedChangesProvider>
+        <ToastProvider>
+          <CreateAuthor siteSlug="fastcompre" />
+        </ToastProvider>
+      </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
 }
@@ -56,6 +68,7 @@ describe('CreateAuthor', () => {
     await user.type(screen.getByLabelText('Nome'), 'Ana Souza');
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
+    expect(await screen.findByText('Autor salvo.')).toBeInTheDocument();
     await waitFor(() =>
       expect(mockReplace).toHaveBeenCalledWith('/fastcompre/authors/11111111-1111-4111-8111-111111111111'),
     );

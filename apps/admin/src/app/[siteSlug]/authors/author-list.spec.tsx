@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import type { Role } from '@commerce-platform/contracts';
 import { AuthorList } from './author-list';
 import { SiteRoleProvider } from '../site-role-context';
@@ -139,5 +140,22 @@ describe('AuthorList', () => {
 
     await screen.findByText('Nenhum Autor encontrado.');
     expect(screen.queryByRole('link', { name: 'Novo Autor' })).not.toBeInTheDocument();
+  });
+
+  it('não tem violação de acessibilidade (jest-axe)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(200, {
+        items: [makeAuthor({ name: 'Ana Souza' })],
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      }),
+    );
+    const { container } = renderList();
+
+    await screen.findByRole('link', { name: 'Ana Souza' });
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

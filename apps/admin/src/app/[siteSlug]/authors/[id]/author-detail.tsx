@@ -3,14 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
+import { Button } from '@commerce-platform/ui';
 import { authorAdminSchema, type AuthorAdmin, type UpdateAuthorRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
+import { useToast } from '../../toast-context';
+import { ErrorState, LoadingState } from '../../async-state';
 import { AuthorForm, type AuthorFormValues } from '../author-form';
 import { AuthorReadOnly } from './author-read-only';
-import styles from './author-detail.module.css';
 
 interface AuthorDetailProps {
   siteSlug: string;
@@ -44,25 +46,31 @@ function authorPath(siteSlug: string, id: string): string {
 /**
  * `/:siteSlug/authors/:id` (ADM-007) — concentra carregamento, edição (via
  * `AuthorForm` compartilhado) e exclusão. Sem arquivar/desarquivar: Author
- * não tem esse ciclo de vida (confirmado em `authorAdminSchema`/schema
- * Prisma — sem `archivedAt`), diferente de Categoria/Produto/Oferta.
- * Nenhuma rota de detalhe separada (não existe no mapa de páginas, §32).
+ * não tem esse ciclo de vida (schema Prisma sem `archivedAt`), diferente
+ * de Categoria/Produto/Oferta — comportamento preservado, não alterado por
+ * esta tarefa.
  *
  * `handleUpdate` monta o body do PATCH só com `name`/`bio`/`avatarUrl` —
- * `userId` nunca é referenciado em nenhum ponto deste arquivo, então a
- * chave simplesmente não existe no objeto enviado. Isso preserva qualquer
- * vínculo Author↔User já existente: `updateAuthorRequestSchema` trata
- * `userId` ausente como "não alterar", nunca como "desvincular" (só um
- * `userId: null` explícito faria isso, e este código nunca produz isso).
+ * `userId` nunca é referenciado, preservando qualquer vínculo Author↔User
+ * já existente (`updateAuthorRequestSchema` trata `userId` ausente como
+ * "não alterar").
  *
- * Visibilidade por Role (ADM-012): `VIEWER` vê `AuthorReadOnly` — nunca
- * `AuthorForm` (mesmo princípio de `CategoryDetail`/`ProductDetail`).
- * `EDITOR`/`OWNER` veem `AuthorForm`; só `OWNER` vê o botão Excluir. A API
- * continua sendo a autoridade real.
+ * Visibilidade por Role (ADM-012), preservada sem alteração: `VIEWER` vê
+ * `AuthorReadOnly` — nunca `AuthorForm`. `EDITOR`/`OWNER` veem
+ * `AuthorForm`; só `OWNER` vê o botão Excluir. A API continua sendo a
+ * autoridade real.
+ *
+ * UXA-015 — apresentação migrada de CSS Module para Tailwind v4 + tokens
+ * do design system + `LoadingState`/`ErrorState` (`../../async-state`) +
+ * `Button` (`packages/ui`). `handleFormSuccess` dispara
+ * `showToast('Autor salvo.')` depois que `AuthorForm` já chamou `reset()`
+ * internamente — mesmo padrão de `CategoryDetail`/`ProductDetail`
+ * (`onSuccess`, nunca antes de `reset()`).
  */
 export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
   const router = useRouter();
   const role = useSiteRole();
+  const { showToast } = useToast();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessingLifecycle, setIsProcessingLifecycle] = useState(false);
@@ -101,6 +109,10 @@ export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
     setState({ status: 'ready', author });
   }
 
+  function handleFormSuccess() {
+    showToast('Autor salvo.');
+  }
+
   async function handleDelete() {
     if (isProcessingLifecycle) {
       return;
@@ -120,15 +132,11 @@ export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
   }
 
   if (state.status === 'loading') {
-    return <p className={styles.status}>Carregando...</p>;
+    return <LoadingState>Carregando...</LoadingState>;
   }
 
   if (state.status === 'error') {
-    return (
-      <p role="alert" className={styles.status}>
-        {state.message}
-      </p>
-    );
+    return <ErrorState>{state.message}</ErrorState>;
   }
 
   const { author } = state;
@@ -138,27 +146,24 @@ export function AuthorDetail({ siteSlug, id }: AuthorDetailProps) {
   }
 
   return (
-    <div className={styles.detail}>
+    <div className="flex max-w-xs flex-col gap-6">
       <AuthorForm
         siteSlug={siteSlug}
         initialValues={{ name: author.name, bio: author.bio, avatarUrl: author.avatarUrl }}
         submitLabel="Salvar"
         onSubmit={handleUpdate}
+        onSuccess={handleFormSuccess}
       />
 
       {roleMeetsMinimum(role, 'OWNER') && (
-        <div className={styles.actions}>
-          <button type="button" onClick={handleDelete} disabled={isProcessingLifecycle}>
+        <div className="flex gap-3">
+          <Button type="button" variant="secondary" size="sm" onClick={handleDelete} disabled={isProcessingLifecycle}>
             Excluir
-          </button>
+          </Button>
         </div>
       )}
 
-      {actionError && (
-        <p role="alert" className={styles.status}>
-          {actionError}
-        </p>
-      )}
+      {actionError && <ErrorState>{actionError}</ErrorState>}
     </div>
   );
 }

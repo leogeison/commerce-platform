@@ -2,10 +2,13 @@ import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import type { Role } from '@commerce-platform/contracts';
 import { AuthorDetail } from './author-detail';
 import { SiteRoleProvider } from '../../site-role-context';
+import { ToastProvider } from '../../toast-context';
+import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -21,13 +24,23 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
  * `role` default `'OWNER'` preserva o comportamento dos testes já
  * existentes antes da ADM-012 — os testes específicos de `VIEWER`/`EDITOR`
  * passam a Role explicitamente.
+ *
+ * `UnsavedChangesProvider`/`ToastProvider` (UXA-015) — `AuthorForm` (via
+ * `AuthorDetail`) agora chama `useSyncFormDirty()` e `AuthorDetail` chama
+ * `useToast()` incondicionalmente; ambos exigem seus Providers como
+ * ancestrais, mesmo critério já usado em `product-detail.spec.tsx`/
+ * `offer-section.spec.tsx`.
  */
 function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <SiteRoleProvider value={role}>
-        <AuthorDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
-      </SiteRoleProvider>
+      <UnsavedChangesProvider>
+        <ToastProvider>
+          <SiteRoleProvider value={role}>
+            <AuthorDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+          </SiteRoleProvider>
+        </ToastProvider>
+      </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
 }
@@ -86,7 +99,7 @@ describe('AuthorDetail', () => {
 
     expect(await screen.findByLabelText('Nome')).toHaveValue('Ana Souza');
     expect(screen.getByLabelText('Bio')).toHaveValue('Editora-chefe');
-    expect(screen.getByRole('img', { name: 'Avatar do Autor' })).toHaveAttribute(
+    expect(screen.getByRole('img', { name: 'Ana Souza' })).toHaveAttribute(
       'src',
       'https://cdn.example.com/ana.jpg',
     );
@@ -120,6 +133,24 @@ describe('AuthorDetail', () => {
       avatarUrl: 'https://cdn.example.com/ana.jpg',
     });
     expect(capturedPatchBody).not.toHaveProperty('userId');
+  });
+
+  it('editar com sucesso dispara o toast "Autor salvo."', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'PATCH') {
+        return jsonResponse(200, { ...baseAuthor, name: 'Ana Souza Lima' });
+      }
+      return jsonResponse(200, baseAuthor);
+    });
+    renderDetail();
+
+    const nameInput = await screen.findByLabelText('Nome');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Ana Souza Lima');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    expect(await screen.findByText('Autor salvo.')).toBeInTheDocument();
   });
 
   it('editar preservando o avatar existente (sem trocar arquivo): PATCH usa o mesmo avatarUrl, sem chamada de upload', async () => {
@@ -211,5 +242,14 @@ describe('AuthorDetail', () => {
     expect(await screen.findByRole('heading', { name: 'Ana Souza' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('não tem violação de acessibilidade (jest-axe)', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, baseAuthor));
+    const { container } = renderDetail();
+
+    await screen.findByLabelText('Nome');
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Button, Text } from '@commerce-platform/ui';
 import { listAuthorsResponseSchema, type ListAuthorsResponse } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../lib/api-client';
 import { AdminApiError } from '../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../lib/role-hierarchy';
 import { useSiteRole } from '../site-role-context';
-import styles from './author-list.module.css';
+import { EmptyState, ErrorState, LoadingState } from '../async-state';
 
 interface AuthorListProps {
   siteSlug: string;
@@ -39,7 +40,8 @@ function resolveErrorMessage(error: unknown): string {
  * dinâmico de URL.
  *
  * Sem filtro nenhum (`listAuthorsQuerySchema`: "sem filtro", diferente de
- * Categoria/Produto) — só `page`/`pageSize`.
+ * Categoria/Produto) — só `page`/`pageSize`. Comportamento preservado, não
+ * alterado por esta tarefa.
  */
 function buildListPath(siteSlug: string, page: number): string {
   const params = new URLSearchParams();
@@ -52,6 +54,18 @@ function authorHref(siteSlug: string, authorId: string): string {
   return `/${encodeURIComponent(siteSlug)}/authors/${encodeURIComponent(authorId)}`;
 }
 
+/**
+ * UXA-015 — apresentação migrada de CSS Module para Tailwind v4 + tokens do
+ * design system, mesmo vocabulário já usado em `CategoryList`/`ProductList`:
+ * botões de paginação usam `Button` (`variant="secondary" size="sm"`),
+ * preservando `type="button"`, `onClick` e `disabled` originais; "Página X
+ * de Y" usa `Text as="span"`; os três estados assíncronos usam
+ * `LoadingState`/`ErrorState`/`EmptyState` (`../async-state`). O link "Novo
+ * Autor" não é tocado — nunca teve estilo próprio no CSS Module original,
+ * mesmo critério já usado em `CategoryList`/`ProductList`. Sem filtro (ao
+ * contrário de Categoria/Produto), então a barra de ferramentas só precisa
+ * alinhar o link à direita, sem nenhum controle à esquerda.
+ */
 export function AuthorList({ siteSlug }: AuthorListProps) {
   const role = useSiteRole();
   const [page, setPage] = useState(1);
@@ -92,27 +106,23 @@ export function AuthorList({ siteSlug }: AuthorListProps) {
   }
 
   return (
-    <div className={styles.list}>
-      <div className={styles.toolbar}>
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
         {roleMeetsMinimum(role, 'EDITOR') && (
           <Link href={`/${encodeURIComponent(siteSlug)}/authors/new`}>Novo Autor</Link>
         )}
       </div>
 
-      {state.status === 'loading' && <p className={styles.status}>Carregando...</p>}
+      {state.status === 'loading' && <LoadingState>Carregando...</LoadingState>}
 
-      {state.status === 'error' && (
-        <p role="alert" className={styles.status}>
-          {state.message}
-        </p>
-      )}
+      {state.status === 'error' && <ErrorState>{state.message}</ErrorState>}
 
       {state.status === 'ready' && (
         <>
           {state.data.items.length === 0 ? (
-            <p className={styles.status}>Nenhum Autor encontrado.</p>
+            <EmptyState>Nenhum Autor encontrado.</EmptyState>
           ) : (
-            <ul className={styles.items}>
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {state.data.items.map((author) => (
                 <li key={author.id}>
                   <Link href={authorHref(siteSlug, author.id)}>{author.name}</Link>
@@ -121,22 +131,30 @@ export function AuthorList({ siteSlug }: AuthorListProps) {
             </ul>
           )}
 
-          <div className={styles.pagination}>
-            <button type="button" onClick={() => handlePageChange(page - 1)} disabled={page <= 1}>
-              Anterior
-            </button>
-            {state.data.totalPages > 0 && (
-              <span>
-                Página {state.data.page} de {state.data.totalPages}
-              </span>
-            )}
-            <button
+          <div className="flex items-center gap-4">
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page <= 1}
+            >
+              Anterior
+            </Button>
+            {state.data.totalPages > 0 && (
+              <Text as="span">
+                Página {state.data.page} de {state.data.totalPages}
+              </Text>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => handlePageChange(page + 1)}
               disabled={page >= state.data.totalPages}
             >
               Próxima
-            </button>
+            </Button>
           </div>
         </>
       )}
