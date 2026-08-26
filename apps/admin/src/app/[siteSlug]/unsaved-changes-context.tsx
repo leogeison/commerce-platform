@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -14,11 +15,12 @@ import styles from './unsaved-changes-context.module.css';
 
 interface UnsavedChangesContextValue {
   isDirty: boolean;
-  confirmLeave: () => Promise<boolean>;
+  confirmLeave: (isDirtyOverride?: boolean) => Promise<boolean>;
 }
 
 interface UnsavedChangesInternalValue extends UnsavedChangesContextValue {
-  reportDirty: (isDirty: boolean) => void;
+  registerDirty: (id: string, isDirty: boolean) => void;
+  unregisterDirty: (id: string) => void;
 }
 
 const UnsavedChangesContext = createContext<UnsavedChangesInternalValue | null>(null);
@@ -33,34 +35,84 @@ const UnsavedChangesContext = createContext<UnsavedChangesInternalValue | null>(
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /**
- * `formState.isDirty` do `react-hook-form` (UXA-002) continua sendo a
- * única autoridade semântica de dirty-state do formulário de Categoria —
- * este Context nunca fabrica ou sobrescreve esse valor de forma
- * independente. Ele existe só para publicar/coordenar esse mesmo valor
- * para consumidores fora da árvore do formulário (`GuardedLink`, troca de
- * Site e Logout em `authenticated-shell.tsx`), que não têm acesso direto
- * ao `useForm()` de `CategoryForm`.
+ * UXA-014 — evoluído de single-publisher (só `CategoryForm` ou só
+ * `ProductForm`, nunca dois ao mesmo tempo) para MULTI-publisher:
+ * `ProductForm` e `OfferForm` agora coexistem na mesma árvore (Oferta
+ * embutida no detalhe do Produto, sem rota própria — Architecture.md
+ * §32), e mais de um `OfferForm` pode existir simultaneamente mesmo que a
+ * UI atual (`OfferSection`, UXA-014) restrinja a coexistência a um só
+ * formulário inline por vez — a infraestrutura não depende dessa
+ * restrição de UI para ficar correta, porque a garantia é estrutural
+ * (registro por id), não por contagem de instâncias esperadas.
  *
- * `reportDirty` é o único caminho de escrita de `isDirty` — usado
- * exclusivamente por `useSyncFormDirty` (chamado dentro de `CategoryForm`,
- * espelhando `formState.isDirty`). Nenhum outro código deste app grava
- * nesse valor; não existe um "markClean()" ou equivalente que finja um
- * estado limpo independente da RHF.
+ * `isDirty` público passa a ser DERIVADO, nunca mais escrito diretamente:
+ * cada chamador de `useSyncFormDirty` (identificado por um id interno
+ * estável, nunca inventado pelo chamador — ver `useSyncFormDirty` abaixo)
+ * publica seu próprio booleano em `publishersRef` (`Map<string, boolean>`,
+ * mutável, fora de render); o `isDirty` do Context é sempre o OR de todos
+ * os valores atualmente registrados. Um publisher que desmonta é REMOVIDO
+ * do registro (`unregisterDirty`) — nunca "reportado como false" por cima
+ * do que os outros publicaram. Essa distinção resolve exatamente o bug
+ * que motivou esta mudança (UXA-014, investigação): antes, com um único
+ * `isDirty` escrito diretamente, um segundo publisher limpo (`isDirty =
+ * false`, ex.: abrir um `OfferForm` recém-montado) sobrescrevia
+ * incondicionalmente o valor já publicado por um primeiro publisher sujo
+ * (ex.: `ProductForm` com edição não salva) — o guard de navegação
+ * "esquecia" que ainda havia algo não salvo. Com registro por id e OR
+ * agregado, cada publisher só afeta sua própria entrada; remover uma
+ * entrada `false` nunca muda o agregado, e remover a última entrada
+ * `true` é o único jeito de o agregado voltar a `false`.
  *
- * Não há registro de múltiplos formulários — só existe uma instância de
- * `CategoryForm` montada por vez nas telas atuais de Categoria, então um
- * único par isDirty/confirmLeave é suficiente; não é um framework de
- * formulários genérico.
+ * `useSyncFormDirty(isDirty)` mantém a MESMA assinatura pública de antes
+ * desta tarefa — nenhum consumidor existente (`CategoryForm`/
+ * `ProductForm`) precisa mudar uma linha. A identidade (`useId()`, React
+ * 19, estável por instância de componente — inclusive sob o
+ * mount/unmount/remount sintético do Strict Mode, que sempre converge
+ * para uma única entrada final por instância, nunca duplica) é obtida
+ * dentro do próprio hook, nunca fornecida pelo chamador.
+ *
+ * `confirmLeave` ganha um parâmetro opcional (`isDirtyOverride`) — ver seu
+ * próprio doc comment abaixo. Nenhuma outra API pública muda.
  */
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const [isDirty, setIsDirty] = useState(false);
+  const publishersRef = useRef<Map<string, boolean>>(new Map());
   const dialogRef = useRef<HTMLDialogElement>(null);
   const pendingResolveRef = useRef<((canLeave: boolean) => void) | null>(null);
   const pendingPromiseRef = useRef<Promise<boolean> | null>(null);
 
-  const reportDirty = useCallback((next: boolean) => {
+  /**
+   * Único ponto que recalcula o agregado a partir do registro completo —
+   * chamado depois de qualquer `set`/`delete` em `publishersRef`, nunca
+   * inferido incrementalmente (mais simples e sem risco de o agregado
+   * divergir do registro real).
+   */
+  const recomputeIsDirty = useCallback(() => {
+    let next = false;
+    for (const value of publishersRef.current.values()) {
+      if (value) {
+        next = true;
+        break;
+      }
+    }
     setIsDirty(next);
   }, []);
+
+  const registerDirty = useCallback(
+    (id: string, dirty: boolean) => {
+      publishersRef.current.set(id, dirty);
+      recomputeIsDirty();
+    },
+    [recomputeIsDirty],
+  );
+
+  const unregisterDirty = useCallback(
+    (id: string) => {
+      publishersRef.current.delete(id);
+      recomputeIsDirty();
+    },
+    [recomputeIsDirty],
+  );
 
   const resolvePending = useCallback((canLeave: boolean) => {
     pendingResolveRef.current?.(canLeave);
@@ -69,33 +121,52 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Sem `isDirty` no momento da chamada: resolve `true` de imediato, sem
-   * abrir o `<dialog>`. Com uma confirmação já em aberto (segunda
-   * tentativa enquanto o usuário ainda não respondeu): devolve a mesma
-   * Promise em vez de empilhar um segundo diálogo — não há fila.
+   * `isDirtyOverride` (UXA-014) — permite a um chamador decidir com base
+   * num booleano PRÓPRIO em vez do `isDirty` agregado do Context inteiro.
+   * Motivo: `OfferSection` precisa perguntar "você vai perder o que
+   * digitou NESTE formulário de Oferta?" ao trocar localmente entre
+   * criar/editar — uma pergunta sobre UM publisher específico, não sobre
+   * "existe algo não salvo em QUALQUER lugar da página" (que é o que o
+   * agregado responde, e é a pergunta certa só para navegação real). Sem
+   * o override, `ProductForm` sujo faria essa troca local perguntar por
+   * um motivo alheio a ela — e a resposta do usuário não afetaria em nada
+   * a sujeira real do Produto.
+   *
+   * Omitido (todo consumidor já existente: `GuardedLink`, troca de
+   * Site/Logout em `authenticated-shell.tsx`, navegação do
+   * `CommandPalette`), o comportamento é IDÊNTICO ao de antes desta
+   * tarefa: usa o `isDirty` agregado do Context. Fornecido, substitui
+   * inteiramente essa fonte para aquela chamada. Em ambos os casos é o
+   * MESMO diálogo, a MESMA Promise, o MESMO mecanismo de resolução — não
+   * é um segundo sistema de confirmação, só uma fonte alternativa para a
+   * mesma pergunta.
    */
-  const confirmLeave = useCallback((): Promise<boolean> => {
-    if (!isDirty) {
-      return Promise.resolve(true);
-    }
-    if (pendingPromiseRef.current) {
-      return pendingPromiseRef.current;
-    }
-    const promise = new Promise<boolean>((resolve) => {
-      pendingResolveRef.current = resolve;
-    });
-    pendingPromiseRef.current = promise;
-    // `showModal()` NÃO reseta `returnValue` sozinho (comportamento real
-    // da spec, confirmado empiricamente) — sem este reset, um Escape
-    // numa apresentação nova do diálogo poderia ler um `returnValue`
-    // remanescente de um "Sair sem salvar" de uma apresentação anterior
-    // e resolver `true` por engano. Cada apresentação começa limpa.
-    if (dialogRef.current) {
-      dialogRef.current.returnValue = '';
-    }
-    dialogRef.current?.showModal();
-    return promise;
-  }, [isDirty]);
+  const confirmLeave = useCallback(
+    (isDirtyOverride?: boolean): Promise<boolean> => {
+      const dirty = isDirtyOverride ?? isDirty;
+      if (!dirty) {
+        return Promise.resolve(true);
+      }
+      if (pendingPromiseRef.current) {
+        return pendingPromiseRef.current;
+      }
+      const promise = new Promise<boolean>((resolve) => {
+        pendingResolveRef.current = resolve;
+      });
+      pendingPromiseRef.current = promise;
+      // `showModal()` NÃO reseta `returnValue` sozinho (comportamento real
+      // da spec, confirmado empiricamente) — sem este reset, um Escape
+      // numa apresentação nova do diálogo poderia ler um `returnValue`
+      // remanescente de um "Sair sem salvar" de uma apresentação anterior
+      // e resolver `true` por engano. Cada apresentação começa limpa.
+      if (dialogRef.current) {
+        dialogRef.current.returnValue = '';
+      }
+      dialogRef.current?.showModal();
+      return promise;
+    },
+    [isDirty],
+  );
 
   // Confirmação pendente sobrevivendo ao desmonte do próprio Provider:
   // resolve `false` (não deixa a Promise pendurada para sempre).
@@ -109,11 +180,12 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
    * `beforeunload` cobre o que `GuardedLink`/`confirmLeave()` não cobrem:
    * unload real do documento (refresh, fechar aba/janela, digitar uma URL,
    * link externo) — soft navigation dentro do app nunca passa por aqui.
-   * O listener só existe enquanto `isDirty` é `true`: o efeito depende de
-   * `isDirty` e o `return` cleanup remove o listener sempre que `isDirty`
-   * muda (inclusive de `true` para `false`, ex.: depois de `reset(data)`
-   * numa submissão bem-sucedida) ou no unmount — nunca fica um listener
-   * "esquecido" ativo com o formulário limpo.
+   * O listener só existe enquanto `isDirty` (agregado) é `true`: o efeito
+   * depende de `isDirty` e o `return` cleanup remove o listener sempre que
+   * `isDirty` muda (inclusive de `true` para `false`, ex.: depois de
+   * `reset(data)` numa submissão bem-sucedida, ou quando o último
+   * publisher sujo desmonta) ou no unmount — nunca fica um listener
+   * "esquecido" ativo com tudo limpo.
    *
    * Sem mensagem customizada de propósito: navegadores modernos ignoram
    * qualquer string fornecida e mostram só o diálogo nativo do próprio
@@ -151,7 +223,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <UnsavedChangesContext.Provider value={{ isDirty, confirmLeave, reportDirty }}>
+    <UnsavedChangesContext.Provider value={{ isDirty, confirmLeave, registerDirty, unregisterDirty }}>
       {children}
       <dialog
         ref={dialogRef}
@@ -180,8 +252,8 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
 /**
  * Superfície pública mínima — só `isDirty` (leitura síncrona, necessária
  * para `GuardedLink` decidir se chama `preventDefault()` em `onNavigate`)
- * e `confirmLeave`. `reportDirty` não é exposto aqui de propósito: só
- * `useSyncFormDirty` tem acesso a ele.
+ * e `confirmLeave`. `registerDirty`/`unregisterDirty` não são expostos
+ * aqui de propósito: só `useSyncFormDirty` tem acesso a eles.
  */
 export function useUnsavedChangesGuard(): UnsavedChangesContextValue {
   const context = useContext(UnsavedChangesContext);
@@ -192,32 +264,40 @@ export function useUnsavedChangesGuard(): UnsavedChangesContextValue {
 }
 
 /**
- * Publica `formState.isDirty` da RHF (chamado por `CategoryForm`) para o
- * Context. Dois efeitos deliberadamente separados:
+ * Publica `formState.isDirty` da RHF (chamado por `CategoryForm`/
+ * `ProductForm`/`OfferForm`, UXA-014) para o Context — identidade obtida
+ * via `useId()`, nunca fornecida pelo chamador; a assinatura pública
+ * (`useSyncFormDirty(isDirty)`) é a mesma de antes desta tarefa.
+ *
+ * Dois efeitos deliberadamente separados, mesma razão já documentada
+ * antes desta tarefa:
  *
  * - o primeiro (síncrono, pós-commit) publica o valor atual a cada
- *   mudança de `isDirty` — é só isso, nunca faz cleanup;
- * - o segundo não depende de `isDirty` (só de `reportDirty`, estável) —
- *   seu cleanup roda exclusivamente no desmonte real do componente
- *   chamador, nunca como reação a uma mudança de `isDirty` durante a vida
- *   dele. Se os dois estivessem no mesmo efeito, o cleanup rodaria antes
- *   de cada nova execução (isto é, a cada mudança de `isDirty`), não só no
- *   unmount — exatamente o bug que este desenho evita.
+ *   mudança de `id`/`isDirty` — é só isso, nunca faz cleanup;
+ * - o segundo não depende de `isDirty` (só de `id`/`unregisterDirty`,
+ *   estáveis) — seu cleanup roda exclusivamente no desmonte real do
+ *   componente chamador, nunca como reação a uma mudança de `isDirty`
+ *   durante a vida dele, e remove SÓ a entrada deste publisher do
+ *   registro — nunca zera o `isDirty` dos demais publishers ainda
+ *   montados. Se os dois estivessem no mesmo efeito, o cleanup rodaria
+ *   antes de cada nova execução (isto é, a cada mudança de `isDirty`), não
+ *   só no unmount — exatamente o bug que este desenho evita.
  */
 export function useSyncFormDirty(isDirty: boolean): void {
   const context = useContext(UnsavedChangesContext);
   if (!context) {
     throw new Error('useSyncFormDirty só pode ser usado dentro de UnsavedChangesProvider.');
   }
-  const { reportDirty } = context;
+  const { registerDirty, unregisterDirty } = context;
+  const id = useId();
 
   useIsomorphicLayoutEffect(() => {
-    reportDirty(isDirty);
-  }, [isDirty, reportDirty]);
+    registerDirty(id, isDirty);
+  }, [id, isDirty, registerDirty]);
 
   useEffect(() => {
     return () => {
-      reportDirty(false);
+      unregisterDirty(id);
     };
-  }, [reportDirty]);
+  }, [id, unregisterDirty]);
 }

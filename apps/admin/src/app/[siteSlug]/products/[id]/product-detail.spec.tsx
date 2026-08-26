@@ -466,4 +466,51 @@ describe('ProductDetail', () => {
     await screen.findByText('Não foi possível salvar o Produto. Tente novamente em instantes.');
     expect(screen.queryByText('Produto salvo.')).not.toBeInTheDocument();
   });
+
+  // --- UXA-014: Context multi-publisher (ProductForm + OfferForm) ---
+
+  it('UXA-014 REGRESSÃO: Produto dirty + Oferta clean — o publisher da Oferta não sobrescreve o guard global do Produto', async () => {
+    const user = userEvent.setup();
+    const offer = {
+      id: '66666666-6666-4666-8666-666666666666',
+      siteId: '22222222-2222-4222-8222-222222222222',
+      productId: '11111111-1111-4111-8111-111111111111',
+      marketplace: 'MERCADO_LIVRE',
+      price: '99.90',
+      currency: 'BRL',
+      affiliateUrl: 'https://exemplo.com/produto',
+      inStock: true,
+      archivedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    global.fetch = jest.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.includes('/offers')) {
+        return jsonResponse(200, { items: [offer], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+      }
+      if (url.includes('/categories')) {
+        return jsonResponse(200, { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 });
+      }
+      return jsonResponse(200, baseProduct);
+    });
+
+    renderDetailWithGuard();
+
+    // Produto fica dirty (ProductForm, useSyncFormDirty publica true).
+    const nameInput = await screen.findByLabelText('Nome');
+    await user.type(nameInput, ' Pro');
+
+    // Abre a edição de uma Oferta: seu OfferForm monta LIMPO
+    // (useSyncFormDirty publica false) — antes da UXA-014, um único
+    // isDirty escrito diretamente faria este segundo publisher
+    // sobrescrever o primeiro; com o registro multi-publisher (OR), o
+    // guard continua refletindo o Produto ainda sujo.
+    await user.click(await screen.findByRole('button', { name: 'Editar' }));
+    await screen.findByLabelText('Preço');
+
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
 });
