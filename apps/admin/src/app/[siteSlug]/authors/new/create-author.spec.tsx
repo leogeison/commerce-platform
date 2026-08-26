@@ -2,6 +2,7 @@ import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { CreateAuthor } from './create-author';
 import { ToastProvider } from '../../toast-context';
@@ -99,5 +100,14 @@ describe('CreateAuthor', () => {
 
     expect(await screen.findByText('userId inválido: o usuário não existe.')).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('UXA-016: sem violação de acessibilidade (jest-axe)', async () => {
+    global.fetch = jest.fn<typeof fetch>();
+    const { container } = renderCreateAuthor();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Criar' })).toBeInTheDocument());
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

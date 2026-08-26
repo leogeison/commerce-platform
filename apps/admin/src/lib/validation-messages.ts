@@ -23,8 +23,19 @@ import { z } from 'zod';
  * únicos casos tratados abaixo são os que `createCategoryRequestSchema`
  * realmente produz e exercita hoje: `too_small` (origem `string`) em `name`
  * e `slug`, ambos `z.string().min(1)`. Nenhum caso de Produto, Autor ou
- * Artigo foi antecipado — `FIELD_MESSAGE_RESOLVERS` deve ser estendido por
- * UXA-013/UXA-015 quando esses formulários migrarem para este módulo.
+ * Artigo foi antecipado nesta tarefa.
+ *
+ * Resultado real (UXA-013/UXA-015, gate UXA-016): nenhuma extensão foi
+ * necessária. `name` de Produto e de Autor tem a mesma constraint
+ * (`min(1)`) já coberta pela entrada `name` abaixo, então os dois
+ * reaproveitam a mensagem existente sem alteração neste arquivo. `slug` de
+ * Produto reaproveita a entrada `slug`, também inalterada. Os demais campos
+ * de Produto/Autor (`categoryId`, `description`, `bio`, `avatarUrl`) nunca
+ * disparam `too_small` na prática — nenhum tem `.min()`, ou nunca são
+ * preenchidos por um controle nativo digitável. Oferta (`OfferForm`,
+ * UXA-014) não usa este error map para `price`/`affiliateUrl`: essas
+ * mensagens já vêm em PT-BR do próprio schema de contrato
+ * (`offerPriceSchema`/`affiliateUrlSchema`), que tem precedência.
  *
  * Tipagem: `adminZodErrorMap` é anotado com o tipo público exportado pelo
  * próprio Zod (`z.core.$ZodErrorMap`) — não existe representação manual
