@@ -9,7 +9,10 @@ import {
 } from '@commerce-platform/contracts';
 import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
+import { roleMeetsMinimum } from '../../lib/role-hierarchy';
 import { EmptyState, ErrorState, LoadingState } from './async-state';
+import { CREATE_ACTIONS, createActionHref } from './create-actions';
+import { useSiteRole } from './site-role-context';
 
 interface DashboardProps {
   siteSlug: string;
@@ -223,20 +226,87 @@ function ArticleListSection({
 }
 
 /**
- * UXA-017/UXA-018 — Dashboard do Admin, três seções: "Continuar de onde
- * parei" (`DRAFT`, `updatedAt desc`, UXA-017), "Aguardando publicação"
- * (`PENDING_REVIEW`, `createdAt desc` — default existente, sem `orderBy`
- * novo) e "Publicados recentemente" (`PUBLISHED`, `publishedAt desc` —
- * extensão mínima de `orderBy` autorizada nesta tarefa, ver
- * `ArticleListOrderBy`/`findManyBySite`). Atalhos de criação role-gated e
- * tratamento formal de falha parcial multi-seção pertencem a UXA-019, fora
- * de escopo aqui.
+ * Classes locais espelhando a composição de `Button` (`packages/ui`,
+ * `variant="primary"|"secondary"`, `size="sm"`) — mesmos tokens públicos já
+ * usados em todo o projeto (`bg-accent`, `bg-surface`, `border-outline`
+ * etc.), não uma cópia dos internals privados daquele componente
+ * (`VARIANT_CLASSES`/`SIZE_CLASSES` nunca são exportados, nem de
+ * `button.tsx` nem do `index.ts` de `packages/ui` — confirmado antes desta
+ * tarefa). Duplicação deliberada: `Button` não tem nenhuma API de
+ * composição (`asChild`/`render`/equivalente) que preserve um `<a href>`
+ * real, e os atalhos abaixo são navegação (`Link`), não `<button
+ * onClick={router.push}>` — um `<button>` para navegar seria semântica
+ * incorreta (sem `href`, sem "abrir em nova aba" via Cmd/Ctrl+clique, fora
+ * do comportamento nativo de link). `packages/ui`/`Button` não foram
+ * alterados por esta tarefa.
+ */
+const PRIMARY_CREATE_ACTION_CLASSES =
+  'inline-flex items-center rounded-control font-ui font-action px-control-x py-control-y text-body-sm bg-accent hover:bg-accent-hover active:bg-accent-active text-fg-on-accent focus-visible:outline-none focus-visible:ring-2 ring-focus';
+const SECONDARY_CREATE_ACTION_CLASSES =
+  'inline-flex items-center rounded-control font-ui font-action px-control-x py-control-y text-body-sm bg-surface border border-outline text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus';
+
+/**
+ * Fileira de atalhos de criação no topo do Dashboard (UXA-019).
+ * Reaproveita `CREATE_ACTIONS`/`createActionHref` (UXA-010, mesma fonte já
+ * consumida pela Command Palette) — nenhuma segunda lista local, ordem
+ * preservada exatamente como declarada ali. Filtragem por item
+ * (`roleMeetsMinimum(role, action.minRole)`), não um corte único para a
+ * fileira inteira — mesmo padrão já usado em `command-palette.tsx`, para
+ * continuar correto mesmo se `minRole` deixar de ser uniforme entre as 4
+ * entidades no futuro. Hoje todas exigem `EDITOR`, então `VIEWER` não vê
+ * nenhum atalho e `EDITOR`/`OWNER` veem os 4 — sem nenhum caso
+ * intermediário possível com os dados atuais de `CREATE_ACTIONS`.
  *
- * Layout (UXA-018): "Continuar de onde parei" em destaque/largura
- * principal; "Aguardando publicação" e "Publicados recentemente" em grid
- * de duas colunas no desktop (`lg:grid-cols-2`), uma coluna no mobile —
- * ordem do DOM sempre Continuar → Aguardando → Publicados, igual à ordem
- * visual (nenhum CSS de reordenação).
+ * Esconder o atalho é só UX (Architecture.md §16) — a rota `/new` de cada
+ * entidade continua atrás do mesmo `@MinRole('EDITOR')` já existente no
+ * backend, inalterado por esta tarefa; nenhum controller/guard foi tocado.
+ *
+ * `CREATE_ACTIONS[0]` ("Novo Artigo") é a ação primária (decisão de
+ * produto desta tarefa, aprovada); os demais três são secundários. Sem
+ * nenhum atalho visível (`VIEWER`), o componente devolve `null` — nenhum
+ * contêiner vazio fica no DOM.
+ */
+function CreateShortcuts({ siteSlug }: { siteSlug: string }) {
+  const role = useSiteRole();
+  const visibleActions = CREATE_ACTIONS.filter((action) => roleMeetsMinimum(role, action.minRole));
+
+  if (visibleActions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      {visibleActions.map((action) => (
+        <Link
+          key={action.segment}
+          href={createActionHref(siteSlug, action.segment)}
+          className={action === CREATE_ACTIONS[0] ? PRIMARY_CREATE_ACTION_CLASSES : SECONDARY_CREATE_ACTION_CLASSES}
+        >
+          {action.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * UXA-017/UXA-018/UXA-019 — Dashboard do Admin: fileira de atalhos de
+ * criação role-gated no topo (UXA-019) seguida de três seções: "Continuar
+ * de onde parei" (`DRAFT`, `updatedAt desc`, UXA-017), "Aguardando
+ * publicação" (`PENDING_REVIEW`, `createdAt desc` — default existente,
+ * sem `orderBy` novo) e "Publicados recentemente" (`PUBLISHED`,
+ * `publishedAt desc`, UXA-018). Tratamento de falha parcial (uma seção
+ * falha sem derrubar as outras) já é garantido pela independência de
+ * estado/efeito entre as três chamadas de `useArticleListSection` — não é
+ * um mecanismo novo desta tarefa, só passa a ter prova formal em teste
+ * (ver `dashboard.spec.tsx`).
+ *
+ * Layout: fileira de atalhos → "Continuar de onde parei" em
+ * destaque/largura principal → "Aguardando publicação" e "Publicados
+ * recentemente" em grid de duas colunas no desktop (`lg:grid-cols-2`),
+ * uma coluna no mobile — ordem do DOM sempre Atalhos → Continuar →
+ * Aguardando → Publicados, igual à ordem visual (nenhum CSS de
+ * reordenação).
  */
 export function Dashboard({ siteSlug }: DashboardProps) {
   const draftsState = useArticleListSection(siteSlug, 'DRAFT', 'updatedAt_desc', DRAFTS_ERROR_MESSAGE);
@@ -255,6 +325,8 @@ export function Dashboard({ siteSlug }: DashboardProps) {
 
   return (
     <div className="flex flex-col gap-8">
+      <CreateShortcuts siteSlug={siteSlug} />
+
       <ArticleListSection
         headingId="dashboard-drafts-heading"
         title="Continuar de onde parei"

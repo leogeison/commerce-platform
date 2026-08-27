@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
+import type { Role } from '@commerce-platform/contracts';
 import { Dashboard } from './dashboard';
+import { SiteRoleProvider } from './site-role-context';
 
 function makeArticleSummary(
   overrides: Partial<{
@@ -74,8 +76,21 @@ function mockFetchByStatus(
   });
 }
 
-function renderDashboard() {
-  return render(<Dashboard siteSlug="fastcompre" />);
+/**
+ * `role` default `'VIEWER'` (UXA-019) — preserva o comportamento exato de
+ * todos os testes já existentes antes desta tarefa: com `VIEWER`, nenhum
+ * dos 4 atalhos de criação é renderizado, então as asserções antigas que
+ * já verificavam "nenhum link" em seções vazias (`queryByRole('link'))
+ * .not.toBeInTheDocument()`) continuam válidas sem nenhuma alteração nelas
+ * — só os testes novos desta tarefa passam `role` explicitamente
+ * (`EDITOR`/`OWNER`) para exercitar os atalhos.
+ */
+function renderDashboard(role: Role = 'VIEWER') {
+  return render(
+    <SiteRoleProvider value={role}>
+      <Dashboard siteSlug="fastcompre" />
+    </SiteRoleProvider>,
+  );
 }
 
 describe('Dashboard', () => {
@@ -404,5 +419,169 @@ describe('Dashboard', () => {
     await screen.findByText('Nenhum Artigo publicado recentemente.');
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // --- UXA-019: atalhos de criação role-gated ---
+
+  it('atalhos de criação: VIEWER não vê nenhum dos 4', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, emptyEnvelope()),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard('VIEWER');
+
+    await screen.findByText('Nenhum rascunho em andamento.');
+
+    expect(screen.queryByRole('link', { name: 'Novo Artigo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Novo Produto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Nova Categoria' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Novo Autor' })).not.toBeInTheDocument();
+  });
+
+  it.each(['EDITOR', 'OWNER'] as const)(
+    'atalhos de criação: %s vê os 4, na ordem de CREATE_ACTIONS, com hrefs corretos',
+    async (role) => {
+      global.fetch = mockFetchByStatus({
+        DRAFT: jsonResponse(200, emptyEnvelope()),
+        PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+        PUBLISHED: jsonResponse(200, emptyEnvelope()),
+      });
+      renderDashboard(role);
+
+      await screen.findByText('Nenhum rascunho em andamento.');
+
+      // Seções vazias nesta rodada: os únicos 4 links da página são os
+      // atalhos — ordem capturada diretamente do DOM, sem depender de
+      // 4 `findByRole` isolados, para provar a ordem real de renderização,
+      // não só a presença de cada um.
+      const shortcutLinks = screen.getAllByRole('link');
+      expect(shortcutLinks.map((link) => link.textContent)).toEqual([
+        'Novo Artigo',
+        'Novo Produto',
+        'Nova Categoria',
+        'Novo Autor',
+      ]);
+      expect(shortcutLinks.map((link) => link.getAttribute('href'))).toEqual([
+        '/fastcompre/articles/new',
+        '/fastcompre/products/new',
+        '/fastcompre/categories/new',
+        '/fastcompre/authors/new',
+      ]);
+    },
+  );
+
+  it('atalhos de criação: aparecem antes de "Continuar de onde parei" no DOM (topo do Dashboard)', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, emptyEnvelope()),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    const { container } = renderDashboard('EDITOR');
+
+    await screen.findByText('Nenhum rascunho em andamento.');
+
+    const novoArtigoLink = screen.getByRole('link', { name: 'Novo Artigo' });
+    const draftsHeading = screen.getByRole('heading', { level: 2, name: 'Continuar de onde parei' });
+    // `DOCUMENT_POSITION_FOLLOWING` no heading, visto a partir do link de
+    // atalho, confirma que o atalho vem antes dele no DOM — mesma checagem
+    // de ordem já usada no teste "ordem do DOM", agora relacionando
+    // atalhos e primeira seção.
+    expect(
+      novoArtigoLink.compareDocumentPosition(draftsHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(container.querySelector('a')).toBe(novoArtigoLink);
+  });
+
+  it('não tem violação de acessibilidade (jest-axe) com os 4 atalhos de criação visíveis (EDITOR) e as três seções populadas', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [makeArticleSummary({ title: 'Melhores fones 2026' })],
+        total: 1,
+        totalPages: 1,
+      }),
+      PENDING_REVIEW: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [
+          makeArticleSummary({
+            id: '33333333-3333-4333-8333-333333333333',
+            title: 'Aguardando revisão final',
+            status: 'PENDING_REVIEW',
+          }),
+        ],
+        total: 1,
+        totalPages: 1,
+      }),
+      PUBLISHED: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [
+          makeArticleSummary({
+            id: '44444444-4444-4444-8444-444444444444',
+            title: 'Melhor cafeteira 2026',
+            status: 'PUBLISHED',
+            publishedAt: '2026-08-15T09:00:00.000Z',
+          }),
+        ],
+        total: 1,
+        totalPages: 1,
+      }),
+    });
+    const { container } = renderDashboard('EDITOR');
+
+    await screen.findByRole('link', { name: 'Melhores fones 2026' });
+    await screen.findByRole('link', { name: 'Aguardando revisão final' });
+    await screen.findByRole('link', { name: 'Melhor cafeteira 2026' });
+    await screen.findByRole('link', { name: 'Novo Artigo' });
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // --- UXA-019: teste formal de falha parcial (reservado desde a UXA-018) ---
+
+  it('falha parcial: "Aguardando publicação" falha enquanto "Continuar de onde parei" e "Publicados recentemente" continuam legíveis com dado real', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [makeArticleSummary({ title: 'Melhores fones 2026' })],
+        total: 1,
+        totalPages: 1,
+      }),
+      PENDING_REVIEW: jsonResponse(500, { unexpected: 'shape' }),
+      PUBLISHED: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [
+          makeArticleSummary({
+            id: '44444444-4444-4444-8444-444444444444',
+            title: 'Melhor cafeteira 2026',
+            status: 'PUBLISHED',
+            publishedAt: '2026-08-15T09:00:00.000Z',
+          }),
+        ],
+        total: 1,
+        totalPages: 1,
+      }),
+    });
+    renderDashboard();
+
+    // As três asserções coexistem na mesma renderização: a seção que falhou
+    // mostra seu próprio erro, e as outras duas mostram dado real e
+    // navegável — não apenas "não travou", mas "continuam legíveis e
+    // funcionais", exatamente o critério de aceite da UXA-019.
+    const errorMessage = await screen.findByText(
+      'Não foi possível carregar os Artigos aguardando publicação. Tente novamente em instantes.',
+    );
+    const draftLink = await screen.findByRole('link', { name: 'Melhores fones 2026' });
+    const publishedLink = await screen.findByRole('link', { name: 'Melhor cafeteira 2026' });
+
+    expect(errorMessage).toBeInTheDocument();
+    expect(draftLink).toHaveAttribute('href', '/fastcompre/articles/11111111-1111-4111-8111-111111111111');
+    expect(publishedLink).toHaveAttribute(
+      'href',
+      '/fastcompre/articles/44444444-4444-4444-8444-444444444444',
+    );
+    // A seção com erro não deixa nenhum item órfão nem estado "ready"
+    // parcial — só a mensagem de erro, nunca uma lista vazia junto dela.
+    expect(screen.queryByText('Nenhum Artigo aguardando publicação.')).not.toBeInTheDocument();
   });
 });
