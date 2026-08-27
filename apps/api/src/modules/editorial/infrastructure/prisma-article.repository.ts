@@ -74,15 +74,20 @@ export type ArticleTransitionExtraData = {
 };
 
 /**
- * Ordenação parametrizável de `findManyBySite` (UXF-012) — só os dois
- * valores realmente necessários hoje (`createdAt desc` é o comportamento
- * atual; `updatedAt desc` é o que o Dashboard futuro, UXA-017, precisa).
- * Não um `{ field, direction }` genérico: nenhuma tarefa do backlog pede
- * `createdAt asc`/`updatedAt asc`, e uma abstração maior aqui seria
- * especulativa. Exportado (não inline) só para não duplicar a mesma união
- * literal em `list-articles.use-case.ts`.
+ * Ordenação parametrizável de `findManyBySite` (UXF-012; estendida pela
+ * UXA-018) — só os três valores realmente necessários hoje (`createdAt
+ * desc` é o comportamento atual; `updatedAt desc` é o que o Dashboard,
+ * UXA-017, precisa para "Continuar de onde parei"; `publishedAt desc` é o
+ * que o Dashboard, UXA-018, precisa para "Publicados recentemente" —
+ * investigação daquela tarefa confirmou que nenhum caminho Admin
+ * ordenava por `publishedAt`, só a listagem pública fixa em
+ * `status: 'PUBLISHED'`, ver `findManyPublishedBySite` abaixo). Não um
+ * `{ field, direction }` genérico: nenhuma tarefa do backlog pede
+ * `createdAt asc`/`updatedAt asc`/`publishedAt asc`, e uma abstração maior
+ * aqui seria especulativa. Exportado (não inline) só para não duplicar a
+ * mesma união literal em `list-articles.use-case.ts`.
  */
-export type ArticleListOrderBy = 'createdAt_desc' | 'updatedAt_desc';
+export type ArticleListOrderBy = 'createdAt_desc' | 'updatedAt_desc' | 'publishedAt_desc';
 
 export interface FindManyBySiteInput {
   siteId: string;
@@ -279,16 +284,23 @@ export class PrismaArticleRepository {
    * histórico (`createdAt desc, id asc`, decisão original desta tarefa:
    * Artigo é conteúdo editorial, não cadastro, e o painel administrativo
    * prioriza visualizar os itens criados recentemente primeiro).
-   * `'updatedAt_desc'` (UXF-012, para o Dashboard futuro, UXA-017) resolve
-   * para `updatedAt desc, id asc`.
+   * `'updatedAt_desc'` (UXF-012, Dashboard/UXA-017) resolve para
+   * `updatedAt desc, id asc`. `'publishedAt_desc'` (UXA-018, Dashboard/
+   * "Publicados recentemente") resolve para `publishedAt desc, id asc` —
+   * mesma cláusula que `findManyPublishedBySite` já usa para a API
+   * pública, mas aqui sem o filtro fixo `status: 'PUBLISHED'`: quem decide
+   * o filtro continua sendo `input.status`, passado explicitamente pelo
+   * chamador (o Dashboard sempre envia os dois juntos, mas este método não
+   * impõe essa combinação — não há validação cruzada entre `status` e
+   * `orderBy` aqui, por decisão explícita desta tarefa).
    *
-   * Em ambos os casos, `id asc` não é um desempate cosmético: é o que
+   * Em todos os casos, `id asc` não é um desempate cosmético: é o que
    * torna a ordenação **total**, nunca parcial. Sem ele, dois Artigos com
-   * o mesmo `createdAt`/`updatedAt` (empate real, não hipotético) não
-   * teriam ordem relativa garantida pelo Postgres entre chamadas — o que
-   * quebraria a estabilidade da paginação entre página 1 e página 2
-   * quando há empate no campo principal, não apenas a previsibilidade da
-   * ordenação isolada.
+   * o mesmo `createdAt`/`updatedAt`/`publishedAt` (empate real, não
+   * hipotético) não teriam ordem relativa garantida pelo Postgres entre
+   * chamadas — o que quebraria a estabilidade da paginação entre página 1
+   * e página 2 quando há empate no campo principal, não apenas a
+   * previsibilidade da ordenação isolada.
    */
   async findManyBySite(input: FindManyBySiteInput): Promise<FindManyBySiteResult> {
     const where: Prisma.ArticleWhereInput = {
@@ -301,7 +313,9 @@ export class PrismaArticleRepository {
     const orderBy: Prisma.ArticleOrderByWithRelationInput[] =
       input.orderBy === 'updatedAt_desc'
         ? [{ updatedAt: 'desc' }, { id: 'asc' }]
-        : [{ createdAt: 'desc' }, { id: 'asc' }];
+        : input.orderBy === 'publishedAt_desc'
+          ? [{ publishedAt: 'desc' }, { id: 'asc' }]
+          : [{ createdAt: 'desc' }, { id: 'asc' }];
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.article.findMany({

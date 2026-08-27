@@ -124,6 +124,15 @@ describe('GET /admin/sites/:siteSlug/articles (e2e)', () => {
       type: ArticleType;
       status: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'ARCHIVED';
       categoryId: string;
+      /**
+       * UXA-018 — só usado pelo teste de `orderBy=publishedAt_desc` abaixo,
+       * para montar `publishedAt` explicitamente divergente de `createdAt`
+       * (fixture direto via Prisma, não via `POST .../publish` — fora de
+       * escopo desta tarefa exercitar o fluxo real de publicação, que já
+       * tem seu próprio e2e dedicado). `undefined` = comportamento já
+       * existente (`publishedAt` nunca setado na criação).
+       */
+      publishedAt: Date;
     }> = {},
   ): Promise<Article> {
     return prisma.article.create({
@@ -134,6 +143,7 @@ describe('GET /admin/sites/:siteSlug/articles (e2e)', () => {
         type: overrides.type ?? ArticleType.REVIEW,
         status: overrides.status ?? 'DRAFT',
         categoryId: overrides.categoryId,
+        publishedAt: overrides.publishedAt,
       },
     });
   }
@@ -398,7 +408,7 @@ describe('GET /admin/sites/:siteSlug/articles (e2e)', () => {
     expect(response.body.items.map((item: { id: string }) => item.id)).toEqual([second.id, first.id]);
   });
 
-  it('orderBy inválido (fora do enum fechado createdAt_desc|updatedAt_desc): 422', async () => {
+  it('orderBy inválido (fora do enum fechado createdAt_desc|updatedAt_desc|publishedAt_desc): 422', async () => {
     await setRole(siteA, Role.VIEWER);
 
     const response = await request(app!.getHttpServer())
@@ -407,5 +417,45 @@ describe('GET /admin/sites/:siteSlug/articles (e2e)', () => {
       .set('Cookie', cookieHeader());
 
     expect(response.status).toBe(422);
+  });
+
+  // --- UXA-018: extensão mínima de `orderBy` para `publishedAt_desc` ---
+
+  it('status=PUBLISHED + orderBy=publishedAt_desc: ordena por publishedAt desc real, não por createdAt (prova e2e de ponta a ponta até ListArticlesUseCase)', async () => {
+    await setRole(siteA, Role.VIEWER);
+    const olderPublishedAt = new Date('2026-01-01T00:00:00.000Z');
+    const newerPublishedAt = new Date('2026-06-01T00:00:00.000Z');
+
+    // `first` é criado primeiro (createdAt mais antigo) mas recebe o
+    // `publishedAt` mais recente; `second` é criado depois (createdAt mais
+    // recente) mas recebe o `publishedAt` mais antigo — createdAt e
+    // publishedAt deliberadamente em ordens opostas entre os dois. Se a
+    // ordenação observada fosse por createdAt (o default que
+    // orderBy=publishedAt_desc precisa efetivamente substituir, não só
+    // aceitar no schema), a ordem seria [second, first] — o oposto do que
+    // este teste comprova.
+    const first = await createArticle(siteA, 'publicado-criado-primeiro', {
+      status: 'PUBLISHED',
+      publishedAt: newerPublishedAt,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await createArticle(siteA, 'publicado-criado-segundo', {
+      status: 'PUBLISHED',
+      publishedAt: olderPublishedAt,
+    });
+    await createArticle(siteA, 'rascunho-fora-do-filtro-status', { status: 'DRAFT' });
+
+    const response = await request(app!.getHttpServer())
+      .get(`/admin/sites/${siteA.slug}/articles`)
+      .query({ status: 'PUBLISHED', orderBy: 'publishedAt_desc' })
+      .set('Cookie', cookieHeader());
+
+    expect(response.status).toBe(200);
+    expect(listArticlesResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.total).toBe(2);
+    expect(response.body.items.map((item: { id: string }) => item.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
   });
 });

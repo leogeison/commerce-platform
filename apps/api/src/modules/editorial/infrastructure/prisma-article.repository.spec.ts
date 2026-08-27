@@ -88,4 +88,32 @@ describe('PrismaArticleRepository.findManyBySite — orderBy (UXF-012)', () => {
       take: 20,
     });
   });
+
+  /**
+   * UXA-018 — mesma cobertura de tradução de `orderBy`, agora para
+   * `publishedAt_desc` (extensão mínima autorizada nesta tarefa, seção
+   * "Publicados recentemente" do Dashboard). Sem validação cruzada de
+   * `status` aqui — combinado com `status: 'PUBLISHED'` só porque é como o
+   * Dashboard de fato usa, não porque o repository exige essa combinação.
+   */
+  it('orderBy publishedAt_desc: usa publishedAt desc + id asc, preservando where/skip/take', async () => {
+    const { prisma, findMany, count } = buildFakePrisma();
+    const repository = new PrismaArticleRepository(prisma);
+
+    await repository.findManyBySite({
+      siteId: SITE_ID,
+      page: 1,
+      pageSize: 5,
+      status: 'PUBLISHED',
+      orderBy: 'publishedAt_desc',
+    });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { siteId: SITE_ID, status: 'PUBLISHED' },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
+      skip: 0,
+      take: 5,
+    });
+    expect(count).toHaveBeenCalledWith({ where: { siteId: SITE_ID, status: 'PUBLISHED' } });
+  });
 });
