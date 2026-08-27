@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { GuardedLink } from './guarded-link';
-import { NAV_DESTINATIONS, navDestinationHref } from './nav-destinations';
+import { isNavDestinationActive, NAV_DESTINATIONS, navDestinationHref } from './nav-destinations';
 
 interface SidebarNavProps {
   siteSlug: string;
@@ -13,12 +13,14 @@ interface SidebarNavProps {
  * UXA-006 — Sidebar de navegação primária.
  *
  * Arquitetura de informação definitiva (Etapa A / UX-Implementation-Backlog.md):
- * Dashboard→Artigos→Produtos→Categorias→Autores. Nesta etapa só os 4 itens
- * com rota já existente são renderizados, na mesma ordem relativa. O item
- * Dashboard nasce em UXA-017, quando `apps/admin/src/app/[siteSlug]/page.tsx`
- * existir — até lá, um item apontando para essa rota seria um link morto
- * (404), por isso deliberadamente ausente daqui (achado da investigação
- * desta tarefa, refletido na atualização normativa de UXA-006/UXA-017).
+ * Dashboard→Artigos→Produtos→Categorias→Autores. Os 5 itens são renderizados
+ * nesta ordem desde a UXA-017, quando `apps/admin/src/app/[siteSlug]/page.tsx`
+ * (Dashboard) passou a existir — antes disso, só os 4 itens com rota já
+ * existente eram renderizados (UXA-006), porque um item apontando para
+ * Dashboard teria sido um link morto (404). `isNavDestinationActive`
+ * (`nav-destinations.ts`) trata Dashboard como rota raiz (igualdade exata,
+ * nunca prefixo) — os outros 4 continuam na regra de igualdade OU subrota
+ * documentada abaixo.
  *
  * Sem prop de Role. As quatro seções são leitura disponível a
  * VIEWER/EDITOR/OWNER igualmente — `Architecture.md` §32 lista "VIEWER+
@@ -45,7 +47,10 @@ interface SidebarNavProps {
  * `/categories/:id` também marquem "Categorias" como seção atual, não só a
  * listagem exata, sem marcar falsamente uma rota-irmã com prefixo textual
  * parecido (ex.: um hipotético `/categories-archive` nunca bate, porque o
- * `startsWith` exige a barra depois do segmento).
+ * `startsWith` exige a barra depois do segmento). Dashboard (UXA-017) é a
+ * única exceção a essa regra — `isNavDestinationActive` aplica só
+ * igualdade exata para `isRootRoute`, porque `href` de Dashboard é
+ * `/:siteSlug` e a regra de prefixo bateria com toda rota do Site.
  *
  * `GuardedLink` em todos os itens — nenhum item pula o dirty-state guard
  * (UXA-003); a Promise de `confirmLeave()` é a mesma instância consumida
@@ -187,7 +192,7 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
       <ul className={listClassName}>
         {NAV_DESTINATIONS.map((item) => {
           const href = navDestinationHref(siteSlug, item.segment);
-          const isActive = pathname === href || pathname?.startsWith(`${href}/`);
+          const isActive = isNavDestinationActive(pathname, href, item);
           return (
             <li key={item.segment}>
               <GuardedLink

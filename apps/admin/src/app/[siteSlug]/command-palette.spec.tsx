@@ -129,13 +129,34 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
   });
 
-  it('com query vazia, lista os 4 destinos e a primeira opção fica ativa', () => {
+  it('com query vazia, lista os 5 destinos (Dashboard primeiro) e a primeira opção fica ativa', () => {
     render(buildTree('/fastcompre/categories'));
     act(() => pressShortcut());
 
     const options = screen.getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['Artigos', 'Produtos', 'Categorias', 'Autores']);
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Dashboard',
+      'Artigos',
+      'Produtos',
+      'Categorias',
+      'Autores',
+    ]);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('Dashboard aparece nos resultados de busca e navega para /:siteSlug', async () => {
+    const user = userEvent.setup();
+    render(buildTree('/fastcompre/categories'));
+    act(() => pressShortcut());
+
+    await user.type(screen.getByRole('combobox', { name: 'Buscar navegação' }), 'dash');
+
+    const options = screen.getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['Dashboard']);
+
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/fastcompre'));
   });
 
   it('digitação filtra a lista e reseta a opção ativa para a primeira', async () => {
@@ -165,14 +186,17 @@ describe('CommandPalette', () => {
     act(() => pressShortcut());
 
     const input = screen.getByRole('combobox', { name: 'Buscar navegação' });
-    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{ArrowDown}'); // Dashboard -> Artigos
 
-    const produtos = screen.getByRole('option', { name: 'Produtos' });
-    expect(input).toHaveAttribute('aria-activedescendant', produtos.id);
+    const artigos = screen.getByRole('option', { name: 'Artigos' });
+    expect(input).toHaveAttribute('aria-activedescendant', artigos.id);
     expect(input).toHaveFocus();
 
-    await user.keyboard('{ArrowUp}');
-    const artigos = screen.getByRole('option', { name: 'Artigos' });
+    await user.keyboard('{ArrowDown}'); // Artigos -> Produtos
+    const produtos = screen.getByRole('option', { name: 'Produtos' });
+    expect(input).toHaveAttribute('aria-activedescendant', produtos.id);
+
+    await user.keyboard('{ArrowUp}'); // Produtos -> Artigos
     expect(input).toHaveAttribute('aria-activedescendant', artigos.id);
   });
 
@@ -181,7 +205,7 @@ describe('CommandPalette', () => {
     const { rerender } = render(buildTree('/fastcompre/categories'));
     act(() => pressShortcut());
 
-    await user.keyboard('{ArrowDown}'); // ativa "Produtos"
+    await user.keyboard('{ArrowDown}{ArrowDown}'); // Dashboard -> Artigos -> ativa "Produtos"
     await user.keyboard('{Enter}');
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/fastcompre/products'));
@@ -197,7 +221,7 @@ describe('CommandPalette', () => {
     render(buildTree('/fastcompre/categories', true));
     act(() => pressShortcut());
 
-    await user.keyboard('{Enter}'); // ativa "Artigos" (primeira opção)
+    await user.keyboard('{Enter}'); // ativa "Dashboard" (primeira opção)
 
     const stayButton = await screen.findByRole('button', { name: 'Ficar' });
     await user.click(stayButton);
@@ -331,7 +355,13 @@ describe('CommandPalette', () => {
     const reopenedInput = screen.getByRole('combobox', { name: 'Buscar navegação' });
     expect(reopenedInput).toHaveValue('');
     const options = screen.getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['Artigos', 'Produtos', 'Categorias', 'Autores']);
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Dashboard',
+      'Artigos',
+      'Produtos',
+      'Categorias',
+      'Autores',
+    ]);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
     expect(reopenedInput).toHaveAttribute('aria-activedescendant', options[0].id);
   });
@@ -434,23 +464,23 @@ describe('CommandPalette', () => {
    * comportamento de agrupamento/busca/navegação/dirty-state associado.
    */
   describe('UXA-010 — ações de criação', () => {
-    it('VIEWER: só os 4 destinos de navegação, sem grupo "Criar"', () => {
+    it('VIEWER: só os 5 destinos de navegação, sem grupo "Criar"', () => {
       render(buildTree('/fastcompre/categories', false, 'VIEWER'));
       act(() => pressShortcut());
 
-      expect(screen.getAllByRole('option')).toHaveLength(4);
+      expect(screen.getAllByRole('option')).toHaveLength(5);
       expect(screen.getByRole('group', { name: 'Navegar' })).toBeInTheDocument();
       expect(screen.queryByRole('group', { name: 'Criar' })).not.toBeInTheDocument();
     });
 
     it.each<Role>(['EDITOR', 'OWNER'])(
-      '%s: os 4 destinos de navegação e os 4 atalhos de criação, em dois grupos',
+      '%s: os 5 destinos de navegação e os 4 atalhos de criação, em dois grupos',
       (role) => {
         render(buildTree('/fastcompre/categories', false, role));
         act(() => pressShortcut());
 
         const options = screen.getAllByRole('option');
-        expect(options).toHaveLength(8);
+        expect(options).toHaveLength(9);
         expect(screen.getByRole('group', { name: 'Navegar' })).toBeInTheDocument();
         expect(screen.getByRole('group', { name: 'Criar' })).toBeInTheDocument();
 
@@ -503,7 +533,7 @@ describe('CommandPalette', () => {
       act(() => pressShortcut());
 
       const input = screen.getByRole('combobox', { name: 'Buscar navegação' });
-      await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}'); // Artigos -> Produtos -> Categorias -> Autores
+      await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}'); // Dashboard -> Artigos -> Produtos -> Categorias -> Autores
       const autores = screen.getByRole('option', { name: 'Autores' });
       expect(input).toHaveAttribute('aria-activedescendant', autores.id);
 

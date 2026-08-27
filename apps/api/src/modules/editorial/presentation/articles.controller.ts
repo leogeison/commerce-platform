@@ -165,6 +165,16 @@ export class ArticlesController {
    * pageSize: 20`) e os três filtros opcionais (`status?`, `type?`,
    * `categoryId?`, Architecture.md §32) antes de chegar aqui.
    *
+   * `query.orderBy` (UXA-017) repassado direto — mesmo estilo já usado
+   * para `status`/`type`/`categoryId` acima, sem spread condicional: este
+   * controller não tem teste que verifique a forma exata do objeto
+   * passado a `execute()` (só e2e via HTTP), diferente do boundary
+   * `ListArticlesUseCase` → `findManyBySite`, onde o spread condicional
+   * existe especificamente para preservar a forma histórica da chamada ao
+   * repository. `undefined` aqui já é o comportamento correto: `execute()`
+   * trata a ausência de `orderBy` preservando o `createdAt desc` default
+   * (UXF-012), sem exigir nenhum tratamento adicional neste controller.
+   *
    * Resposta usa `toArticleSummaryAdmin` (sem `bodyMdx`) — decisão
    * explícita da CTR-007, `articleSummaryAdminSchema`.
    */
@@ -185,6 +195,7 @@ export class ArticlesController {
       status: query.status,
       type: query.type,
       categoryId: query.categoryId,
+      orderBy: query.orderBy,
     });
 
     return {

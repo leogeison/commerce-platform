@@ -75,15 +75,15 @@ describe('SidebarNav', () => {
     delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
-  it('renderiza os 4 itens (Artigos, Produtos, Categorias, Autores) com o href correto — sem Dashboard', () => {
+  it('renderiza os 5 itens (Dashboard, Artigos, Produtos, Categorias, Autores) com o href correto', () => {
     renderSidebarNav('/fastcompre/categories');
 
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/fastcompre');
     expect(screen.getByRole('link', { name: 'Artigos' })).toHaveAttribute('href', '/fastcompre/articles');
     expect(screen.getByRole('link', { name: 'Produtos' })).toHaveAttribute('href', '/fastcompre/products');
     expect(screen.getByRole('link', { name: 'Categorias' })).toHaveAttribute('href', '/fastcompre/categories');
     expect(screen.getByRole('link', { name: 'Autores' })).toHaveAttribute('href', '/fastcompre/authors');
-    expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('link')).toHaveLength(4);
+    expect(screen.getAllByRole('link')).toHaveLength(5);
   });
 
   it('landmark de navegação com aria-label "Navegação do Site"', () => {
@@ -99,7 +99,26 @@ describe('SidebarNav', () => {
     expect(screen.getByRole('link', { name: 'Produtos' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Artigos' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Autores' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
   });
+
+  // --- UXA-017: Dashboard como destination raiz ---
+
+  it('Dashboard: ativo (aria-current="page") somente na rota raiz exata (/:siteSlug)', () => {
+    renderSidebarNav('/fastcompre');
+
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Artigos' })).not.toHaveAttribute('aria-current');
+  });
+
+  it.each(['/fastcompre/articles', '/fastcompre/products', '/fastcompre/categories', '/fastcompre/authors'])(
+    'Dashboard: NÃO recebe aria-current em %s, mesmo sendo prefixo textual de toda rota do Site',
+    (pathname) => {
+      renderSidebarNav(pathname);
+
+      expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
+    },
+  );
 
   it('rota de criação (/categories/new) mantém "Categorias" como seção ativa', () => {
     renderSidebarNav('/fastcompre/categories/new');
@@ -188,7 +207,7 @@ describe('SidebarNav', () => {
 
     const focusable = within(dialog).getAllByRole('button').concat(within(dialog).getAllByRole('link'));
     const labels = focusable.map((element) => element.textContent);
-    expect(labels).toEqual(['Fechar menu', 'Artigos', 'Produtos', 'Categorias', 'Autores']);
+    expect(labels).toEqual(['Fechar menu', 'Dashboard', 'Artigos', 'Produtos', 'Categorias', 'Autores']);
   });
 
   it('Escape fecha o drawer e devolve o foco ao trigger (comportamento nativo do <dialog>)', async () => {

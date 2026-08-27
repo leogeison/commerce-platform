@@ -94,8 +94,11 @@ export function matchesQuery(label: string, query: string): boolean {
  * ancestral comum, nada além disso.
  *
  * Destinos: mesma fonte de `SidebarNav` (`nav-destinations.ts`) — nunca
- * uma segunda lista. Só os 4 destinos com rota real hoje; Dashboard entra
- * junto de UXA-017, automaticamente, sem alteração estrutural aqui.
+ * uma segunda lista. Os 5 destinos (Dashboard incluído desde a UXA-017)
+ * aparecem aqui automaticamente, sem alteração estrutural: este componente
+ * não tem noção de item ativo/`isRootRoute` (é busca+navegação, não um
+ * menu com estado "onde estou"), então nunca precisou de
+ * `isNavDestinationActive`.
  *
  * `<dialog>` + `showModal()` — terceiro uso do mesmo padrão já provado em
  * `unsaved-changes-context.tsx` e `sidebar-nav.tsx`, incluindo o mesmo

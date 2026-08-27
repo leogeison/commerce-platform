@@ -339,4 +339,73 @@ describe('GET /admin/sites/:siteSlug/articles (e2e)', () => {
 
     expect(response.status).toBe(422);
   });
+
+  // --- UXA-017: `orderBy` (exposição HTTP da UXF-012) ---
+
+  it('status=DRAFT + orderBy=updatedAt_desc: ordena por updatedAt desc real, não por createdAt (prova e2e de ponta a ponta até ListArticlesUseCase)', async () => {
+    await setRole(siteA, Role.VIEWER);
+    const first = await createArticle(siteA, 'draft-criado-primeiro', { status: 'DRAFT' });
+    // Mesma espera mínima já usada no teste de ordenação default acima —
+    // garante `createdAt` estritamente crescente entre os dois.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await createArticle(siteA, 'draft-criado-segundo', { status: 'DRAFT' });
+    await createArticle(siteA, 'publicado-fora-do-filtro-status', { status: 'PUBLISHED' });
+
+    // Toca `first` por último, depois de `second` já existir — `updatedAt`
+    // de `first` fica mais recente que o de `second`, mesmo `first` tendo
+    // sido criado antes. Se a ordenação observada fosse por `createdAt`
+    // (o default que `orderBy=updatedAt_desc` precisa efetivamente
+    // substituir, não só aceitar no schema), a ordem seria [second, first]
+    // — o oposto do que este teste comprova.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await prisma.article.update({
+      where: { id: first.id },
+      data: { title: 'Artigo draft-criado-primeiro (editado)' },
+    });
+
+    const response = await request(app!.getHttpServer())
+      .get(`/admin/sites/${siteA.slug}/articles`)
+      .query({ status: 'DRAFT', orderBy: 'updatedAt_desc' })
+      .set('Cookie', cookieHeader());
+
+    expect(response.status).toBe(200);
+    expect(listArticlesResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(response.body.total).toBe(2);
+    expect(response.body.items.map((item: { id: string }) => item.id)).toEqual([first.id, second.id]);
+  });
+
+  it('sem orderBy: comportamento default (createdAt desc) preservado, mesmo com status=DRAFT aplicado', async () => {
+    await setRole(siteA, Role.VIEWER);
+    const first = await createArticle(siteA, 'draft-default-primeiro', { status: 'DRAFT' });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await createArticle(siteA, 'draft-default-segundo', { status: 'DRAFT' });
+
+    // Mesmo touch de `first` do teste anterior — se a omissão de `orderBy`
+    // vazasse `updatedAt desc` por engano, a ordem observada aqui seria
+    // [first, second], não [second, first].
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await prisma.article.update({
+      where: { id: first.id },
+      data: { title: 'Artigo draft-default-primeiro (editado)' },
+    });
+
+    const response = await request(app!.getHttpServer())
+      .get(`/admin/sites/${siteA.slug}/articles`)
+      .query({ status: 'DRAFT' })
+      .set('Cookie', cookieHeader());
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((item: { id: string }) => item.id)).toEqual([second.id, first.id]);
+  });
+
+  it('orderBy inválido (fora do enum fechado createdAt_desc|updatedAt_desc): 422', async () => {
+    await setRole(siteA, Role.VIEWER);
+
+    const response = await request(app!.getHttpServer())
+      .get(`/admin/sites/${siteA.slug}/articles`)
+      .query({ orderBy: 'title_asc' })
+      .set('Cookie', cookieHeader());
+
+    expect(response.status).toBe(422);
+  });
 });
