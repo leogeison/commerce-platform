@@ -1,0 +1,62 @@
+/*
+ * UXA-019B (refinamento) — drawer mobile como gaveta lateral.
+ *
+ * Primeiro CSS Module de `sidebar-nav.tsx` (o componente usa só classes
+ * Tailwind até aqui, inclusive `[grid-area:...]` arbitrário — essa decisão
+ * não é reaberta; este arquivo cobre só o que Tailwind não expressa
+ * diretamente: `::backdrop` e um `width` em `min()` combinando `vw` com um
+ * teto fixo).
+ *
+ * `.drawer[open]` estiliza a MESMA instância de `<dialog>`/`showModal()` já
+ * existente — nenhuma substituição de mecanismo. `showModal()` promove o
+ * `<dialog>` ao top-layer; `margin: 0` + `top`/`left: 0` sobrescrevem a
+ * centralização automática da UA stylesheet, fixando-o à borda esquerda.
+ *
+ * Correção (validação em navegador real, pós-implementação inicial): o
+ * seletor precisa ser `.drawer[open]`, nunca `.drawer` puro. `[open]` é o
+ * atributo nativo que `showModal()`/`close()` já alternam sozinhos, sem
+ * nenhum JS adicional — escopar a ele é o que garante que estas
+ * declarações só se apliquem quando o `<dialog>` está de fato aberto/na
+ * top layer. Sem esse escopo, `display: flex` (regra de autor, sem
+ * `[open]`) derruba a regra nativa `dialog:not([open]) { display: none }`
+ * da UA stylesheet — autor sempre vence UA na mesma importância,
+ * independente de especificidade — e o `<dialog>` passava a ser
+ * renderizado mesmo fechado (nunca chamado `showModal()`), participando
+ * indevidamente do layout do `.shell` e comprimindo o conteúdo ao lado.
+ */
+.drawer[open] {
+  margin: 0;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  /* Navegadores sem suporte a `dvh` ignoram esta declaração inválida e
+     mantêm o `100vh` acima — fallback padrão, sem feature query. */
+  height: 100dvh;
+  width: min(85vw, 320px);
+  max-width: min(85vw, 320px);
+  border: none;
+  border-right: 1px solid var(--color-border-default);
+  border-radius: 0;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+}
+
+/*
+ * Nenhum token semântico de scrim/overlay existe hoje em
+ * `packages/ui/tokens/semantic-colors.css` (conferido: 13 tokens, nenhum
+ * papel de "sobreposição modal"). `--color-text-primary` resolve para o
+ * mesmo primitivo `--color-neutral-900`, mas nomeia um papel de uso
+ * incorreto para isto (texto, não backdrop) — não reaproveitado aqui.
+ * Uso direto do primitivo `--color-neutral-900` (`colors.css`, o mais
+ * escuro da rampa neutra do projeto) com alpha via `color-mix()`, escopado
+ * só a este componente. Se um segundo consumidor de scrim surgir no
+ * futuro, promover para um token semântico dedicado é o próximo passo
+ * natural — não antecipado agora.
+ */
+.drawer[open]::backdrop {
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}

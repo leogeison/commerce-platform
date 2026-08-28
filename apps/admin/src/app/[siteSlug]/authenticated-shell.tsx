@@ -107,7 +107,8 @@ function categoriesHref(siteSlug: string): string {
  * `isPaletteOpen` (decisão de revisão: sem Context novo). `Topbar` só
  * recebe `onOpenPalette`/`isPaletteOpen`/`paletteId` como props, mesmo
  * padrão já usado para `onSiteChange`/`onLogout`; `CommandPalette` é
- * montado aqui como um terceiro irmão de `SidebarNav`/`Topbar`, controlado
+ * montado aqui como irmão de `SidebarNav` e do `<header>` que envolve
+ * `Topbar` (desde UXA-019B — ver parágrafo próprio abaixo), controlado
  * via `isOpen`/`onOpenChange`. `paletteId` (`useId()`, gerado uma única
  * vez aqui) é a única informação içada a este ancestral comum além do
  * próprio estado — liga `aria-controls` do trigger em `Topbar` ao `id`
@@ -120,13 +121,32 @@ function categoriesHref(siteSlug: string): string {
  * sem ampliar o Provider nem criar um Context novo.
  *
  * UXA-011 — skip link + landmarks do shell. O link (`SKIP_LINK_CLASSES`,
- * ver doc comment próprio) é o primeiro filho de `.shell`, antes do
- * `<header>` — única forma de garantir que seja a primeira parada de `Tab`
- * em qualquer viewport, já que `position: fixed` não afeta ordem de
- * tabulação (essa segue a ordem do DOM). Só existe no `return` do estado
- * `ready`: os estados `loading`/`error` retornam antes disso (linhas
- * acima) e nunca chegam a montar `<header>`/`<main>` — o skip link nunca
- * apontaria para um `<main>` inexistente.
+ * ver doc comment próprio) é o primeiro filho de `.shell`, antes de
+ * `SidebarNav`/`<header>` — única forma de garantir que seja a primeira
+ * parada de `Tab` em qualquer viewport, já que `position: fixed` não afeta
+ * ordem de tabulação (essa segue a ordem do DOM). Só existe no `return` do
+ * estado `ready`: os estados `loading`/`error` retornam antes disso (linhas
+ * acima) e nunca chegam a montar `SidebarNav`/`<header>`/`<main>` — o skip
+ * link nunca apontaria para um `<main>` inexistente.
+ *
+ * UXA-019B — `SidebarNav` migra de filho de `<header>` para filho direto
+ * de `.shell` (`display: grid` desde esta tarefa — ver
+ * `authenticated-shell.module.css`), imediatamente antes de `<header>`,
+ * que passa a envolver só `Topbar`. Motivo: `SidebarNav` retorna um
+ * Fragment com três elementos-irmãos (botão do drawer mobile, `<nav>`
+ * persistente, `<dialog>` do drawer) — mantidos como filhos diretos do
+ * grid, cada um se posiciona via `grid-area` (definido dentro do próprio
+ * `sidebar-nav.tsx`) sem precisar de `display: contents` nem de nenhum
+ * wrapper novo: o botão ocupa a área `menu` (mesma linha de `<header>`,
+ * que ocupa `topbar`) abaixo de 1024px, reproduzindo a composição
+ * horizontal já existente; a partir de 1024px o `<nav>` persistente ocupa
+ * a área `rail` (256px, altura cheia), enquanto `<header>`/`<main>`
+ * passam a ocupar a coluna principal. A ordem relativa de tabulação
+ * (skip link → conteúdo de `SidebarNav` → conteúdo de `Topbar` → `main`)
+ * é a mesma de antes desta tarefa — `grid-area` não reordena a sequência
+ * de foco, que continua seguindo a ordem do DOM. Nenhuma lógica de
+ * `SidebarNav` (drawer, foco, `Escape`, fechamento por navegação/breakpoint)
+ * muda por causa deste reposicionamento.
  *
  * `<main>` ganha `id="main-content"` (alvo do `href` do link) e
  * `tabIndex={-1}` (torna um elemento normalmente não-focável em um alvo de
@@ -244,9 +264,9 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
         Pular para o conteúdo principal
       </a>
 
-      <header className={styles.header}>
-        <SidebarNav siteSlug={siteSlug} />
+      <SidebarNav siteSlug={siteSlug} />
 
+      <header className={styles.header}>
         <Topbar
           siteSlug={siteSlug}
           sites={sites}

@@ -184,13 +184,46 @@ describe('SidebarNav', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('estrutural: navegação persistente usa "hidden lg:block" e o trigger usa "lg:hidden" (não prova responsividade — ver medição real no relatório)', () => {
+  it('estrutural: navegação persistente usa "hidden" + "lg:flex-col" (rail vertical) e o trigger usa "lg:hidden" (não prova responsividade — ver medição real no relatório)', () => {
     renderSidebarNav('/fastcompre/categories');
 
     const persistentNav = screen.getByRole('navigation', { name: 'Navegação do Site' });
     expect(persistentNav.className).toContain('hidden');
-    expect(persistentNav.className).toContain('lg:block');
+    expect(persistentNav.className).toContain('lg:flex-col');
     expect(screen.getByRole('button', { name: 'Menu' }).className).toContain('lg:hidden');
+  });
+
+  // --- UXA-019B: rail lateral vertical, branding e ícones decorativos ---
+
+  it('UXA-019B: o nav persistente usa layout vertical ("flex-col" na classe do container da lista)', () => {
+    renderSidebarNav('/fastcompre/categories');
+
+    const persistentNav = screen.getByRole('navigation', { name: 'Navegação do Site' });
+    const list = persistentNav.querySelector('ul');
+    expect(list).not.toBeNull();
+    expect(list?.className).toContain('flex-col');
+  });
+
+  it('UXA-019B: cada ícone decorativo tem aria-hidden="true" e não altera o nome acessível do link', () => {
+    renderSidebarNav('/fastcompre/categories');
+
+    const persistentNav = screen.getByRole('navigation', { name: 'Navegação do Site' });
+    const links = within(persistentNav).getAllByRole('link');
+    expect(links).toHaveLength(5);
+
+    for (const link of links) {
+      const icon = link.querySelector('svg');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    }
+
+    // Confirma que o nome acessível de cada link continua sendo exatamente
+    // o texto do label — nenhum texto/label do ícone foi concatenado.
+    expect(within(persistentNav).getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(within(persistentNav).getByRole('link', { name: 'Artigos' })).toBeInTheDocument();
+    expect(within(persistentNav).getByRole('link', { name: 'Produtos' })).toBeInTheDocument();
+    expect(within(persistentNav).getByRole('link', { name: 'Categorias' })).toBeInTheDocument();
+    expect(within(persistentNav).getByRole('link', { name: 'Autores' })).toBeInTheDocument();
   });
 
   it('abrir o drawer: foco inicial em "Fechar menu", aria-expanded vira true, itens aparecem na ordem correta depois do botão', async () => {
@@ -208,6 +241,41 @@ describe('SidebarNav', () => {
     const focusable = within(dialog).getAllByRole('button').concat(within(dialog).getAllByRole('link'));
     const labels = focusable.map((element) => element.textContent);
     expect(labels).toEqual(['Fechar menu', 'Dashboard', 'Artigos', 'Produtos', 'Categorias', 'Autores']);
+  });
+
+  it('UXA-019B: cabeçalho do drawer mostra o branding "FastCompre"/"ADMIN", que não é focável e não conta entre os elementos interativos', async () => {
+    const user = userEvent.setup();
+    renderSidebarNav('/fastcompre/categories');
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Menu de navegação' });
+
+    expect(within(dialog).getByText('FastCompre')).toBeInTheDocument();
+    expect(within(dialog).getByText('ADMIN')).toBeInTheDocument();
+
+    // Mesma contagem/ordem de antes — o branding não introduz um novo botão
+    // ou link focável no drawer.
+    const focusable = within(dialog).getAllByRole('button').concat(within(dialog).getAllByRole('link'));
+    expect(focusable.map((element) => element.textContent)).toEqual([
+      'Fechar menu',
+      'Dashboard',
+      'Artigos',
+      'Produtos',
+      'Categorias',
+      'Autores',
+    ]);
+  });
+
+  it('UXA-019B: ícone do botão "Fechar menu" tem aria-hidden="true"', async () => {
+    const user = userEvent.setup();
+    renderSidebarNav('/fastcompre/categories');
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Menu de navegação' });
+
+    const closeIcon = within(dialog).getByRole('button', { name: 'Fechar menu' }).querySelector('svg');
+    expect(closeIcon).not.toBeNull();
+    expect(closeIcon).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('Escape fecha o drawer e devolve o foco ao trigger (comportamento nativo do <dialog>)', async () => {

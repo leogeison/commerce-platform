@@ -1,14 +1,49 @@
+/*
+ * UXA-019B — grid do shell autenticado.
+ *
+ * `.shell` migra de `flex-direction: column` para `display: grid` com áreas
+ * nomeadas, permitindo que `SidebarNav` (montado como filho direto, fora de
+ * `<header>`) posicione seus próprios elementos (`button`/`nav`) via
+ * `grid-area` sem `display: contents` e sem wrapper extra — ver doc comment
+ * de `authenticated-shell.tsx` e de `sidebar-nav.tsx`.
+ *
+ * Abaixo de 1024px: duas colunas (`auto` para o trigger "Menu",
+ * `minmax(0, 1fr)` para a Topbar), duas linhas (`menu topbar` / `content
+ * content`) — reproduz exatamente a composição visual horizontal já
+ * existente (Menu + Topbar lado a lado), só que como itens de grid
+ * irmãos em vez de filhos do mesmo `<header>`.
+ *
+ * A partir de 1024px (`lg`, mesmo valor já usado em `sidebar-nav.tsx` via
+ * `matchMedia`/classes Tailwind, sem token novo): duas colunas
+ * (`256px`/rail fixo, `minmax(0, 1fr)`/coluna principal), com `rail`
+ * ocupando as duas linhas do template.
+ *
+ * `minmax(0, 1fr)` em vez de `1fr` puro nas duas colunas principais: o
+ * mínimo automático de uma track `1fr` é o `min-content` do que está
+ * dentro dela, então qualquer superfície interna com `min-content` largo
+ * (ex.: uma célula de tabela sem quebra) forçaria a própria coluna — e
+ * com ela o shell inteiro — a crescer horizontalmente. `minmax(0, 1fr)`
+ * zera esse mínimo automático, permitindo que o conteúdo trunque/role
+ * (`.content` abaixo já protege o eixo com `min-width: 0`) em vez de
+ * empurrar o grid. Isso não corrige os overflows horizontais
+ * pré-existentes de Artigos/Produtos (débito já registrado, fora de
+ * escopo desta tarefa) — só impede que esse tipo de conteúdo alargue o
+ * próprio shell.
+ */
 .shell {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'menu topbar'
+    'content content';
   min-height: 100%;
 }
 
 .header {
+  grid-area: topbar;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
@@ -21,6 +56,19 @@
 }
 
 .content {
-  flex: 1;
+  grid-area: content;
+  /* Mesma razão do `minmax(0, 1fr)` acima: sem isto, o min-content de um
+     filho largo (ex.: tabela sem overflow-x) vazaria através do grid item
+     mesmo com a coluna já protegida. */
+  min-width: 0;
   padding: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .shell {
+    grid-template-columns: 256px minmax(0, 1fr);
+    grid-template-areas:
+      'rail topbar'
+      'rail content';
+  }
 }

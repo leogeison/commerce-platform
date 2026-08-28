@@ -44,6 +44,11 @@
   --color-outline: var(--color-border-default);
   --color-focus: var(--color-focus-ring);
   --color-skeleton: var(--color-border-subtle);
+  /* UXA-019B — estado ativo do rail lateral (item de navegação corrente).
+     Nomes distintos dos tokens de origem, mesmo princípio do restante deste
+     arquivo — gera as utilities `bg-accent-subtle`/`text-accent-subtle-fg`. */
+  --color-accent-subtle: var(--color-accent-subtle-bg);
+  --color-accent-subtle-fg: var(--color-accent-subtle-text);
 
   /* radius */
   --radius-control: var(--radius-md);

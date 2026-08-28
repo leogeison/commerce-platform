@@ -2,8 +2,19 @@
 
 import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import {
+  FileText,
+  LayoutDashboard,
+  Menu as MenuIcon,
+  ShoppingBag,
+  Tag,
+  Users,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { GuardedLink } from './guarded-link';
 import { isNavDestinationActive, NAV_DESTINATIONS, navDestinationHref } from './nav-destinations';
+import styles from './sidebar-nav.module.css';
 
 interface SidebarNavProps {
   siteSlug: string;
@@ -134,6 +145,101 @@ interface SidebarNavProps {
  * restauração nativa tentaria devolver ao trigger "Menu", agora oculto
  * por `lg:hidden` e portanto não focável — cai em `document.body` (nenhum
  * elemento preso), sem travar em nada invisível.
+ *
+ * UXA-019B — Sidebar lateral vertical em desktop.
+ *
+ * Este componente continua retornando um Fragment com três elementos-irmãos
+ * (`button`, `nav` persistente, `dialog`) — nenhuma mudança nessa estrutura.
+ * O que muda é onde ele é montado: `authenticated-shell.tsx` passou a
+ * renderizá-lo como filho direto do grid `.shell` (`authenticated-shell
+ * .module.css`), fora de `<header>`. Como um Fragment não introduz nenhuma
+ * caixa própria, cada um dos três elementos deste componente vira, ele
+ * mesmo, um item de grid do `.shell` — por isso `button` e `nav` recebem
+ * `grid-area` diretamente (`[grid-area:menu]`/`lg:[grid-area:rail]`), sem
+ * `display: contents` e sem introduzir um wrapper novo. O `dialog` do
+ * drawer não recebe `grid-area`: como elemento nativo `<dialog>`, ele é
+ * `display: none` da UA stylesheet enquanto fechado e passa a
+ * `position: fixed`/top-layer via `showModal()` quando aberto — em nenhum
+ * dos dois estados ele participa da geração de itens de grid do `.shell`,
+ * então nenhum posicionamento é necessário nem produz efeito.
+ *
+ * Abaixo de `lg`, `nav` continua `hidden` (mesmo padrão de antes) — o
+ * `grid-area: menu` do `button` é o único posicionamento ativo nessa faixa,
+ * reproduzindo a composição horizontal Menu+Topbar já existente, agora como
+ * itens de grid irmãos em vez de filhos do mesmo `<header>`.
+ *
+ * A partir de `lg`, `nav` vira o rail: `lg:flex lg:flex-col` substitui o
+ * antigo `hidden lg:block` (que preservava o layout horizontal do `<ul>`
+ * interno); a lista em si (`renderNavList`) também passou de
+ * `'m-0 flex list-none gap-4 p-0'` para `'m-0 flex list-none flex-col gap-4
+ * p-0'` — mesma função, mesmo dado (`NAV_DESTINATIONS`), só a direção do
+ * eixo principal muda. O drawer mobile (`<ul>` dentro do `dialog`) já usava
+ * `flex-col` desde antes desta tarefa e não foi alterado.
+ *
+ * Branding "FastCompre / ADMIN": um `<span>` estático, primeiro filho do
+ * `nav` persistente, antes do `<ul>`. Deliberadamente não é `<a>`, não tem
+ * `onClick`, `href`, `tabIndex` nem qualquer handler — não é focável e não
+ * participa da lista de elementos focáveis do shell nem do drawer mobile
+ * (só existe dentro do `nav` de desktop, nunca dentro do `dialog`). Não
+ * altera a contagem/ordem dos 5 links reais de `NAV_DESTINATIONS`.
+ *
+ * Ícones decorativos: `iconForSegment(item.segment)` (ver mapa
+ * `SEGMENT_ICONS` acima) resolve um componente `lucide-react` por destino,
+ * renderizado como `<Icon aria-hidden="true" />` antes do texto do label,
+ * dentro do próprio `<GuardedLink>`. `aria-hidden` remove o SVG da árvore
+ * de acessibilidade — o nome acessível de cada link continua sendo
+ * exatamente `item.label` (texto), sem concatenação de texto alternativo
+ * do ícone nem qualquer outra alteração ao cálculo de accessible name.
+ *
+ * Estado ativo: `bg-accent-subtle`/`text-accent-subtle-fg` (aliases novos
+ * de `packages/ui/tokens/tailwind-theme.css`, mapeando sem valor de cor
+ * novo os tokens já existentes `--color-accent-subtle-bg`/
+ * `--color-accent-subtle-text` de `semantic-colors.css`) somam-se ao
+ * `underline` já existente — não o substituem — para que o item ativo
+ * continue distinguível sem depender só de cor (WCAG 1.4.1), além do
+ * `aria-current="page"` programático já emitido por
+ * `isNavDestinationActive`.
+ *
+ * UXA-019B (refinamento) — Trigger mobile compacto + drawer como gaveta lateral.
+ *
+ * O botão "Menu" abaixo de `lg` deixou de exibir texto visível — vira
+ * `<MenuIcon aria-hidden="true" />` + `<span className="sr-only">Menu</span>`,
+ * preservando o nome acessível exato ("Menu", texto ainda presente no DOM,
+ * só oculto visualmente pela técnica `sr-only` já usada em
+ * `command-palette.tsx`) enquanto reduz a largura ocupada na faixa superior
+ * compacta. `self-start` permanece no botão: mesmo com `Topbar` agora
+ * compacta (ver `topbar.tsx`), a linha do grid (`menu`/`topbar`) ainda pode
+ * ficar mais alta que o botão em zoom alto/nomes de Site longos que forcem
+ * quebra — sem `self-start`, o `align-items: stretch` padrão do grid
+ * (`.shell` não declara `align-items`, então herda o inicial `normal`, que
+ * para um item de bloco como `<button>` computa como `stretch`) esticaria o
+ * botão para acompanhar essa altura, produzindo a "coluna lateral alta" já
+ * corrigida nesta rodada.
+ *
+ * O `<dialog>` ganha `className={styles.drawer}` (`sidebar-nav.module.css`,
+ * novo arquivo — primeiro CSS Module deste componente; a decisão anterior
+ * de evitar CSS Module aqui era só sobre `grid-area`, que continua via
+ * classe Tailwind arbitrária, não reaberta) — estiliza a MESMA instância de
+ * `<dialog>`/`showModal()` como uma gaveta lateral fixada à esquerda, largura
+ * `min(85vw, 320px)`, altura cheia, com scrim próprio via `::backdrop`.
+ * Nenhuma linha de mecanismo muda: `showModal()`/`close()`, o listener
+ * nativo de `Escape` (evento `cancel` → `close()`), `onClose`,
+ * `handleBackdropClick` (a comparação `event.target === dialogRef.current`
+ * continua válida — depende só de clique fora da caixa própria do
+ * `<dialog>`, não da posição/tamanho dela), os dois `useEffect` de
+ * fechamento por `pathname`/`matchMedia(lg)`, e `autoFocus` no botão de
+ * fechar continuam exatamente como estavam. Nenhuma transição/animação foi
+ * adicionada (decisão explícita desta rodada — comportamento estático).
+ *
+ * Conteúdo do `<dialog>` ganha uma linha de cabeçalho (branding "FastCompre
+ * / ADMIN", igual ao do rail, + botão de fechar com `<X aria-hidden="true"
+ * />` e `<span className="sr-only">Fechar menu</span>`, mesmo nome acessível
+ * de antes) antes do `<nav>` — o botão de fechar continua sendo o primeiro
+ * elemento focável do diálogo (o `<span>` de branding não é focável),
+ * preservando a ordem de foco já testada. `renderNavList()` do drawer
+ * perdeu o `mt-4` do `<ul>`: o espaçamento entre o cabeçalho e a lista agora
+ * vem do `gap` do próprio `.drawer` (flex column), não mais de uma margem
+ * pontual no `<ul>`.
  */
 const BUTTON_CLASSES =
   'rounded-control border border-outline bg-surface px-control-x py-control-y text-body-sm font-ui font-action text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus';
@@ -141,6 +247,42 @@ const BUTTON_CLASSES =
 // Mesmo valor de `lg` usado nas classes Tailwind abaixo — não é um token
 // novo, só a forma que `matchMedia` exige para observar a transição.
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
+
+/**
+ * Mapa local de ícones decorativos (UXA-019B) — deliberadamente não movido
+ * para `nav-destinations.ts`: esse módulo também é consumido pela Command
+ * Palette (`command-palette.tsx`), que não usa ícone por item; acoplar
+ * ícones lá criaria acoplamento apresentacional desnecessário para um
+ * consumidor que não precisa dele. `NavSegment` espelha localmente os
+ * segmentos hoje suportados por `NAV_DESTINATIONS` — não é derivado dele,
+ * porque a assinatura `NAV_DESTINATIONS: readonly NavDestination[]`
+ * (anotação de tipo antes do `as const`) impede o TypeScript de estreitar
+ * `segment` para os literais reais; ele permanece `string` mesmo com
+ * `as const` no array. `satisfies Record<NavSegment, LucideIcon>` garante,
+ * em tempo de compilação, que todo segmento de `NavSegment` tem um ícone
+ * mapeado. Isso não protege contra o caso inverso — um destino futuro
+ * adicionado a `NAV_DESTINATIONS` com um segmento ainda ausente de
+ * `NavSegment`/`SEGMENT_ICONS` — porque `segment` ali é só `string`; por
+ * isso `iconForSegment` faz uma checagem explícita de runtime (`in`) e
+ * lança um erro claro em vez de deixar `SEGMENT_ICONS[segment as
+ * NavSegment]` produzir `undefined` silenciosamente.
+ */
+type NavSegment = '' | 'articles' | 'products' | 'categories' | 'authors';
+
+const SEGMENT_ICONS = {
+  '': LayoutDashboard,
+  articles: FileText,
+  products: ShoppingBag,
+  categories: Tag,
+  authors: Users,
+} satisfies Record<NavSegment, LucideIcon>;
+
+function iconForSegment(segment: string): LucideIcon {
+  if (!(segment in SEGMENT_ICONS)) {
+    throw new Error(`SidebarNav: nenhum ícone mapeado para o segmento "${segment}".`);
+  }
+  return SEGMENT_ICONS[segment as NavSegment];
+}
 
 export function SidebarNav({ siteSlug }: SidebarNavProps) {
   const pathname = usePathname();
@@ -193,15 +335,17 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
         {NAV_DESTINATIONS.map((item) => {
           const href = navDestinationHref(siteSlug, item.segment);
           const isActive = isNavDestinationActive(pathname, href, item);
+          const Icon = iconForSegment(item.segment);
           return (
             <li key={item.segment}>
               <GuardedLink
                 href={href}
                 aria-current={isActive ? 'page' : undefined}
-                className={`rounded-control font-ui font-action text-body text-fg no-underline focus-visible:outline-none focus-visible:ring-2 ring-focus ${
-                  isActive ? 'underline' : ''
+                className={`flex items-center gap-2 rounded-control font-ui font-action text-body text-fg no-underline focus-visible:outline-none focus-visible:ring-2 ring-focus ${
+                  isActive ? 'underline bg-accent-subtle text-accent-subtle-fg' : ''
                 }`}
               >
+                <Icon aria-hidden="true" className="shrink-0" />
                 {item.label}
               </GuardedLink>
             </li>
@@ -221,7 +365,7 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
     <>
       <button
         type="button"
-        className={`${BUTTON_CLASSES} lg:hidden`}
+        className={`${BUTTON_CLASSES} lg:hidden [grid-area:menu] self-start inline-flex items-center gap-2`}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-controls={drawerId}
@@ -230,11 +374,19 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
           setIsOpen(true);
         }}
       >
-        Menu
+        <MenuIcon aria-hidden="true" className="shrink-0" />
+        <span className="sr-only">Menu</span>
       </button>
 
-      <nav aria-label="Navegação do Site" className="hidden lg:block">
-        {renderNavList('m-0 flex list-none gap-4 p-0')}
+      <nav
+        aria-label="Navegação do Site"
+        className="hidden lg:flex lg:[grid-area:rail] lg:flex-col lg:gap-6 lg:border-r lg:border-outline lg:p-4"
+      >
+        <span className="flex flex-col font-ui text-body-sm font-action leading-tight text-fg">
+          <span>FastCompre</span>
+          <span className="font-ui text-body-sm text-fg-muted tracking-wide">ADMIN</span>
+        </span>
+        {renderNavList('m-0 flex list-none flex-col gap-4 p-0')}
       </nav>
 
       <dialog
@@ -243,11 +395,24 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
         aria-label="Menu de navegação"
         onClose={() => setIsOpen(false)}
         onClick={handleBackdropClick}
+        className={styles.drawer}
       >
-        <button type="button" autoFocus className={BUTTON_CLASSES} onClick={() => dialogRef.current?.close()}>
-          Fechar menu
-        </button>
-        <nav aria-label="Navegação do Site">{renderNavList('m-0 mt-4 flex list-none flex-col gap-1 p-0')}</nav>
+        <div className="flex items-center justify-between gap-4">
+          <span className="flex flex-col font-ui text-body-sm font-action leading-tight text-fg">
+            <span>FastCompre</span>
+            <span className="font-ui text-body-sm text-fg-muted tracking-wide">ADMIN</span>
+          </span>
+          <button
+            type="button"
+            autoFocus
+            className={`${BUTTON_CLASSES} shrink-0 inline-flex items-center`}
+            onClick={() => dialogRef.current?.close()}
+          >
+            <X aria-hidden="true" />
+            <span className="sr-only">Fechar menu</span>
+          </button>
+        </div>
+        <nav aria-label="Navegação do Site">{renderNavList('m-0 flex list-none flex-col gap-1 p-0')}</nav>
       </dialog>
     </>
   );

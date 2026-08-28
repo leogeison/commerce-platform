@@ -228,4 +228,28 @@ describe('Topbar', () => {
 
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  // --- UXA-019B (refinamento): toolbar compacta abaixo de `sm` ---
+
+  it('UXA-019B: ícones decorativos de "Busca rápida" e "Menu do usuário" têm aria-hidden="true"', () => {
+    renderTopbar();
+
+    const searchIcon = screen.getByRole('button', { name: 'Busca rápida' }).querySelector('svg');
+    expect(searchIcon).not.toBeNull();
+    expect(searchIcon).toHaveAttribute('aria-hidden', 'true');
+
+    const userIcon = screen.getByRole('button', { name: 'Menu do usuário' }).querySelector('svg');
+    expect(userIcon).not.toBeNull();
+    expect(userIcon).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('UXA-019B: nomes acessíveis de Site/Busca rápida/Menu do usuário continuam resolvendo mesmo com o texto visualmente oculto (sr-only) abaixo de "sm"', () => {
+    renderTopbar();
+
+    // getByRole por nome já falharia se o texto sr-only não estivesse mais
+    // presente na árvore de acessibilidade — esta asserção é o próprio teste.
+    expect(screen.getByRole('combobox', { name: 'Site' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Busca rápida' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Menu do usuário' })).toBeInTheDocument();
+  });
 });
