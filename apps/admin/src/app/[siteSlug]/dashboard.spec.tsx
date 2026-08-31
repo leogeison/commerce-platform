@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import type { Role } from '@commerce-platform/contracts';
+import { TYPE_LABELS } from '../../lib/article-labels';
 import { Dashboard } from './dashboard';
 import { SiteRoleProvider } from './site-role-context';
 
@@ -454,9 +455,13 @@ describe('Dashboard', () => {
       // Seções vazias nesta rodada: os únicos 4 links da página são os
       // atalhos — ordem capturada diretamente do DOM, sem depender de
       // 4 `findByRole` isolados, para provar a ordem real de renderização,
-      // não só a presença de cada um.
+      // não só a presença de cada um. UXA-019A (revisão): cada card agora
+      // tem um subtítulo visível dentro do `<Link>`, então `.textContent`
+      // deixou de refletir só o rótulo — a asserção passa a usar
+      // `aria-label` (o nome acessível real do card, ver doc comment de
+      // `CreateShortcuts`), não o texto bruto do DOM.
       const shortcutLinks = screen.getAllByRole('link');
-      expect(shortcutLinks.map((link) => link.textContent)).toEqual([
+      expect(shortcutLinks.map((link) => link.getAttribute('aria-label'))).toEqual([
         'Novo Artigo',
         'Novo Produto',
         'Nova Categoria',
@@ -583,5 +588,132 @@ describe('Dashboard', () => {
     // A seção com erro não deixa nenhum item órfão nem estado "ready"
     // parcial — só a mensagem de erro, nunca uma lista vazia junto dela.
     expect(screen.queryByText('Nenhum Artigo aguardando publicação.')).not.toBeInTheDocument();
+  });
+
+  // --- UXA-019A: cabeçalho, descrição editorial e badge de Tipo ---
+
+  it('<h1> "Dashboard" está presente com o nível de heading correto', () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, emptyEnvelope()),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
+  });
+
+  it('descrição editorial estática está visível', () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, emptyEnvelope()),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard();
+
+    expect(
+      screen.getByText('Acompanhe seu fluxo editorial e retome o trabalho rapidamente.'),
+    ).toBeInTheDocument();
+  });
+
+  it('badge de Tipo (TYPE_LABELS) fica visível associado ao item, e o link do título continua resolvendo pelo título exato', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [makeArticleSummary({ title: 'Melhores fones 2026' })],
+        total: 1,
+        totalPages: 1,
+      }),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard();
+
+    const link = await screen.findByRole('link', { name: 'Melhores fones 2026' });
+    expect(link).toHaveAttribute('href', '/fastcompre/articles/11111111-1111-4111-8111-111111111111');
+    expect(link.closest('li')).toHaveTextContent(TYPE_LABELS.REVIEW);
+  });
+
+  // --- UXA-019A (revisão): cards de atalho, ícones decorativos, linha
+  // inteira clicável ---
+
+  it('card de atalho: nome acessível continua sendo action.label mesmo com o subtítulo visível (aria-label sobrepõe o conteúdo textual)', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, emptyEnvelope()),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard('EDITOR');
+    await screen.findByText('Nenhum rascunho em andamento.');
+
+    // O subtítulo é conteúdo visível de verdade (não `aria-hidden`) — deve
+    // aparecer via `getByText` normal — mas o nome acessível do link
+    // (usado por `getByRole`/leitor de tela) continua sendo só o rótulo,
+    // graças ao `aria-label`.
+    const link = screen.getByRole('link', { name: 'Novo Artigo' });
+    expect(link).toHaveAttribute('aria-label', 'Novo Artigo');
+    expect(screen.getByText('Criar um novo artigo editorial')).toBeInTheDocument();
+    expect(link.textContent).toContain('Criar um novo artigo editorial');
+    expect(link.textContent).not.toBe('Novo Artigo');
+  });
+
+  it('ícones decorativos (headings, linha de Artigo e cards de atalho) são todos aria-hidden — não interferem em nenhum nome acessível', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [makeArticleSummary({ title: 'Melhores fones 2026' })],
+        total: 1,
+        totalPages: 1,
+      }),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard('EDITOR');
+
+    const articleLink = await screen.findByRole('link', { name: 'Melhores fones 2026' });
+    await screen.findByText('Nenhum Artigo aguardando publicação.');
+    await screen.findByText('Nenhum Artigo publicado recentemente.');
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Continuar de onde parei' });
+    expect(heading.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+
+    const cardLink = screen.getByRole('link', { name: 'Novo Artigo' });
+    expect(cardLink.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+
+    const row = articleLink.closest('li');
+    expect(row).not.toBeNull();
+    // FileText (início) + ChevronRight (fim) — dois ícones decorativos por
+    // linha, nenhum deles filho do `<Link>` do título.
+    expect(row!.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(2);
+    expect(articleLink.querySelector('svg')).toBeNull();
+  });
+
+  it('linha de Artigo: a área inteira (ícone, badge, data, chevron) é coberta por um único Link — nenhum controle interativo concorrente dentro da linha', async () => {
+    global.fetch = mockFetchByStatus({
+      DRAFT: jsonResponse(200, {
+        ...emptyEnvelope(),
+        items: [makeArticleSummary({ title: 'Melhores fones 2026' })],
+        total: 1,
+        totalPages: 1,
+      }),
+      PENDING_REVIEW: jsonResponse(200, emptyEnvelope()),
+      PUBLISHED: jsonResponse(200, emptyEnvelope()),
+    });
+    renderDashboard();
+
+    const articleLink = await screen.findByRole('link', { name: 'Melhores fones 2026' });
+    await screen.findByText('Nenhum Artigo aguardando publicação.');
+    await screen.findByText('Nenhum Artigo publicado recentemente.');
+    const row = articleLink.closest('li');
+    expect(row).not.toBeNull();
+
+    // Um único elemento com role "link" (ou qualquer outro role
+    // interativo) dentro da linha — a área ampliada de clique (stretched
+    // link) não introduz nenhum segundo alvo interativo.
+    expect(within(row!).getAllByRole('link')).toHaveLength(1);
+    expect(within(row!).queryAllByRole('button')).toHaveLength(0);
+    // `article.title` continua sendo o único filho de texto real do Link
+    // (o pseudo-elemento `after:` não é um nó do DOM).
+    expect(articleLink.textContent).toBe('Melhores fones 2026');
   });
 });

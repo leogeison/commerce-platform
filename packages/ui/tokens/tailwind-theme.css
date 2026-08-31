@@ -50,6 +50,22 @@
   --color-accent-subtle: var(--color-accent-subtle-bg);
   --color-accent-subtle-fg: var(--color-accent-subtle-text);
 
+  /* UXA-019A — hierarquia de superfícies do Dashboard. `page-surface`/
+     `subtle-surface` (não `surface-page`/`surface-subtle`): usar o mesmo
+     nome da custom property de origem funcionaria hoje (cascade layers —
+     não-layered sempre vence layered, ver investigação da UXF-005), mas é
+     exatamente a autorreferência que este arquivo decidiu não usar em
+     nenhum alias (nenhum outro par aqui repete o nome do token de origem);
+     a ordem das palavras invertida preserva "surface" explícito nas
+     utilities (`bg-page-surface`/`bg-subtle-surface`) sem colidir
+     textualmente com `--color-surface-page`/`--color-surface-subtle`.
+     `outline-subtle`/`fg-secondary` seguem as famílias já existentes
+     (`outline`↔`border-default`, `fg`↔`text-primary`), sem esse problema. */
+  --color-page-surface: var(--color-surface-page);
+  --color-subtle-surface: var(--color-surface-subtle);
+  --color-outline-subtle: var(--color-border-subtle);
+  --color-fg-secondary: var(--color-text-secondary);
+
   /* radius */
   --radius-control: var(--radius-md);
   --radius-pill: var(--radius-full);
