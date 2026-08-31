@@ -20,6 +20,14 @@ const sites = [
   },
 ];
 
+// UXA-019C — usuário padrão dos testes deste arquivo (mesmo shape de
+// `AuthUser`, mesmos dados de exemplo já usados em `authenticated-shell.spec.tsx`).
+const defaultUser = {
+  id: '11111111-1111-4111-8111-111111111111',
+  email: 'ana@fastcompre.com',
+  name: 'Ana',
+};
+
 function renderTopbar(overrides: Partial<ComponentProps<typeof Topbar>> = {}) {
   const onSiteChange = jest.fn();
   const onLogout = jest.fn();
@@ -35,6 +43,7 @@ function renderTopbar(overrides: Partial<ComponentProps<typeof Topbar>> = {}) {
       isPaletteOpen={false}
       onOpenPalette={onOpenPalette}
       paletteId="command-palette-test"
+      user={defaultUser}
       {...overrides}
     />,
   );
@@ -91,13 +100,13 @@ describe('Topbar', () => {
 
     await user.tab();
 
-    expect(screen.getByRole('button', { name: 'Menu do usuário' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /^Menu do usuário/ })).toHaveFocus();
   });
 
   it('menu de usuário fechado por padrão', () => {
     renderTopbar();
 
-    expect(screen.getByRole('button', { name: 'Menu do usuário' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /^Menu do usuário/ })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
@@ -105,9 +114,9 @@ describe('Topbar', () => {
     const user = userEvent.setup();
     renderTopbar();
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
 
-    expect(screen.getByRole('button', { name: 'Menu do usuário' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^Menu do usuário/ })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('menuitem', { name: 'Sair' })).toHaveFocus();
   });
 
@@ -115,7 +124,7 @@ describe('Topbar', () => {
     const user = userEvent.setup();
     renderTopbar();
 
-    screen.getByRole('button', { name: 'Menu do usuário' }).focus();
+    screen.getByRole('button', { name: /^Menu do usuário/ }).focus();
     await user.keyboard('{Enter}');
 
     expect(screen.getByRole('menu')).toBeInTheDocument();
@@ -126,7 +135,7 @@ describe('Topbar', () => {
     const user = userEvent.setup();
     renderTopbar();
 
-    const trigger = screen.getByRole('button', { name: 'Menu do usuário' });
+    const trigger = screen.getByRole('button', { name: /^Menu do usuário/ });
     await user.click(trigger);
     await user.keyboard('{Escape}');
 
@@ -149,11 +158,12 @@ describe('Topbar', () => {
           isPaletteOpen={false}
           onOpenPalette={jest.fn()}
           paletteId="command-palette-test"
+          user={defaultUser}
         />
       </div>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Fora' }));
@@ -175,12 +185,13 @@ describe('Topbar', () => {
           isPaletteOpen={false}
           onOpenPalette={jest.fn()}
           paletteId="command-palette-test"
+          user={defaultUser}
         />
         <button type="button">Depois</button>
       </div>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
     await user.tab();
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
@@ -191,7 +202,7 @@ describe('Topbar', () => {
     const user = userEvent.setup();
     const { onLogout } = renderTopbar();
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
     await user.click(screen.getByRole('menuitem', { name: 'Sair' }));
 
     expect(onLogout).toHaveBeenCalledTimes(1);
@@ -202,7 +213,7 @@ describe('Topbar', () => {
     const user = userEvent.setup();
     renderTopbar({ isLoggingOut: true });
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
 
     expect(screen.getByRole('menuitem', { name: 'Saindo...' })).toBeDisabled();
     expect(screen.getByRole('menu')).toBeInTheDocument();
@@ -212,7 +223,7 @@ describe('Topbar', () => {
     const user = userEvent.setup();
     renderTopbar({ logoutError: true });
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível sair. Tente novamente em instantes.');
     expect(screen.getByRole('menu')).toBeInTheDocument();
@@ -224,32 +235,107 @@ describe('Topbar', () => {
 
     expect(await axe(container)).toHaveNoViolations();
 
-    await user.click(screen.getByRole('button', { name: 'Menu do usuário' }));
+    await user.click(screen.getByRole('button', { name: /^Menu do usuário/ }));
 
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  // --- UXA-019B (refinamento): toolbar compacta abaixo de `sm` ---
+  // --- UXA-019B (refinamento): toolbar compacta abaixo de `lg` ---
 
-  it('UXA-019B: ícones decorativos de "Busca rápida" e "Menu do usuário" têm aria-hidden="true"', () => {
+  it('UXA-019B: ícone decorativo de "Busca rápida" tem aria-hidden="true"', () => {
     renderTopbar();
 
     const searchIcon = screen.getByRole('button', { name: 'Busca rápida' }).querySelector('svg');
     expect(searchIcon).not.toBeNull();
     expect(searchIcon).toHaveAttribute('aria-hidden', 'true');
-
-    const userIcon = screen.getByRole('button', { name: 'Menu do usuário' }).querySelector('svg');
-    expect(userIcon).not.toBeNull();
-    expect(userIcon).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('UXA-019B: nomes acessíveis de Site/Busca rápida/Menu do usuário continuam resolvendo mesmo com o texto visualmente oculto (sr-only) abaixo de "sm"', () => {
+  it('UXA-019B: nomes acessíveis de Site/Busca rápida/Menu do usuário continuam resolvendo mesmo com o texto visualmente oculto (sr-only/hidden) na faixa compacta (abaixo de "lg")', () => {
     renderTopbar();
 
     // getByRole por nome já falharia se o texto sr-only não estivesse mais
     // presente na árvore de acessibilidade — esta asserção é o próprio teste.
     expect(screen.getByRole('combobox', { name: 'Site' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Busca rápida' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Menu do usuário' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Menu do usuário/ })).toBeInTheDocument();
+  });
+
+  // --- UXA-019C: User Pill ---
+
+  it('UXA-019C: mostra a inicial do usuário quando `user.name` é válido', () => {
+    renderTopbar({ user: { ...defaultUser, name: 'Ana' } });
+
+    expect(screen.getByText('A')).toBeInTheDocument();
+  });
+
+  it('UXA-019C: nome nulo cai no fallback estático "Usuário" (nome acessível); inicial vem do e-mail', () => {
+    renderTopbar({ user: { ...defaultUser, email: 'zeca@fastcompre.com', name: null } });
+
+    expect(screen.getByRole('button', { name: 'Menu do usuário, Usuário' })).toBeInTheDocument();
+    expect(screen.getByText('Z')).toBeInTheDocument();
+  });
+
+  it('UXA-019C: nome vazio/só espaços após trim() também cai no fallback "Usuário" (nome acessível), com a mesma regra de inicial', () => {
+    renderTopbar({ user: { ...defaultUser, email: 'zeca@fastcompre.com', name: '   ' } });
+
+    expect(screen.getByRole('button', { name: 'Menu do usuário, Usuário' })).toBeInTheDocument();
+    expect(screen.getByText('Z')).toBeInTheDocument();
+  });
+
+  it('UXA-019C: o e-mail do usuário nunca aparece como texto visível na User Pill', () => {
+    renderTopbar();
+
+    expect(screen.queryByText(defaultUser.email)).not.toBeInTheDocument();
+  });
+
+  it('UXA-019C (correção WCAG 2.5.3): nome válido — nome acessível do gatilho é "Menu do usuário, <nome>"', () => {
+    renderTopbar({ user: { ...defaultUser, name: 'Zeca' } });
+
+    const trigger = screen.getByRole('button', { name: 'Menu do usuário, Zeca' });
+    expect(trigger).toHaveAttribute('aria-label', 'Menu do usuário, Zeca');
+  });
+
+  it('UXA-019C (correção WCAG 2.5.3): fallback — nome nulo/vazio produz nome acessível "Menu do usuário, Usuário"', () => {
+    renderTopbar({ user: { ...defaultUser, name: null } });
+
+    const trigger = screen.getByRole('button', { name: 'Menu do usuário, Usuário' });
+    expect(trigger).toHaveAttribute('aria-label', 'Menu do usuário, Usuário');
+  });
+
+  it('UXA-019C (correção WCAG 2.5.3): o e-mail continua ausente do nome acessível dinâmico', () => {
+    renderTopbar({ user: { ...defaultUser, name: 'Zeca' } });
+
+    expect(screen.queryByText(defaultUser.email)).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Menu do usuário, Zeca' });
+    expect(trigger.getAttribute('aria-label')).not.toContain(defaultUser.email);
+  });
+
+  it('UXA-019C: avatar da User Pill é decorativo (aria-hidden="true")', () => {
+    renderTopbar();
+
+    const avatar = screen.getByText('A');
+    expect(avatar).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('UXA-019C: sem violação de acessibilidade (jest-axe) com a User Pill', async () => {
+    const { container } = renderTopbar({ user: { ...defaultUser, name: null } });
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // --- UXA-019C: avatar-only, densidade compacta ---
+
+  it('UXA-019C: User Pill é avatar-only em qualquer largura — nenhum texto de nome visível e nenhum ícone adicional (chevron) no gatilho', () => {
+    renderTopbar({ user: { ...defaultUser, name: 'Ana' } });
+
+    const trigger = screen.getByRole('button', { name: /^Menu do usuário/ });
+    expect(screen.queryByText('Ana')).not.toBeInTheDocument();
+    expect(trigger.querySelector('svg')).toBeNull();
+  });
+
+  it('UXA-019C: raiz da Topbar aplica data-density="compact"', () => {
+    const { container } = renderTopbar();
+
+    expect(container.querySelector('[data-density="compact"]')).toBeInTheDocument();
   });
 });

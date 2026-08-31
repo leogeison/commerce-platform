@@ -197,6 +197,19 @@ describe('AuthenticatedShell', () => {
     expect(screen.getByText('Conteúdo da página')).toBeInTheDocument();
   });
 
+  // --- UXA-019C: `user` (MeResponse.user) repassado a Topbar ---
+
+  it('UXA-019C: repassa `MeResponse.user` para a Topbar — o gatilho da User Pill (avatar-only) recebe o nome acessível dinâmico vindo do fetch existente', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+    renderShell('/fastcompre/categories');
+
+    // `meResponse.user.name` é "Ana" — a User Pill é avatar-only (sem nome
+    // visível em nenhuma largura), então a prova de que `user` chegou de
+    // fato à Topbar é o nome acessível do gatilho, não um texto visível.
+    expect(await screen.findByRole('button', { name: 'Menu do usuário, Ana' })).toBeInTheDocument();
+  });
+
   it('fornece a Role do Site atual via SiteRoleProvider (ADM-012), sem prop drilling', async () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
 
@@ -272,7 +285,7 @@ describe('AuthenticatedShell', () => {
    * porque o elemento sobrescreve seu papel implícito via `role`.
    */
   async function openUserMenu(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByRole('button', { name: 'Menu do usuário' }));
+    await user.click(await screen.findByRole('button', { name: /^Menu do usuário/ }));
   }
 
   it('logout: sucesso chama POST /admin/auth/logout e redireciona para /login', async () => {

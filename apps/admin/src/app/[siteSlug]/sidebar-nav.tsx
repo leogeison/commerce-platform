@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode
+} from 'react';
 import { usePathname } from 'next/navigation';
 import {
   FileText,
@@ -10,10 +17,14 @@ import {
   Tag,
   Users,
   X,
-  type LucideIcon,
+  type LucideIcon
 } from 'lucide-react';
 import { GuardedLink } from './guarded-link';
-import { isNavDestinationActive, NAV_DESTINATIONS, navDestinationHref } from './nav-destinations';
+import {
+  isNavDestinationActive,
+  NAV_DESTINATIONS,
+  navDestinationHref
+} from './nav-destinations';
 import styles from './sidebar-nav.module.css';
 
 interface SidebarNavProps {
@@ -125,7 +136,7 @@ interface SidebarNavProps {
  * nunca muda e o `<dialog>` permanece aberto — nenhuma alteração em
  * `GuardedLink` foi necessária para isso.
  *
- * Fechamento na transição para `lg+` (correção de revisão): um
+ * Fechamento na transição para `lg+`: um
  * `<dialog>` aberto via `showModal()` continua modal mesmo depois que o
  * CSS passa a ocultar o markup mobile (`lg:hidden`) — sem isto, redimensionar
  * a janela de estreita para `lg+` com o drawer aberto deixaria um modal
@@ -148,25 +159,28 @@ interface SidebarNavProps {
  *
  * UXA-019B — Sidebar lateral vertical em desktop.
  *
- * Este componente continua retornando um Fragment com três elementos-irmãos
- * (`button`, `nav` persistente, `dialog`) — nenhuma mudança nessa estrutura.
- * O que muda é onde ele é montado: `authenticated-shell.tsx` passou a
- * renderizá-lo como filho direto do grid `.shell` (`authenticated-shell
- * .module.css`), fora de `<header>`. Como um Fragment não introduz nenhuma
- * caixa própria, cada um dos três elementos deste componente vira, ele
- * mesmo, um item de grid do `.shell` — por isso `button` e `nav` recebem
- * `grid-area` diretamente (`[grid-area:menu]`/`lg:[grid-area:rail]`), sem
- * `display: contents` e sem introduzir um wrapper novo. O `dialog` do
- * drawer não recebe `grid-area`: como elemento nativo `<dialog>`, ele é
- * `display: none` da UA stylesheet enquanto fechado e passa a
- * `position: fixed`/top-layer via `showModal()` quando aberto — em nenhum
- * dos dois estados ele participa da geração de itens de grid do `.shell`,
- * então nenhum posicionamento é necessário nem produz efeito.
+ * Este componente retorna um Fragment com três elementos-irmãos: um `div`
+ * wrapper do botão "Menu" (grid-area `menu`), o `nav` persistente
+ * (grid-area `rail`, `lg+`) e o `dialog` do drawer. `authenticated-
+ * shell.tsx` renderiza este componente como filho direto do grid `.shell`
+ * (`authenticated-shell.module.css`), fora de `<header>` — como um
+ * Fragment não introduz caixa própria, o wrapper e o `nav` viram, eles
+ * mesmos, itens de grid do `.shell`, por isso recebem `grid-area`
+ * diretamente (`[grid-area:menu]`/`lg:[grid-area:rail]`), sem `display:
+ * contents`. O wrapper do botão existe para dar à célula `menu` uma
+ * borda inferior própria (ver doc comment do botão "Menu" mais abaixo) —
+ * sem ele, o botão sozinho não teria como estender essa borda por toda a
+ * altura da linha do grid. O `dialog` do drawer não recebe `grid-area`:
+ * como elemento nativo `<dialog>`, ele é `display: none` da UA
+ * stylesheet enquanto fechado e passa a `position: fixed`/top-layer via
+ * `showModal()` quando aberto — em nenhum dos dois estados ele participa
+ * da geração de itens de grid do `.shell`, então nenhum posicionamento é
+ * necessário nem produz efeito.
  *
  * Abaixo de `lg`, `nav` continua `hidden` (mesmo padrão de antes) — o
- * `grid-area: menu` do `button` é o único posicionamento ativo nessa faixa,
- * reproduzindo a composição horizontal Menu+Topbar já existente, agora como
- * itens de grid irmãos em vez de filhos do mesmo `<header>`.
+ * `grid-area: menu` do wrapper é o único posicionamento ativo nessa
+ * faixa, reproduzindo a composição horizontal Menu+Topbar já existente,
+ * agora como itens de grid irmãos em vez de filhos do mesmo `<header>`.
  *
  * A partir de `lg`, `nav` vira o rail: `lg:flex lg:flex-col` substitui o
  * antigo `hidden lg:block` (que preservava o layout horizontal do `<ul>`
@@ -191,14 +205,14 @@ interface SidebarNavProps {
  * exatamente `item.label` (texto), sem concatenação de texto alternativo
  * do ícone nem qualquer outra alteração ao cálculo de accessible name.
  *
- * Estado ativo: `bg-accent-subtle`/`text-accent-subtle-fg` (aliases novos
- * de `packages/ui/tokens/tailwind-theme.css`, mapeando sem valor de cor
- * novo os tokens já existentes `--color-accent-subtle-bg`/
+ * Estado ativo: `bg-accent-subtle`/`text-accent-subtle-fg` (aliases de
+ * `packages/ui/tokens/tailwind-theme.css`, mapeando sem valor de cor novo
+ * os tokens já existentes `--color-accent-subtle-bg`/
  * `--color-accent-subtle-text` de `semantic-colors.css`) somam-se ao
- * `underline` já existente — não o substituem — para que o item ativo
- * continue distinguível sem depender só de cor (WCAG 1.4.1), além do
- * `aria-current="page"` programático já emitido por
- * `isNavDestinationActive`.
+ * `underline` para que o item ativo continue distinguível sem depender só
+ * de cor (WCAG 1.4.1), além do `aria-current="page"` programático já
+ * emitido por `isNavDestinationActive`. Ver UXA-019C abaixo para a
+ * evolução deste tratamento (pílula).
  *
  * UXA-019B (refinamento) — Trigger mobile compacto + drawer como gaveta lateral.
  *
@@ -207,14 +221,13 @@ interface SidebarNavProps {
  * preservando o nome acessível exato ("Menu", texto ainda presente no DOM,
  * só oculto visualmente pela técnica `sr-only` já usada em
  * `command-palette.tsx`) enquanto reduz a largura ocupada na faixa superior
- * compacta. `self-start` permanece no botão: mesmo com `Topbar` agora
- * compacta (ver `topbar.tsx`), a linha do grid (`menu`/`topbar`) ainda pode
- * ficar mais alta que o botão em zoom alto/nomes de Site longos que forcem
- * quebra — sem `self-start`, o `align-items: stretch` padrão do grid
- * (`.shell` não declara `align-items`, então herda o inicial `normal`, que
- * para um item de bloco como `<button>` computa como `stretch`) esticaria o
- * botão para acompanhar essa altura, produzindo a "coluna lateral alta" já
- * corrigida nesta rodada.
+ * compacta. O botão vive dentro de um wrapper (`[grid-area:menu]`, ver doc
+ * comment mais abaixo) que ocupa a altura cheia da linha do grid (`.shell`
+ * não declara `align-items`, então o item de grid estica por padrão) — é
+ * isso que permite a borda inferior do wrapper acompanhar a borda do
+ * `<header>` na mesma altura; o botão em si fica centralizado dentro do
+ * wrapper (`items-center`/`self-center`), independente da altura da linha
+ * em zoom alto/nomes de Site longos que forcem quebra.
  *
  * O `<dialog>` ganha `className={styles.drawer}` (`sidebar-nav.module.css`,
  * novo arquivo — primeiro CSS Module deste componente; a decisão anterior
@@ -240,8 +253,82 @@ interface SidebarNavProps {
  * perdeu o `mt-4` do `<ul>`: o espaçamento entre o cabeçalho e a lista agora
  * vem do `gap` do próprio `.drawer` (flex column), não mais de uma margem
  * pontual no `<ul>`.
+ *
+ * UXA-019C — pílula ativa, branding restrito ao rail/drawer, copyright no rail.
+ *
+ * Estado ativo (`renderNavList`): o `underline` que somava ao par
+ * `bg-accent-subtle`/`text-accent-subtle-fg` foi removido — decisão
+ * fechada na aprovação do desenho técnico desta tarefa. A não-dependência
+ * exclusiva de cor (WCAG 1.4.1) passa a vir de dois sinais não-cromáticos
+ * combinados: forma (só o item ativo usa `rounded-pill`, os inativos
+ * seguem `rounded-control` — cantos francamente diferentes, não uma
+ * variação sutil) e o `aria-current="page"` programático, inalterado. Os
+ * links passam a ter `px-control-x py-control-y` (antes sem padding
+ * algum) — necessário para o preenchimento de fundo do estado ativo
+ * (`bg-accent-subtle`) ganhar a respiração de uma pílula de verdade em
+ * vez de colar direto no ícone/texto; aplicado a todos os itens (ativo e
+ * inativos), não só ao ativo, para que nenhum item mude de tamanho ao
+ * navegar entre eles. Nenhum token novo (`--radius-pill`/`--spacing-
+ * control-x`/`--spacing-control-y` já existiam e já eram consumidos em
+ * outros componentes, ex. `topbar.tsx`).
+ *
+ * Mobile fechado: só hambúrguer, seletor de Site, busca e avatar (os
+ * quatro controles reais) — nenhuma representação da marca "FastCompre"
+ * fora do rail/drawer, evitando duplicação de identidade visual na faixa
+ * mais estreita. O branding completo "FastCompre"/"ADMIN" continua
+ * exclusivamente no rail (`lg+`) e no cabeçalho do drawer.
+ *
+ * Copyright: `<p>` estático, último filho do `<nav>` persistente
+ * (desktop, `lg+`), texto fixo "© 2026 FastCompre. Todos os direitos
+ * reservados." (microdecisão fechada no desenho técnico — nenhum cálculo
+ * de ano). `mt-auto` dentro do `<nav>` (`lg:flex lg:flex-col`, que já
+ * ocupa a altura cheia da área `rail` do grid) empurra o texto para o
+ * rodapé sem precisar de nenhuma mudança estrutural no CSS Module do
+ * shell. Deliberadamente só no rail desktop — decisão fechada na
+ * aprovação do desenho técnico: o `<dialog>` do drawer mobile não ganha
+ * este rodapé (o requisito normativo fala em "rodapé do rail", e
+ * replicar no drawer ampliaria o escopo sem necessidade). `text-fg-muted`
+ * (mesmo token secundário já usado no "ADMIN" da marca) — nenhuma cor
+ * nova.
+ *
+ * `authenticated-shell.module.css` define o padding estrutural do
+ * `<header>` e a largura fixa do rail — ver doc comment do próprio
+ * arquivo CSS para os valores atuais; o grid em si (`grid-template-
+ * areas`, breakpoint `1024px`) não depende desses valores.
+ *
+ * Botão "Menu" (hambúrguer): fica dentro de um wrapper próprio
+ * (`lg:hidden [grid-area:menu]`) cuja borda inferior (`border-b
+ * border-[#e5e7eb]`) usa a mesma cor do `border-bottom` de `.header`
+ * (`authenticated-shell.module.css`) — dá continuidade visual à borda do
+ * header através da célula do hambúrguer, que de outro modo ficaria sem
+ * ela nessa largura. `self-center` centraliza o botão dentro do wrapper.
+ * O botão em si usa `HAMBURGER_CLASSES` (constante local, abaixo) —
+ * mantida separada de `BUTTON_CLASSES` porque hambúrguer e "Fechar menu"
+ * (drawer) são controles logicamente distintos, ainda que hoje tenham a
+ * mesma receita visual. `data-density="compact"` no botão reduz seu
+ * `px-control-x py-control-y` de 16px/12px para 12px/8px (mesmo
+ * mecanismo de `packages/ui/tokens/spacing.css` usado em `topbar.tsx` —
+ * custom properties CSS aplicadas a um elemento também valem para o
+ * próprio elemento, não só para descendentes).
+ *
+ * `<nav>` persistente (rail): `data-density="compact"` (mesmo efeito nos
+ * 5 links de `renderNavList`, via `px-control-x py-control-y` já
+ * existente neles) com `gap`/`padding` Tailwind reduzidos
+ * (`lg:gap-4`/`lg:p-3`) — não cobertos pelo token de densidade (são
+ * valores fixos, não `--space-control-*`). O branding "FastCompre"/
+ * "ADMIN" não usa nenhum token de fonte menor que `text-body-sm` (não
+ * existe um em `tailwind-theme.css`); a compactação vem só do `gap`
+ * reduzido do `<nav>`, que aproxima o bloco de branding do restante do
+ * conteúdo.
  */
 const BUTTON_CLASSES =
+  'rounded-control border border-outline bg-surface px-control-x py-control-y text-body-sm font-ui font-action text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus';
+
+// Classe do botão "Menu" (hambúrguer) — mantida separada de
+// `BUTTON_CLASSES` porque são controles logicamente distintos (hambúrguer
+// vs. "Fechar menu" do drawer), ainda que hoje compartilhem a mesma
+// receita visual.
+const HAMBURGER_CLASSES =
   'rounded-control border border-outline bg-surface px-control-x py-control-y text-body-sm font-ui font-action text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus';
 
 // Mesmo valor de `lg` usado nas classes Tailwind abaixo — não é um token
@@ -274,12 +361,14 @@ const SEGMENT_ICONS = {
   articles: FileText,
   products: ShoppingBag,
   categories: Tag,
-  authors: Users,
+  authors: Users
 } satisfies Record<NavSegment, LucideIcon>;
 
 function iconForSegment(segment: string): LucideIcon {
   if (!(segment in SEGMENT_ICONS)) {
-    throw new Error(`SidebarNav: nenhum ícone mapeado para o segmento "${segment}".`);
+    throw new Error(
+      `SidebarNav: nenhum ícone mapeado para o segmento "${segment}".`
+    );
   }
   return SEGMENT_ICONS[segment as NavSegment];
 }
@@ -332,7 +421,7 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
   function renderNavList(listClassName: string): ReactNode {
     return (
       <ul className={listClassName}>
-        {NAV_DESTINATIONS.map((item) => {
+        {NAV_DESTINATIONS.map(item => {
           const href = navDestinationHref(siteSlug, item.segment);
           const isActive = isNavDestinationActive(pathname, href, item);
           const Icon = iconForSegment(item.segment);
@@ -341,8 +430,10 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
               <GuardedLink
                 href={href}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex items-center gap-2 rounded-control font-ui font-action text-body text-fg no-underline focus-visible:outline-none focus-visible:ring-2 ring-focus ${
-                  isActive ? 'underline bg-accent-subtle text-accent-subtle-fg' : ''
+                className={`flex items-center gap-2 px-control-x py-control-y font-ui font-action text-body text-fg no-underline focus-visible:outline-none focus-visible:ring-2 ring-focus ${
+                  isActive
+                    ? 'rounded-pill bg-accent-subtle text-accent-subtle-fg'
+                    : 'rounded-control'
                 }`}
               >
                 <Icon aria-hidden="true" className="shrink-0" />
@@ -363,30 +454,39 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
 
   return (
     <>
-      <button
-        type="button"
-        className={`${BUTTON_CLASSES} lg:hidden [grid-area:menu] self-start inline-flex items-center gap-2`}
-        aria-haspopup="dialog"
-        aria-expanded={isOpen}
-        aria-controls={drawerId}
-        onClick={() => {
-          dialogRef.current?.showModal();
-          setIsOpen(true);
-        }}
-      >
-        <MenuIcon aria-hidden="true" className="shrink-0" />
-        <span className="sr-only">Menu</span>
-      </button>
+      <div className="lg:hidden [grid-area:menu] flex items-center border-b border-[#e5e7eb] pl-6 pr-1">
+        <button
+          type="button"
+          data-density="compact"
+          className={`${HAMBURGER_CLASSES} lg:hidden [grid-area:menu] self-center inline-flex items-center gap-2`}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          aria-controls={drawerId}
+          onClick={() => {
+            dialogRef.current?.showModal();
+            setIsOpen(true);
+          }}
+        >
+          <MenuIcon aria-hidden="true" className="shrink-0" />
+          <span className="sr-only">Menu</span>
+        </button>
+      </div>
 
       <nav
         aria-label="Navegação do Site"
-        className="hidden lg:flex lg:[grid-area:rail] lg:flex-col lg:gap-6 lg:border-r lg:border-outline lg:p-4"
+        data-density="compact"
+        className="hidden lg:flex lg:[grid-area:rail] lg:flex-col lg:gap-4 lg:border-r lg:border-outline lg:p-3"
       >
         <span className="flex flex-col font-ui text-body-sm font-action leading-tight text-fg">
           <span>FastCompre</span>
-          <span className="font-ui text-body-sm text-fg-muted tracking-wide">ADMIN</span>
+          <span className="font-ui text-body-sm text-fg-muted tracking-wide">
+            ADMIN
+          </span>
         </span>
         {renderNavList('m-0 flex list-none flex-col gap-4 p-0')}
+        <p className="m-0 mt-auto font-ui text-body-sm text-fg-muted">
+          © 2026 FastCompre. Todos os direitos reservados.
+        </p>
       </nav>
 
       <dialog
@@ -400,7 +500,9 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
         <div className="flex items-center justify-between gap-4">
           <span className="flex flex-col font-ui text-body-sm font-action leading-tight text-fg">
             <span>FastCompre</span>
-            <span className="font-ui text-body-sm text-fg-muted tracking-wide">ADMIN</span>
+            <span className="font-ui text-body-sm text-fg-muted tracking-wide">
+              ADMIN
+            </span>
           </span>
           <button
             type="button"
@@ -412,7 +514,9 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
             <span className="sr-only">Fechar menu</span>
           </button>
         </div>
-        <nav aria-label="Navegação do Site">{renderNavList('m-0 flex list-none flex-col gap-1 p-0')}</nav>
+        <nav aria-label="Navegação do Site">
+          {renderNavList('m-0 flex list-none flex-col gap-1 p-0')}
+        </nav>
       </dialog>
     </>
   );

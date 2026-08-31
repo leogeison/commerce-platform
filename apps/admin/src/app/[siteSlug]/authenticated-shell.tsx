@@ -103,6 +103,11 @@ function categoriesHref(siteSlug: string): string {
  * `topbar.tsx`, já que a UI que a renderiza (o item "Sair" do menu de
  * usuário) vive inteira lá agora.
  *
+ * UXA-019C — `user={state.data.user}` passado a `Topbar` para alimentar a
+ * User Pill (nome/inicial). `state.data.user` já vem de `meResponseSchema`
+ * (`GET /admin/auth/me`, fetch existente, sem endpoint novo) — nenhum novo
+ * estado, `useEffect` ou requisição introduzidos por esta tarefa.
+ *
  * `CommandPalette` (UXA-009) — este componente é o dono do estado
  * `isPaletteOpen` (decisão de revisão: sem Context novo). `Topbar` só
  * recebe `onOpenPalette`/`isPaletteOpen`/`paletteId` como props, mesmo
@@ -277,6 +282,7 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
           isPaletteOpen={isPaletteOpen}
           onOpenPalette={() => setIsPaletteOpen(true)}
           paletteId={paletteId}
+          user={state.data.user}
         />
       </header>
 

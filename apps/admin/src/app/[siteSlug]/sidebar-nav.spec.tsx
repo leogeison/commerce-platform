@@ -226,6 +226,72 @@ describe('SidebarNav', () => {
     expect(within(persistentNav).getByRole('link', { name: 'Autores' })).toBeInTheDocument();
   });
 
+  // --- UXA-019C: pílula ativa, marca compacta mobile, copyright do rail ---
+
+  it('UXA-019C: item ativo recebe rounded-pill (radius mais evidente); inativos mantêm rounded-control — sem depender só de cor', () => {
+    renderSidebarNav('/fastcompre/categories');
+
+    const activeLink = screen.getByRole('link', { name: 'Categorias' });
+    expect(activeLink).toHaveAttribute('aria-current', 'page');
+    const activeClasses = activeLink.className.split(/\s+/);
+    expect(activeClasses).toContain('rounded-pill');
+    // `no-underline` (reset de base, presente em todo item) contém a
+    // substring "underline" — por isso a checagem é por token exato via
+    // split(), não `toContain` na string crua.
+    expect(activeClasses).not.toContain('underline');
+
+    const inactiveLink = screen.getByRole('link', { name: 'Produtos' });
+    expect(inactiveLink).not.toHaveAttribute('aria-current');
+    expect(inactiveLink.className).toContain('rounded-control');
+  });
+
+  it('UXA-019C: mobile fechado não renderiza nenhuma marca "FC" — nenhuma duplicação do branding fora do rail/drawer', () => {
+    renderSidebarNav('/fastcompre/categories');
+
+    expect(screen.queryByText('FC')).not.toBeInTheDocument();
+    // "FastCompre" aparece 2x no documento — rail persistente + cabeçalho
+    // do drawer (sempre no DOM, mesmo fechado; `<dialog>` só oculta via UA
+    // stylesheet) — as duas ocorrências legítimas. Uma terceira indicaria
+    // uma marca solta ao lado do trigger "Menu", que este teste garante
+    // que não existe.
+    expect(screen.getAllByText('FastCompre')).toHaveLength(2);
+  });
+
+  it('UXA-019C: copyright estático aparece no rodapé do rail desktop, mas não dentro do drawer mobile', async () => {
+    const user = userEvent.setup();
+    renderSidebarNav('/fastcompre/categories');
+
+    const persistentNav = screen.getByRole('navigation', { name: 'Navegação do Site' });
+    expect(within(persistentNav).getByText('© 2026 FastCompre. Todos os direitos reservados.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Menu de navegação' });
+    expect(within(dialog).queryByText('© 2026 FastCompre. Todos os direitos reservados.')).not.toBeInTheDocument();
+  });
+
+  it('UXA-019C: sem violação de acessibilidade (jest-axe) com a pílula ativa e o copyright do rail', async () => {
+    const { container } = renderSidebarNav('/fastcompre/categories');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // --- UXA-019C: densidade compacta ---
+
+  it('UXA-019C: botão "Menu" (hambúrguer) aplica data-density="compact"', () => {
+    renderSidebarNav('/fastcompre/categories');
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toHaveAttribute('data-density', 'compact');
+  });
+
+  it('UXA-019C: nav persistente (rail) aplica data-density="compact"', () => {
+    renderSidebarNav('/fastcompre/categories');
+
+    expect(screen.getByRole('navigation', { name: 'Navegação do Site' })).toHaveAttribute(
+      'data-density',
+      'compact',
+    );
+  });
+
   it('abrir o drawer: foco inicial em "Fechar menu", aria-expanded vira true, itens aparecem na ordem correta depois do botão', async () => {
     const user = userEvent.setup();
     renderSidebarNav('/fastcompre/categories');

@@ -15,7 +15,7 @@
  *
  * A partir de 1024px (`lg`, mesmo valor já usado em `sidebar-nav.tsx` via
  * `matchMedia`/classes Tailwind, sem token novo): duas colunas
- * (`256px`/rail fixo, `minmax(0, 1fr)`/coluna principal), com `rail`
+ * (`224px`/rail fixo, `minmax(0, 1fr)`/coluna principal), com `rail`
  * ocupando as duas linhas do template.
  *
  * `minmax(0, 1fr)` em vez de `1fr` puro nas duas colunas principais: o
@@ -29,10 +29,34 @@
  * pré-existentes de Artigos/Produtos (débito já registrado, fora de
  * escopo desta tarefa) — só impede que esse tipo de conteúdo alargue o
  * próprio shell.
+ *
+ * UXA-019C — `.header` (`padding: 0.75rem 1.25rem`; `gap: 0.75rem`) e a
+ * largura fixa do rail (`224px`) são deliberadamente compactos,
+ * complementando `data-density="compact"` (`topbar.tsx`/`sidebar-nav.tsx`)
+ * para uma Topbar/Sidebar mais densas. Nenhum desses valores afeta
+ * `grid-template-areas` nem o breakpoint `1024px` em si.
+ *
+ * `grid-template-rows: auto 1fr` fixa o eixo de linhas nas duas
+ * composições (`menu topbar` / `content content` abaixo de 1024px; `rail
+ * topbar` / `rail content` a partir daí). `.shell` tem altura mínima
+ * definida (`min-height: 100%`, encadeado de `html, body { height: 100% }`
+ * em `globals.css`); sem um `grid-template-rows` explícito, as linhas
+ * implícitas seriam `auto` e o `align-content: normal` padrão do Grid se
+ * comporta como `stretch` quando sobra espaço no eixo de bloco —
+ * distribuindo esse espaço entre as linhas `auto`, inclusive a da Topbar,
+ * em rotas cujo `children` é mais raso que o viewport (ex.: as listagens
+ * de Artigos/Produtos/Categorias/Autores, ao contrário do Dashboard). Ao
+ * travar a linha `topbar` em `auto` (só a altura intrínseca dos seus
+ * controles) e a linha `content` em `1fr`, toda folga vertical passa a ser
+ * absorvida por `content` — onde espaço sobrando já é esperado — em vez
+ * de inflar a Topbar. Não redeclarado no `@media (min-width: 1024px)`
+ * abaixo porque a cascata já preserva a propriedade: a media query só
+ * sobrescreve `grid-template-columns`/`grid-template-areas`.
  */
 .shell {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
   grid-template-areas:
     'menu topbar'
     'content content';
@@ -44,8 +68,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -66,7 +90,7 @@
 
 @media (min-width: 1024px) {
   .shell {
-    grid-template-columns: 256px minmax(0, 1fr);
+    grid-template-columns: 224px minmax(0, 1fr);
     grid-template-areas:
       'rail topbar'
       'rail content';
