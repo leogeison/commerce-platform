@@ -131,12 +131,12 @@ describe('Home', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it('exatamente um Site: redireciona para /:siteSlug/categories, sem renderizar lista', async () => {
+  it('exatamente um Site: redireciona para /:siteSlug (Dashboard), sem renderizar lista', async () => {
     mockFetchOnce(200, meResponseWithOneSite);
 
     renderHome();
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/fastcompre/categories'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/fastcompre'));
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 

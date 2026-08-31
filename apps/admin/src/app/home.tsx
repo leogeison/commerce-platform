@@ -19,10 +19,21 @@ const GENERIC_ERROR_MESSAGE = 'Não foi possível carregar seus Sites. Tente nov
  * `siteSlug` (`meResponseSchema`) é `z.string()` puro — sem regex/formato
  * garantido no contrato (ADM-003). `encodeURIComponent` aqui não é
  * validação nova, só a mesma cautela que qualquer segmento dinâmico de URL
- * já precisaria ter para não quebrar a rota com caracteres especiais.
+ * já precisaria ter para não quebrar a rota com caracteres especiais. Usado
+ * pela lista de múltiplos Sites abaixo.
  */
 function categoriesHref(siteSlug: string): string {
   return `/${encodeURIComponent(siteSlug)}/categories`;
+}
+
+/**
+ * Painel do Site (Architecture.md §32, "Fluxo do seletor de Site") —
+ * `/:siteSlug`, o Dashboard (UXA-017). Mesma cautela de `encodeURIComponent`
+ * de `categoriesHref` acima. Usado só pelo redirect automático de Site
+ * único, abaixo.
+ */
+function dashboardHref(siteSlug: string): string {
+  return `/${encodeURIComponent(siteSlug)}`;
 }
 
 /**
@@ -32,11 +43,11 @@ function categoriesHref(siteSlug: string): string {
  * continua host-only da API, nunca lido/copiado aqui).
  *
  * Fluxo do seletor de Site (Architecture.md §32): zero Sites é estado
- * válido (mensagem, sem redirect); exatamente um Site redireciona direto
- * para `/:siteSlug/categories` (painel "de fato" ainda não existe como
- * página própria — mesma situação temporária que `/` teve após a ADM-002,
- * até a ADM-005 implementar essa rota); múltiplos Sites mostra a lista
- * inicial, sem nenhum componente de troca pensando na ADM-004.
+ * válido (mensagem, sem redirect); exatamente um Site redireciona
+ * automaticamente para o painel daquele Site — `/:siteSlug`, o Dashboard
+ * (UXA-017); múltiplos Sites mostra a lista inicial (cada item linkando
+ * para `/:siteSlug/categories`, comportamento desta própria lista, não
+ * alterado aqui), sem nenhum componente de troca pensando na ADM-004.
  *
  * `401` em `/admin/auth/me` é comportamento mínimo desta própria tarefa
  * (não uma guarda global): `router.replace('/login')`. Qualquer outro erro
@@ -56,7 +67,7 @@ export function Home() {
           return;
         }
         if (data.sites.length === 1) {
-          router.replace(categoriesHref(data.sites[0].siteSlug));
+          router.replace(dashboardHref(data.sites[0].siteSlug));
           return;
         }
         setState({ status: 'ready', data });
