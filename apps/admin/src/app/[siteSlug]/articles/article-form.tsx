@@ -14,6 +14,7 @@ import { AdminApiError } from '../../../lib/api-error';
 import { TYPE_LABELS } from '../../../lib/article-labels';
 import { fetchAllAuthors } from '../../../lib/fetch-all-authors';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
+import { ArticleBodyEditor } from './article-body-editor';
 import styles from './article-form.module.css';
 
 export interface ArticleFormValues {
@@ -377,12 +378,14 @@ export function ArticleForm({ siteSlug, initialValues, submitLabel, onSubmit }: 
       </div>
 
       <div className={styles.field}>
-        <label htmlFor="article-body">Corpo (Markdown)</label>
-        <textarea
+        <label id="article-body-label" htmlFor="article-body">
+          Corpo (Markdown)
+        </label>
+        <ArticleBodyEditor
           id="article-body"
-          className={styles.bodyField}
-          value={bodyMdx}
-          onChange={(event) => setBodyMdx(event.target.value)}
+          labelId="article-body-label"
+          initialValue={initialValues.bodyMdx}
+          onChange={setBodyMdx}
           disabled={isSubmitting}
         />
       </div>

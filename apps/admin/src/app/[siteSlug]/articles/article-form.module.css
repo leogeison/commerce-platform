@@ -34,6 +34,23 @@
 .bodyField {
   min-height: 240px;
   font-family: monospace;
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  outline: none;
+}
+
+/*
+ * `ArticleBodyEditor` (UXE-006) usa esta classe num `<div>`
+ * `contentEditable` (via `ContentEditable`, `@lexical/react`), não mais
+ * exclusivamente num `<textarea>` — o navegador não aplica outline padrão
+ * de foco de forma consistente a `contentEditable`, então o estilo de
+ * foco visível (WCAG 2.4.7) é explícito aqui.
+ */
+.bodyField:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
 }
 
 .fieldError,

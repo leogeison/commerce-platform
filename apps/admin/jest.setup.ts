@@ -117,3 +117,58 @@ if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.sho
     }
   });
 }
+
+
+/**
+ * Polyfill restrito de `Range.prototype.getBoundingClientRect`/
+ * `getClientRects` para jsdom (UXE-006). jsdom NÃO implementa essas duas
+ * APIs em `Range` — só em `Element` (onde já retorna um retângulo zerado,
+ * documentado e usado em toda a suíte). Isso é uma lacuna conhecida do
+ * jsdom (não existe motor de layout real; ver a lista de partes do DOM não
+ * implementadas pelo próprio projeto jsdom), não um comportamento de
+ * produção: um navegador real sempre implementa `Range.getBoundingClientRect`.
+ *
+ * `@testing-library/user-event` e o próprio Lexical consultam essas APIs
+ * para posicionar/mover o cursor dentro de um `contentEditable` (ex.:
+ * `{End}`/`{Home}` do teclado simulado em `article-body-editor.spec.tsx`).
+ * Sem o polyfill, isso falha com `TypeError: ... .getBoundingClientRect is
+ * not a function` (ou o aviso correspondente de interação não confiável),
+ * mesmo em cenários de conteúdo de uma única linha, onde a resposta real
+ * de um navegador seria equivalente a "não há quebra de linha" — o mesmo
+ * resultado que um retângulo zerado (uma única "linha" degenerada)
+ * produz.
+ *
+ * Não altera nenhum comportamento de produção do `ArticleBodyEditor`/
+ * `ChangeTrackerPlugin`/Lexical: o polyfill só preenche uma lacuna do
+ * ambiente de teste, com o mesmo valor zerado que jsdom já usa para
+ * `Element.prototype.getBoundingClientRect`.
+ */
+if (typeof Range !== 'undefined') {
+  const zeroDOMRect = (): DOMRect => ({
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    width: 0,
+    x: 0,
+    y: 0,
+    toJSON() {
+      return this;
+    },
+  });
+
+  if (!Range.prototype.getBoundingClientRect) {
+    Range.prototype.getBoundingClientRect = zeroDOMRect;
+  }
+
+  if (!Range.prototype.getClientRects) {
+    Range.prototype.getClientRects = function getClientRects(): DOMRectList {
+      return {
+        length: 0,
+        item: () => null,
+        *[Symbol.iterator]() {},
+      } as DOMRectList;
+    };
+  }
+}
