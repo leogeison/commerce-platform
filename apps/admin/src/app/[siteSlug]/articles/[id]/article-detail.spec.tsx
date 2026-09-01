@@ -1,11 +1,47 @@
 import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import { $createParagraphNode, $getRoot, getNearestEditorFromDOMNode } from 'lexical';
 import type { Role } from '@commerce-platform/contracts';
 import { ArticleDetail } from './article-detail';
 import { SiteRoleProvider } from '../../site-role-context';
+
+/**
+ * Helper de teste ESTRITO A ESTA ÁREA (Artigos) — mesma estratégia já
+ * aprovada em `article-form.spec.tsx` para o cenário equivalente de
+ * inserção (ver o racional completo lá): `jsdom`/
+ * `@testing-library/user-event` não simula de forma confiável a edição
+ * de um editor Lexical real através de `user.clear()` — a mesma causa
+ * raiz já comprovada por diagnóstico (falha na simulação de
+ * teclado/seleção do `jsdom` para este editor, não um bug de produção).
+ * Em vez disso, este helper obtém a instância REAL do `LexicalEditor` via
+ * API pública (`getNearestEditorFromDOMNode`) e apaga o conteúdo a nível
+ * de modelo, via APIs públicas do Lexical: `$getRoot().clear()` remove
+ * todos os filhos, e `root.append($createParagraphNode())` restaura o
+ * único parágrafo vazio que o próprio Lexical sempre mantém como estado
+ * normalizado de "documento vazio" (o mesmo formato observado ao
+ * importar `bodyMdx: ''`) — sem isso, um `root` sem nenhum filho é um
+ * estado que o Lexical não produz sozinho. Isso deixa o `OnChangePlugin`
+ * + `ChangeTrackerPlugin` reais (nenhum mockado) propagarem a mudança
+ * normalmente para `ArticleBodyEditor.onChange` → `ArticleForm.setBodyMdx`,
+ * exatamente como propagariam para uma edição real do usuário.
+ */
+function clearRealLexicalEditor(editorRoot: HTMLElement): void {
+  const editor = getNearestEditorFromDOMNode(editorRoot);
+  if (!editor) {
+    throw new Error('clearRealLexicalEditor: nenhuma instância de LexicalEditor encontrada a partir do DOM.');
+  }
+  editor.update(
+    () => {
+      const root = $getRoot();
+      root.clear();
+      root.append($createParagraphNode());
+    },
+    { discrete: true },
+  );
+}
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -211,7 +247,7 @@ describe('ArticleDetail', () => {
 
     expect(await screen.findByLabelText('Título')).toHaveValue('Melhor fone Bluetooth');
     expect(screen.getByLabelText('Slug')).toHaveValue('melhor-fone-bluetooth');
-    expect(screen.getByLabelText('Corpo (Markdown)')).toHaveValue('# Conteúdo original');
+    expect(screen.getByLabelText('Corpo (Markdown)')).toHaveTextContent('Conteúdo original');
     expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enviar para revisão' })).toBeInTheDocument();
   });
@@ -285,7 +321,16 @@ describe('ArticleDetail', () => {
     renderDetail();
 
     const bodyField = await screen.findByLabelText('Corpo (Markdown)');
-    await user.clear(bodyField);
+    // Ver o racional completo em `clearRealLexicalEditor`: apagar o corpo
+    // via `user.clear()` não é confiável no jsdom para o editor Lexical
+    // real, então a limpeza é feita a nível de modelo, via API pública do
+    // Lexical, com o OnChangePlugin/ChangeTrackerPlugin reais propagando
+    // a mudança normalmente.
+    act(() => {
+      clearRealLexicalEditor(bodyField);
+    });
+    await waitFor(() => expect(bodyField.textContent).toBe(''));
+
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
 
     await waitFor(() => expect(capturedPatchBody).toBeDefined());

@@ -1,9 +1,47 @@
 import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import { $getRoot, $getSelection, $isRangeSelection, getNearestEditorFromDOMNode } from 'lexical';
 import { CreateArticle } from './create-article';
+
+/**
+ * Helper de teste ESTRITO A ESTA ÁREA (Artigos) — mesma estratégia já
+ * aprovada em `article-form.spec.tsx` para o cenário de editor Lexical
+ * vazio (ver o racional completo lá): `jsdom`/
+ * `@testing-library/user-event` não consegue simular de forma confiável
+ * a primeira digitação num editor Lexical estruturalmente vazio (causa
+ * raiz já comprovada por diagnóstico, não um bug de produção). Em vez de
+ * `user.type()`, este helper obtém a instância REAL do `LexicalEditor`
+ * via API pública (`getNearestEditorFromDOMNode`) e insere o texto a
+ * nível de modelo, via APIs públicas do Lexical
+ * (`$getRoot().selectStart()` + `$getSelection()` +
+ * `$isRangeSelection()` + `RangeSelection.insertText()`), deixando o
+ * `OnChangePlugin` + `ChangeTrackerPlugin` reais (nenhum mockado)
+ * propagarem a mudança normalmente para `ArticleBodyEditor.onChange` →
+ * `ArticleForm.setBodyMdx`. `bodyMdx` inicial de `CreateArticle` é
+ * sempre `''` (editor vazio), então nenhum atalho de Markdown (fora de
+ * escopo da UXE-006) é exercitado por essa inserção — o texto
+ * `'# Introdução'` entra como texto literal, exatamente como entraria
+ * digitado num `<textarea>` sem nenhuma conversão automática.
+ */
+function insertTextIntoEmptyLexicalEditor(editorRoot: HTMLElement, text: string): void {
+  const editor = getNearestEditorFromDOMNode(editorRoot);
+  if (!editor) {
+    throw new Error('insertTextIntoEmptyLexicalEditor: nenhuma instância de LexicalEditor encontrada a partir do DOM.');
+  }
+  editor.update(
+    () => {
+      $getRoot().selectStart();
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        selection.insertText(text);
+      }
+    },
+    { discrete: true },
+  );
+}
 
 const mockReplace = jest.fn();
 const mockRouter: ContextType<typeof AppRouterContext> = {
@@ -113,7 +151,18 @@ describe('CreateArticle', () => {
     await screen.findByRole('option', { name: 'Nenhuma' });
     await user.type(screen.getByLabelText('Título'), 'Melhor fone Bluetooth');
     await user.type(screen.getByLabelText('Slug'), 'melhor-fone-bluetooth');
-    await user.type(screen.getByLabelText('Corpo (Markdown)'), '# Introdução');
+    const bodyField = screen.getByLabelText('Corpo (Markdown)');
+    // Ver o racional completo em `insertTextIntoEmptyLexicalEditor`: a
+    // primeira digitação num editor Lexical vazio não é confiável via
+    // `user.type()` no jsdom, então a inserção é feita a nível de
+    // modelo, via API pública do Lexical, com o OnChangePlugin/
+    // ChangeTrackerPlugin reais propagando a mudança normalmente.
+    await user.click(bodyField);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(bodyField, '# Introdução');
+    });
+    await waitFor(() => expect(bodyField).toHaveTextContent('# Introdução'));
+
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
