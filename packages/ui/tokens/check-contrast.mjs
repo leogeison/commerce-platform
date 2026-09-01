@@ -154,6 +154,7 @@ const ASSERTED_PAIRS = [
   ['color-icon-muted', 'color-surface-raised', NON_TEXT_MIN, 'ícone com significado próprio / superfície elevada (não-texto)'],
   ['color-focus-ring', 'color-surface-raised', NON_TEXT_MIN, 'anel de foco / superfície elevada (não-texto)'],
   ['color-feedback-danger-fill', 'color-surface-raised', NON_TEXT_MIN, 'preenchimento/indicador de erro / superfície elevada (não-texto)'],
+  ['color-feedback-warning-text', 'color-surface-subtle', NON_TEXT_MIN, 'ícone de warning / superfície sutil (não-texto) — UXA-019D, fundo real do Hourglass em "Aguardando publicação"'],
 ];
 
 // Pares deliberadamente NÃO avaliados numericamente — listados para deixar

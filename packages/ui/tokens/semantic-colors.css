@@ -72,10 +72,17 @@
   --color-focus-ring: var(--color-green-600);
 
   /* ---- feedback: erro/perigo ----
-     warning/info deliberadamente fora do escopo da UXF-001 — nenhuma tarefa
-     já lida no backlog exige essas cores por nome; entram just-in-time
-     quando um consumidor real existir. */
+     info deliberadamente fora do escopo da UXF-001 — nenhuma tarefa já lida
+     no backlog exige essa cor por nome; entra just-in-time quando um
+     consumidor real existir. */
   --color-feedback-danger-text: var(--color-red-700);
   --color-feedback-danger-fill: var(--color-red-600);
   --color-feedback-danger-subtle-bg: var(--color-red-50);
+
+  /* ---- feedback: warning ----
+     UXA-019D — primeiro consumidor real de warning (ícone de "Aguardando
+     publicação" no Dashboard); só o tom de texto/ícone entra aqui, mesma
+     disciplina do resto deste arquivo — nenhum -fill/-subtle-bg sem
+     consumidor. */
+  --color-feedback-warning-text: var(--color-amber-700);
 }

@@ -46,9 +46,16 @@
   --color-green-700: #1F633F;
   --color-green-800: #15492D;
 
-  /* ---- red: feedback de erro/perigo. warning/info deliberadamente fora do
-     escopo da UXF-001 (sem consumidor definido no backlog atual). ---- */
+  /* ---- red: feedback de erro/perigo. info deliberadamente fora do escopo
+     da UXF-001 (sem consumidor definido no backlog atual). ---- */
   --color-red-50: #FCF1F0;
   --color-red-600: #A42B23;
   --color-red-700: #852019;
+
+  /* ---- amber: feedback de warning. Só o passo com consumidor semântico
+     real entra aqui (UXA-019D — ícone de "Aguardando publicação" no
+     Dashboard) — mesma disciplina já aplicada ao verde/vermelho acima;
+     nenhum outro passo da rampa (nem -fill nem -subtle-bg) foi criado sem
+     consumidor. ---- */
+  --color-amber-700: #B45309;
 }

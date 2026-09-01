@@ -36,6 +36,8 @@
   --color-fg: var(--color-text-primary);
   --color-fg-muted: var(--color-text-muted);
   --color-fg-danger: var(--color-feedback-danger-text);
+  /* UXA-019D — gera `text-fg-warning`, mesmo padrão de `fg-danger` acima. */
+  --color-fg-warning: var(--color-feedback-warning-text);
   --color-fg-on-accent: var(--color-on-accent-text);
   --color-accent: var(--color-accent-fill-default);
   --color-accent-hover: var(--color-accent-fill-hover);

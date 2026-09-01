@@ -195,18 +195,20 @@ interface ArticleListSectionProps {
    */
   headingIcon: LucideIcon;
   /**
-   * UXA-019A (rodada visual final) — cor do ícone do heading, decidida por
-   * seção, sem nenhum token novo em `tailwind-theme.css`. "Continuar de
-   * onde parei" e "Publicados recentemente" usam `text-accent-subtle-fg`
+   * Cor do ícone do heading, decidida por seção. "Continuar de onde parei"
+   * e "Publicados recentemente" usam `text-accent-subtle-fg`
    * (`--color-accent-subtle-text`, verde-800) — mesmo alias já exposto e já
    * usado como cor de texto/ícone em acento verde semântico pela UXA-019B
    * (estado ativo do rail lateral, `sidebar-nav.tsx`), não uma decisão
-   * nova. "Aguardando publicação" usa `text-fg-muted` — tratamento neutro
-   * deliberado: o design system não tem token semântico de warning
-   * (`semantic-colors.css` documenta que warning/info só entram
-   * just-in-time, com consumidor normativo real), então esta seção não
-   * ganha nenhuma cor de destaque, só o mesmo token secundário/muted já
-   * usado nos ícones decorativos da linha (`FileText`/`ChevronRight`).
+   * nova. "Aguardando publicação" usa `text-fg-warning`
+   * (`--color-feedback-warning-text`, amber-700, UXA-019D) — primeiro
+   * consumidor real do warning que `semantic-colors.css` deixava reservado
+   * para "just-in-time"; contraste verificado contra `--color-surface-subtle`
+   * (fundo real da seção, `bg-subtle-surface`) em `check-contrast.mjs`. Não
+   * afeta o badge de Tipo (`TYPE_LABELS[article.type]`, ver `Dashboard`
+   * abaixo) — permanece neutro para qualquer `ArticleType`, inclusive
+   * `BUYING_GUIDE`; a semântica de warning é só do heading da seção, nunca
+   * do tipo do Artigo.
    */
   headingIconClassName: string;
   variant: ArticleListSectionVariant;
@@ -560,16 +562,15 @@ function CreateShortcuts({ siteSlug }: { siteSlug: string }) {
  * insuficiente antes dos ícones. `xl:grid-cols-2` continua sendo o
  * breakpoint adequado — mantido, não alterado por esta revisão.
  *
- * Rodada visual final (mesma tarefa) — cor dos ícones de heading:
- * "Continuar de onde parei" e "Publicados recentemente" em
- * `text-accent-subtle-fg` (verde semântico já exposto, ver doc comment de
- * `ArticleListSectionProps` acima); "Aguardando publicação" em
- * `text-fg-muted` (neutro, sem token de warning). Nenhum token novo em
- * `tailwind-theme.css`; breakpoints `md` (cards de atalho) e `xl` (grid
- * secundário) preservados, já validados visualmente pelo usuário. Linha de
- * Artigo reestruturada (`ícone | bloco de conteúdo | chevron`, título
- * isolado na primeira linha do bloco, badge+data como metadata que quebra
- * junto) — ver doc comment de `ArticleListSection` para o detalhe.
+ * Cor dos ícones de heading: "Continuar de onde parei" e "Publicados
+ * recentemente" em `text-accent-subtle-fg` (verde semântico, ver doc
+ * comment de `ArticleListSectionProps` acima); "Aguardando publicação" em
+ * `text-fg-warning` (amber semântico, UXA-019D — primeiro consumidor real
+ * de warning do design system). Breakpoints `md` (cards de atalho) e `xl`
+ * (grid secundário) preservados, já validados visualmente pelo usuário.
+ * Linha de Artigo reestruturada (`ícone | bloco de conteúdo | chevron`,
+ * título isolado na primeira linha do bloco, badge+data como metadata que
+ * quebra junto) — ver doc comment de `ArticleListSection` para o detalhe.
  *
  * Ordem do DOM sempre Cabeçalho → Atalhos → Continuar → Aguardando →
  * Publicados, igual à ordem visual (nenhum CSS de reordenação).
@@ -617,7 +618,7 @@ export function Dashboard({ siteSlug }: DashboardProps) {
           headingId="dashboard-pending-review-heading"
           title="Aguardando publicação"
           headingIcon={Hourglass}
-          headingIconClassName="text-fg-muted"
+          headingIconClassName="text-fg-warning"
           variant="secondary"
           state={pendingReviewState}
           emptyMessage="Nenhum Artigo aguardando publicação."
