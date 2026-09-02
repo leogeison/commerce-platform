@@ -154,9 +154,45 @@ describe('ArticleBodyEditor', () => {
     expect(editor).toHaveAttribute('contenteditable', 'true');
   });
 
-  it('alcançável por teclado via Tab e recebe foco visível', async () => {
+  it('a toolbar da UXE-007 é alcançável por Tab antes do editor, e o editor permanece alcançável na sequência de tabulação', async () => {
+    // Ajuste desta rodada (UXE-007): a toolbar introduz controles focáveis
+    // antes do editor no DOM — um único `user.tab()` não chega mais direto
+    // ao `contentEditable`. A cobertura de acessibilidade por teclado é
+    // preservada (não removida): verifica-se explicitamente que cada botão
+    // tabbable da toolbar é alcançável em ordem por Tab, e que o editor
+    // continua sendo a próxima parada da sequência logo depois dela.
+    //
+    // "Link" fica fora da lista de nomes tabulados abaixo: no estado
+    // inicial deste teste (documento vazio, nenhuma seleção feita ainda)
+    // ele está corretamente `disabled`
+    // (`disabled={disabled || (!isLink && isSelectionCollapsed)}` em
+    // `article-body-toolbar.tsx`) — criar um link exige uma seleção não
+    // colapsada (texto a linkar) ou o cursor já dentro de um link existente
+    // (para editá-lo), e nenhum dos dois é o caso aqui. Um botão `disabled`
+    // é corretamente pulado pela ordem nativa de tabulação (mesmo
+    // comportamento em navegador real), então não faz parte da sequência
+    // tabbable neste estado; a asserção abaixo confirma essa condição
+    // explicitamente, em vez de simplesmente omitir o botão sem registrar
+    // o motivo.
     const user = userEvent.setup();
     await renderEditor();
+
+    expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled();
+
+    const toolbarButtonNames = [
+      'Negrito',
+      'Itálico',
+      'Título 1',
+      'Título 2',
+      'Título 3',
+      'Citação',
+      'Lista',
+      'Lista numerada',
+    ];
+    for (const name of toolbarButtonNames) {
+      await user.tab();
+      expect(screen.getByRole('button', { name })).toHaveFocus();
+    }
 
     await user.tab();
 

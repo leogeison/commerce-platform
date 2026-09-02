@@ -27,6 +27,8 @@ import {
 import type { EditorState } from 'lexical';
 import { PRODUCT_BLOCK } from './product-block/transformer';
 import { ProductBlockNode } from './product-block/node';
+import { ArticleBodyToolbar } from './article-body-toolbar';
+import { ArticleBodySlashMenu } from './article-body-slash-menu';
 import styles from './article-form.module.css';
 
 /**
@@ -49,12 +51,18 @@ import styles from './article-form.module.css';
  * (`spikes/lexical-editorial/corpus/persisted-current/`) contém código
  * inline ou bloco cercado.
  *
- * Fora de escopo (não implementado aqui): toolbar visual, menu `/`
- * (UXE-007), autosave (UXE-008), seletor/inserção/edição funcional de
- * bloco Produto e resolução de Produto/Oferta (UXE-011). Nenhuma
- * infraestrutura de criação de formatação foi construída além do que o
- * próprio `RichTextPlugin`/`ListPlugin`/`LinkPlugin`/`HistoryPlugin`
- * oferecem nativamente.
+ * UXE-007 — Toolbar e menu de comando `/` (`ArticleBodyToolbar`,
+ * `ArticleBodySlashMenu`, ambos locais a este diretório): montados como
+ * plugins-filhos do mesmo `LexicalComposer`, cobrindo só as formatações já
+ * suportadas pelo editor base acima (negrito, itálico, título H1-H3,
+ * citação, lista, link). Nenhum `TRANSFORMERS`/node registrado aqui foi
+ * alterado por essa tarefa.
+ *
+ * Fora de escopo (não implementado aqui): autosave (UXE-008), item
+ * "imagem" no menu `/` (UXE-010 — sem `ImageNode`/transformer/upload/
+ * alt-text nesta tarefa), seletor/inserção/edição funcional de bloco
+ * Produto e resolução de Produto/Oferta (UXE-011 — item ausente do menu
+ * `/` até lá).
  */
 
 const TRANSFORMERS = [HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, LINK, BOLD_STAR, ITALIC_STAR, PRODUCT_BLOCK];
@@ -229,6 +237,7 @@ export function ArticleBodyEditor({ id, labelId, initialValue, onChange, disable
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
+      <ArticleBodyToolbar disabled={disabled} />
       <RichTextPlugin
         contentEditable={
           <ContentEditable
@@ -242,6 +251,7 @@ export function ArticleBodyEditor({ id, labelId, initialValue, onChange, disable
         placeholder={null}
         ErrorBoundary={LexicalErrorBoundary}
       />
+      <ArticleBodySlashMenu disabled={disabled} />
       <HistoryPlugin />
       <ListPlugin />
       <LinkPlugin />
