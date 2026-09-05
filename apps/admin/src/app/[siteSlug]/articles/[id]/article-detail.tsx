@@ -199,6 +199,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
     <div className={styles.detail}>
       <ArticleForm
         siteSlug={siteSlug}
+        articleId={id}
         initialValues={{
           type: article.type,
           title: article.title,

@@ -19,8 +19,8 @@ interface UnsavedChangesContextValue {
 }
 
 interface UnsavedChangesInternalValue extends UnsavedChangesContextValue {
-  registerDirty: (id: string, isDirty: boolean) => void;
-  unregisterDirty: (id: string) => void;
+  registerBlocker: (id: string, blocking: boolean) => void;
+  unregisterBlocker: (id: string) => void;
 }
 
 const UnsavedChangesContext = createContext<UnsavedChangesInternalValue | null>(null);
@@ -48,10 +48,10 @@ const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : us
  * `isDirty` público passa a ser DERIVADO, nunca mais escrito diretamente:
  * cada chamador de `useSyncFormDirty` (identificado por um id interno
  * estável, nunca inventado pelo chamador — ver `useSyncFormDirty` abaixo)
- * publica seu próprio booleano em `publishersRef` (`Map<string, boolean>`,
+ * publica seu próprio booleano em `blockersRef` (`Map<string, boolean>`,
  * mutável, fora de render); o `isDirty` do Context é sempre o OR de todos
  * os valores atualmente registrados. Um publisher que desmonta é REMOVIDO
- * do registro (`unregisterDirty`) — nunca "reportado como false" por cima
+ * do registro (`unregisterBlocker`) — nunca "reportado como false" por cima
  * do que os outros publicaram. Essa distinção resolve exatamente o bug
  * que motivou esta mudança (UXA-014, investigação): antes, com um único
  * `isDirty` escrito diretamente, um segundo publisher limpo (`isDirty =
@@ -73,23 +73,42 @@ const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : us
  *
  * `confirmLeave` ganha um parâmetro opcional (`isDirtyOverride`) — ver seu
  * próprio doc comment abaixo. Nenhuma outra API pública muda.
+ *
+ * UXE-008 — o registro interno era nomeado só em termos de "dirty" porque,
+ * até esta tarefa, só existia um tipo de publisher (dirty-state, UXA-003/
+ * UXA-014). UXE-008 introduz um segundo publisher semanticamente distinto
+ * (`useSyncPendingSave`, pending-save do autosave de `bodyMdx`) que NÃO é
+ * dirty-state — o backlog é explícito que autosave usa "mecanismo
+ * diferente, não reaproveitado" do dirty-state guard. Os identificadores
+ * privados (`registerBlocker`/`unregisterBlocker`/`blockersRef`, antes
+ * `registerDirty`/`unregisterDirty`/`publishersRef`) foram renomeados para
+ * refletir o que o registro estrutural sempre foi: um agregador OR de
+ * "algo aqui bloquearia a saída", neutro quanto ao MOTIVO de cada entrada
+ * (edição não salva vs. salvamento pendente/falho). Nenhum comportamento
+ * muda com o rename — só os nomes internos, nunca expostos fora deste
+ * módulo. `useSyncFormDirty` continua com a mesma assinatura/semântica
+ * pública de sempre; `useSyncPendingSave` (abaixo) é o novo publisher
+ * simétrico, com seu próprio id e seu próprio motivo de existir, ambos
+ * compartilhando o mesmo registro/diálogo/`confirmLeave`/`beforeunload` —
+ * a MESMA pergunta de navegação ("há algo não salvo?"), agora alimentada
+ * por duas fontes distintas e semanticamente independentes.
  */
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const [isDirty, setIsDirty] = useState(false);
-  const publishersRef = useRef<Map<string, boolean>>(new Map());
+  const blockersRef = useRef<Map<string, boolean>>(new Map());
   const dialogRef = useRef<HTMLDialogElement>(null);
   const pendingResolveRef = useRef<((canLeave: boolean) => void) | null>(null);
   const pendingPromiseRef = useRef<Promise<boolean> | null>(null);
 
   /**
    * Único ponto que recalcula o agregado a partir do registro completo —
-   * chamado depois de qualquer `set`/`delete` em `publishersRef`, nunca
+   * chamado depois de qualquer `set`/`delete` em `blockersRef`, nunca
    * inferido incrementalmente (mais simples e sem risco de o agregado
    * divergir do registro real).
    */
   const recomputeIsDirty = useCallback(() => {
     let next = false;
-    for (const value of publishersRef.current.values()) {
+    for (const value of blockersRef.current.values()) {
       if (value) {
         next = true;
         break;
@@ -98,17 +117,17 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     setIsDirty(next);
   }, []);
 
-  const registerDirty = useCallback(
-    (id: string, dirty: boolean) => {
-      publishersRef.current.set(id, dirty);
+  const registerBlocker = useCallback(
+    (id: string, blocking: boolean) => {
+      blockersRef.current.set(id, blocking);
       recomputeIsDirty();
     },
     [recomputeIsDirty],
   );
 
-  const unregisterDirty = useCallback(
+  const unregisterBlocker = useCallback(
     (id: string) => {
-      publishersRef.current.delete(id);
+      blockersRef.current.delete(id);
       recomputeIsDirty();
     },
     [recomputeIsDirty],
@@ -223,7 +242,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <UnsavedChangesContext.Provider value={{ isDirty, confirmLeave, registerDirty, unregisterDirty }}>
+    <UnsavedChangesContext.Provider value={{ isDirty, confirmLeave, registerBlocker, unregisterBlocker }}>
       {children}
       <dialog
         ref={dialogRef}
@@ -252,8 +271,9 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
 /**
  * Superfície pública mínima — só `isDirty` (leitura síncrona, necessária
  * para `GuardedLink` decidir se chama `preventDefault()` em `onNavigate`)
- * e `confirmLeave`. `registerDirty`/`unregisterDirty` não são expostos
- * aqui de propósito: só `useSyncFormDirty` tem acesso a eles.
+ * e `confirmLeave`. `registerBlocker`/`unregisterBlocker` não são expostos
+ * aqui de propósito: só `useSyncFormDirty`/`useSyncPendingSave` têm acesso
+ * a eles.
  */
 export function useUnsavedChangesGuard(): UnsavedChangesContextValue {
   const context = useContext(UnsavedChangesContext);
@@ -274,7 +294,7 @@ export function useUnsavedChangesGuard(): UnsavedChangesContextValue {
  *
  * - o primeiro (síncrono, pós-commit) publica o valor atual a cada
  *   mudança de `id`/`isDirty` — é só isso, nunca faz cleanup;
- * - o segundo não depende de `isDirty` (só de `id`/`unregisterDirty`,
+ * - o segundo não depende de `isDirty` (só de `id`/`unregisterBlocker`,
  *   estáveis) — seu cleanup roda exclusivamente no desmonte real do
  *   componente chamador, nunca como reação a uma mudança de `isDirty`
  *   durante a vida dele, e remove SÓ a entrada deste publisher do
@@ -288,16 +308,61 @@ export function useSyncFormDirty(isDirty: boolean): void {
   if (!context) {
     throw new Error('useSyncFormDirty só pode ser usado dentro de UnsavedChangesProvider.');
   }
-  const { registerDirty, unregisterDirty } = context;
+  const { registerBlocker, unregisterBlocker } = context;
   const id = useId();
 
   useIsomorphicLayoutEffect(() => {
-    registerDirty(id, isDirty);
-  }, [id, isDirty, registerDirty]);
+    registerBlocker(id, isDirty);
+  }, [id, isDirty, registerBlocker]);
 
   useEffect(() => {
     return () => {
-      unregisterDirty(id);
+      unregisterBlocker(id);
     };
-  }, [id, unregisterDirty]);
+  }, [id, unregisterBlocker]);
+}
+
+/**
+ * UXE-008 — segundo publisher do mesmo registro neutro (Opção B aprovada),
+ * semanticamente distinto de `useSyncFormDirty`: publica se há um
+ * salvamento automático de `bodyMdx` pendente/em voo OU uma falha ainda
+ * não resolvida (`isPendingOrFailed`), nunca "dirty" no sentido de
+ * formulário com edição não submetida. O backlog é explícito que UXE-008
+ * usa "mecanismo diferente, não reaproveitado" do dirty-state guard de
+ * UXA-003 — por isso este é um publisher próprio, com seu próprio id
+ * (`useId()`), nunca uma chamada a `useSyncFormDirty` por baixo.
+ *
+ * Compartilha deliberadamente com `useSyncFormDirty` o mesmo registro
+ * agregado (OR), o mesmo diálogo, o mesmo `confirmLeave` e o mesmo
+ * `beforeunload` — o backlog não proíbe reaproveitar a MÁQUINA de
+ * navegação (diálogo/roteamento), só a CONDIÇÃO semântica de dirty-state.
+ * Perguntar "há algo que bloquearia a saída agora?" continua sendo uma
+ * única pergunta de navegação, agora alimentada por duas fontes
+ * independentes: uma edição de formulário não salva (`useSyncFormDirty`)
+ * e um salvamento automático pendente/falho (`useSyncPendingSave`) — o
+ * agregado OR trata as duas exatamente como trata dois `useSyncFormDirty`
+ * simultâneos (`ProductForm` + `OfferForm`, UXA-014): qualquer uma sendo
+ * `true` basta para bloquear.
+ *
+ * Mesma estrutura de dois efeitos separados de `useSyncFormDirty`, pela
+ * mesma razão: publicar a cada mudança nunca faz cleanup; desregistrar só
+ * no desmonte real do chamador.
+ */
+export function useSyncPendingSave(isPendingOrFailed: boolean): void {
+  const context = useContext(UnsavedChangesContext);
+  if (!context) {
+    throw new Error('useSyncPendingSave só pode ser usado dentro de UnsavedChangesProvider.');
+  }
+  const { registerBlocker, unregisterBlocker } = context;
+  const id = useId();
+
+  useIsomorphicLayoutEffect(() => {
+    registerBlocker(id, isPendingOrFailed);
+  }, [id, isPendingOrFailed, registerBlocker]);
+
+  useEffect(() => {
+    return () => {
+      unregisterBlocker(id);
+    };
+  }, [id, unregisterBlocker]);
 }

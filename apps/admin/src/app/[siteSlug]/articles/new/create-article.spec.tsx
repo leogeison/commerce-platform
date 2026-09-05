@@ -4,6 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { $getRoot, $getSelection, $isRangeSelection, getNearestEditorFromDOMNode } from 'lexical';
+import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 import { CreateArticle } from './create-article';
 
 /**
@@ -61,10 +62,22 @@ function jsonResponse(status: number, body: unknown): Response {
   } as Response;
 }
 
+/**
+ * UXE-008 — produção sempre monta `ArticleForm` (via `CreateArticle`)
+ * dentro de `UnsavedChangesProvider`: é `SiteLayout`
+ * (`app/[siteSlug]/layout.tsx`) quem envolve todo o subtree de
+ * `/:siteSlug/*` (inclusive `/articles/new`) com esse Provider, ao
+ * redor de `AuthenticatedShell` — nunca o próprio `CreateArticle`, que
+ * não sabe nada sobre esse Context. Este helper reproduz essa mesma
+ * hierarquia real (Provider por fora do componente testado), não uma
+ * adaptação só para o teste passar.
+ */
 function renderCreateArticle() {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <CreateArticle siteSlug="fastcompre" />
+      <UnsavedChangesProvider>
+        <CreateArticle siteSlug="fastcompre" />
+      </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
 }

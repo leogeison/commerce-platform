@@ -7,6 +7,7 @@ import { $createParagraphNode, $getRoot, getNearestEditorFromDOMNode } from 'lex
 import type { Role } from '@commerce-platform/contracts';
 import { ArticleDetail } from './article-detail';
 import { SiteRoleProvider } from '../../site-role-context';
+import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 
 /**
  * Helper de teste ESTRITO A ESTA ÁREA (Artigos) — mesma estratégia já
@@ -58,13 +59,22 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
  * existentes antes da ADM-012 (composição editável em DRAFT, os 5 botões
  * de transição por status) — os testes específicos de `VIEWER`/`EDITOR`
  * passam a Role explicitamente.
+ *
+ * UXE-008 — mesmo critério de `create-article.spec.tsx`: em produção,
+ * `ArticleDetail` (via `ArticleForm`) só é montado dentro do subtree de
+ * `/:siteSlug/*`, que `SiteLayout` (`app/[siteSlug]/layout.tsx`) sempre
+ * envolve com `UnsavedChangesProvider` ao redor de `AuthenticatedShell`
+ * — nunca o próprio `ArticleDetail`. Este helper reproduz essa mesma
+ * hierarquia real, não uma adaptação só para o teste passar.
  */
 function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
-      <SiteRoleProvider value={role}>
-        <ArticleDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
-      </SiteRoleProvider>
+      <UnsavedChangesProvider>
+        <SiteRoleProvider value={role}>
+          <ArticleDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+        </SiteRoleProvider>
+      </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
   );
 }

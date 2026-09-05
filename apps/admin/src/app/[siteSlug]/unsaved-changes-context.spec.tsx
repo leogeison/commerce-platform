@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import { UnsavedChangesProvider, useSyncFormDirty, useUnsavedChangesGuard } from './unsaved-changes-context';
+import {
+  UnsavedChangesProvider,
+  useSyncFormDirty,
+  useSyncPendingSave,
+  useUnsavedChangesGuard,
+} from './unsaved-changes-context';
 
 /**
  * Publica `isDirty` no Context via `useSyncFormDirty` — o mesmo mecanismo
@@ -16,6 +21,17 @@ import { UnsavedChangesProvider, useSyncFormDirty, useUnsavedChangesGuard } from
  */
 function DirtyPublisher({ isDirty }: { isDirty: boolean }) {
   useSyncFormDirty(isDirty);
+  return null;
+}
+
+/**
+ * UXE-008 — publisher simétrico a `DirtyPublisher`, mas via
+ * `useSyncPendingSave` (autosave pendente/em voo/falho), nunca
+ * `useSyncFormDirty` por baixo — os dois publishers são semanticamente
+ * distintos, mesmo compartilhando o mesmo registro agregado.
+ */
+function PendingSavePublisher({ isPendingOrFailed }: { isPendingOrFailed: boolean }) {
+  useSyncPendingSave(isPendingOrFailed);
   return null;
 }
 
@@ -553,5 +569,168 @@ describe('unsaved-changes-context', () => {
     await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  // --- UXE-008: useSyncPendingSave — publisher distinto de useSyncFormDirty,
+  // mesmo registro/diálogo/confirmLeave/beforeunload agregados (Opção B). ---
+
+  it('useSyncPendingSave fora do Provider lança erro', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => render(<PendingSavePublisher isPendingOrFailed />)).toThrow(
+      'useSyncPendingSave só pode ser usado dentro de UnsavedChangesProvider.',
+    );
+
+    spy.mockRestore();
+  });
+
+  it('useSyncPendingSave(true) sozinho: isDirty agregado é true — confirmLeave() abre o diálogo', async () => {
+    render(
+      <UnsavedChangesProvider>
+        <PendingSavePublisher isPendingOrFailed />
+        <ConfirmButton />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('useSyncPendingSave(false) sozinho: isDirty agregado é false — confirmLeave() resolve true sem diálogo', async () => {
+    render(
+      <UnsavedChangesProvider>
+        <PendingSavePublisher isPendingOrFailed={false} />
+        <ConfirmProbe />
+        <p id="result" />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(document.getElementById('result')).toHaveTextContent('true'));
+  });
+
+  it('agregação simultânea: useSyncFormDirty(false) + useSyncPendingSave(true) — isDirty agregado é true (pending-save sozinho já bloqueia, sem nenhum campo de formulário sujo)', async () => {
+    render(
+      <UnsavedChangesProvider>
+        <DirtyPublisher isDirty={false} />
+        <PendingSavePublisher isPendingOrFailed />
+        <ConfirmButton />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('agregação simultânea: useSyncFormDirty(true) + useSyncPendingSave(false) — isDirty agregado é true (dirty-state sozinho já bloqueia, mesmo com autosave sem pendência)', async () => {
+    render(
+      <UnsavedChangesProvider>
+        <DirtyPublisher isDirty />
+        <PendingSavePublisher isPendingOrFailed={false} />
+        <ConfirmButton />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('agregação simultânea: useSyncFormDirty(false) + useSyncPendingSave(false) — isDirty agregado é false, saída liberada', async () => {
+    render(
+      <UnsavedChangesProvider>
+        <DirtyPublisher isDirty={false} />
+        <PendingSavePublisher isPendingOrFailed={false} />
+        <ConfirmProbe />
+        <p id="result" />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(document.getElementById('result')).toHaveTextContent('true'));
+  });
+
+  it('pending-save deixa de bloquear (transição true → false) enquanto um dirty-state publisher independente permanece true: agregado continua true (nenhum publisher "esquece" o outro)', async () => {
+    function Publishers({ pending }: { pending: boolean }) {
+      return (
+        <>
+          <DirtyPublisher isDirty />
+          <PendingSavePublisher isPendingOrFailed={pending} />
+        </>
+      );
+    }
+
+    const { rerender } = render(
+      <UnsavedChangesProvider>
+        <Publishers pending />
+        <ConfirmButton />
+      </UnsavedChangesProvider>,
+    );
+
+    rerender(
+      <UnsavedChangesProvider>
+        <Publishers pending={false} />
+        <ConfirmButton />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('useSyncPendingSave desmonta sendo o único bloqueador: isDirty agregado volta a false', async () => {
+    function ToggleablePendingSave({ pending }: { pending: boolean }) {
+      const [mounted, setMounted] = useState(true);
+      return (
+        <>
+          {mounted && <PendingSavePublisher isPendingOrFailed={pending} />}
+          <button type="button" onClick={() => setMounted(false)}>
+            Desmontar pending-save
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <UnsavedChangesProvider>
+        <ToggleablePendingSave pending />
+        <ConfirmProbe />
+        <p id="result" />
+      </UnsavedChangesProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Desmontar pending-save' }));
+    await user.click(screen.getByRole('button', { name: 'Tentar sair' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(document.getElementById('result')).toHaveTextContent('true'));
+  });
+
+  it('beforeunload: useSyncPendingSave(true) sozinho já intercepta o unload, igual a um dirty-state publisher', () => {
+    render(
+      <UnsavedChangesProvider>
+        <PendingSavePublisher isPendingOrFailed />
+      </UnsavedChangesProvider>,
+    );
+
+    const event = new Event('beforeunload', { cancelable: true });
+    const notCancelled = window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(notCancelled).toBe(false);
   });
 });

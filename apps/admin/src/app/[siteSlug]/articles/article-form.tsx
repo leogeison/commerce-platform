@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { z } from 'zod';
+import { CircleAlert, CircleCheckBig, Loader2 } from 'lucide-react';
 import {
   articleTypeSchema,
   uploadImageResponseSchema,
@@ -15,6 +16,7 @@ import { TYPE_LABELS } from '../../../lib/article-labels';
 import { fetchAllAuthors } from '../../../lib/fetch-all-authors';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
 import { ArticleBodyEditor } from './article-body-editor';
+import { useArticleBodyAutosave } from './use-article-body-autosave';
 import styles from './article-form.module.css';
 
 export interface ArticleFormValues {
@@ -30,6 +32,14 @@ export interface ArticleFormValues {
 
 interface ArticleFormProps {
   siteSlug: string;
+  /**
+   * `undefined` em `/articles/new` (Artigo ainda não persistido, sem
+   * `id`) — `ArticleDetail` passa o `id` real em `/articles/:id`. Único
+   * uso: decidir se o autosave de `bodyMdx` (UXE-008) está ativo
+   * (`useArticleBodyAutosave`). Nenhum outro comportamento deste
+   * formulário depende de `articleId`.
+   */
+  articleId?: string;
   initialValues: ArticleFormValues;
   submitLabel: string;
   onSubmit: (values: ArticleFormValues) => Promise<void>;
@@ -101,7 +111,7 @@ function resolveErrorMessage(error: unknown, generic: string, businessStatusCode
  * dedicado a `previewUrl`, só na função de limpeza (sem `setState` no
  * corpo do efeito).
  */
-export function ArticleForm({ siteSlug, initialValues, submitLabel, onSubmit }: ArticleFormProps) {
+export function ArticleForm({ siteSlug, articleId, initialValues, submitLabel, onSubmit }: ArticleFormProps) {
   const [type, setType] = useState<ArticleType>(initialValues.type);
   const [title, setTitle] = useState(initialValues.title);
   const [slug, setSlug] = useState(initialValues.slug);
@@ -117,6 +127,25 @@ export function ArticleForm({ siteSlug, initialValues, submitLabel, onSubmit }: 
   const [fieldErrors, setFieldErrors] = useState<TextFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // UXE-008 — autosave só de `bodyMdx`, só para Artigo já persistido
+  // (`articleId` vindo de `ArticleDetail`; `undefined` em `/new`, hook
+  // inativo). `disabled: isSubmitting` impede que o efeito de debounce
+  // AGENDE um novo autosave enquanto o submit manual está em voo; a
+  // coordenação que impede os dois de ficarem em voo AO MESMO TEMPO é
+  // feita explicitamente em `handleSubmit` via `beginManualSave`/
+  // `endManualSave`/`cancelManualSave` (ver doc comment do hook).
+  const {
+    status: autosaveStatus,
+    beginManualSave,
+    endManualSave,
+    cancelManualSave,
+  } = useArticleBodyAutosave({
+    siteSlug,
+    articleId: articleId ?? null,
+    bodyMdx,
+    disabled: isSubmitting,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -252,9 +281,25 @@ export function ArticleForm({ siteSlug, initialValues, submitLabel, onSubmit }: 
     }
 
     try {
+      // UXE-008 — antes de disparar o submit manual (que já carrega o
+      // `bodyMdx` mais recente, `parsed.data.bodyMdx`), cancela qualquer
+      // debounce de autosave ainda não disparado e aguarda um autosave já
+      // em voo terminar. Isso garante que o PATCH/POST manual nunca
+      // corre em paralelo com um autosave — é sempre a última escrita,
+      // por sequenciamento, nunca por versionamento.
+      await beginManualSave();
       await onSubmit({ ...parsed.data, coverImageUrl: finalCoverImageUrl });
+      // Sucesso: o conteúdo enviado (`parsed.data.bodyMdx`) já está
+      // persistido — marca o autosave como sincronizado com ele, o que
+      // também limpa qualquer falha/pendência anterior e evita um
+      // autosave redundante logo em seguida.
+      endManualSave(parsed.data.bodyMdx);
       setIsSubmitting(false);
     } catch (error) {
+      // Falha: nada foi persistido por este caminho — só libera a
+      // suspensão do autosave, que retoma sozinho (debounce normal)
+      // assim que `isSubmitting` voltar a `false`.
+      cancelManualSave();
       setFormError(resolveErrorMessage(error, GENERIC_SUBMIT_ERROR_MESSAGE, SUBMIT_BUSINESS_ERROR_STATUS_CODES));
       setIsSubmitting(false);
     }
@@ -388,6 +433,39 @@ export function ArticleForm({ siteSlug, initialValues, submitLabel, onSubmit }: 
           onChange={setBodyMdx}
           disabled={isSubmitting}
         />
+        {/*
+          UXE-008 — indicador local do autosave de `bodyMdx`.
+          `aria-live="polite"` montado de forma estável desde o primeiro
+          render (mesmo critério de `ToastProvider`, UXA-004): a região
+          nunca é desmontada/remontada, só o conteúdo interno muda —
+          garante o anúncio confiável por leitor de tela. Ícone decorativo
+          (`aria-hidden`) sempre acompanhado de texto: a cor nunca é o
+          único sinal. Nunca reaproveita `ToastProvider` (decisão fechada
+          desta tarefa): aqui o estado é persistente (reflete o autosave
+          atual), não um "sucesso passageiro" de alguns segundos. Em
+          `/articles/new` (sem `articleId`), `autosaveStatus` permanece
+          sempre `'idle'` e esta região nunca exibe conteúdo.
+        */}
+        <div aria-live="polite" className={styles.autosaveStatus}>
+          {autosaveStatus === 'saving' && (
+            <span className={styles.autosaveSaving}>
+              <Loader2 aria-hidden="true" className={styles.autosaveIcon} />
+              Salvando...
+            </span>
+          )}
+          {autosaveStatus === 'saved' && (
+            <span className={styles.autosaveSaved}>
+              <CircleCheckBig aria-hidden="true" className={styles.autosaveIcon} />
+              Salvo
+            </span>
+          )}
+          {autosaveStatus === 'error' && (
+            <span className={styles.autosaveError}>
+              <CircleAlert aria-hidden="true" className={styles.autosaveIcon} />
+              Não foi possível salvar automaticamente. A próxima edição tentará salvar de novo.
+            </span>
+          )}
+        </div>
       </div>
 
       <div className={styles.field}>
