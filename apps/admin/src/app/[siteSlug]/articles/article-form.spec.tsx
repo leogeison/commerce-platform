@@ -432,7 +432,7 @@ describe('ArticleForm', () => {
     expect(screen.queryByAltText('Capa do Artigo')).not.toBeInTheDocument();
   });
 
-  it('bodyMdx é editado via editor Lexical básico com toolbar (UXE-006/UXE-007), sem preview', async () => {
+  it('bodyMdx é editado via editor Lexical básico com toolbar (UXE-006/UXE-007)', async () => {
     mockFetch({});
     renderArticleForm({
       siteSlug: 'fastcompre',
@@ -446,13 +446,18 @@ describe('ArticleForm', () => {
     // agora como uma área de edição rica (role="textbox"), não mais um
     // <textarea> literal. UXE-007 acrescenta a toolbar de formatação (a
     // ausência dela era o comportamento antigo, pré-UXE-007 — agora ela é
-    // exigida). Preview é UXE-009, continua fora de escopo.
+    // exigida).
+    //
+    // O botão de preview (UXE-009, `ArticlePreview`) passou a existir
+    // deliberadamente neste formulário — a asserção que exigia sua
+    // ausência aqui ficou obsoleta e foi removida; o comportamento do
+    // preview em si (abrir/fechar, conteúdo compilado, obsolescência,
+    // erro) é coberto em `article-preview.spec.tsx`, não aqui.
     const editor = await screen.findByLabelText('Corpo (Markdown)');
     expect(editor.tagName).not.toBe('TEXTAREA');
     expect(editor).toHaveAttribute('role', 'textbox');
     expect(editor).toHaveAttribute('aria-multiline', 'true');
     expect(editor).toHaveAttribute('contenteditable', 'true');
-    expect(screen.queryByRole('button', { name: /preview/i })).not.toBeInTheDocument();
     expect(screen.getByRole('toolbar', { name: 'Formatação do corpo do Artigo' })).toBeInTheDocument();
   });
 

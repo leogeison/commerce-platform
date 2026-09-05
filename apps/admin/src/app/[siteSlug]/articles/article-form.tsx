@@ -16,6 +16,7 @@ import { TYPE_LABELS } from '../../../lib/article-labels';
 import { fetchAllAuthors } from '../../../lib/fetch-all-authors';
 import { fetchAllCategories } from '../../../lib/fetch-all-categories';
 import { ArticleBodyEditor } from './article-body-editor';
+import { ArticlePreview } from './article-preview';
 import { useArticleBodyAutosave } from './use-article-body-autosave';
 import styles from './article-form.module.css';
 
@@ -466,6 +467,12 @@ export function ArticleForm({ siteSlug, articleId, initialValues, submitLabel, o
             </span>
           )}
         </div>
+        {/*
+          UXE-009 — preview sob demanda do Artigo, reaproveitando o mesmo
+          `bodyMdx` já em estado local do formulário. Ver doc comment de
+          `ArticlePreview` para as decisões fechadas desta tarefa.
+        */}
+        <ArticlePreview bodyMdx={bodyMdx} />
       </div>
 
       <div className={styles.field}>
