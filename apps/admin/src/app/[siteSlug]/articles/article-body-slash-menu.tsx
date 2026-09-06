@@ -12,10 +12,12 @@ import {
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
   type LexicalEditor,
+  type NodeKey,
 } from 'lexical';
 import { $createHeadingNode, type HeadingTagType } from '@lexical/rich-text';
 import { $createListItemNode, $createListNode } from '@lexical/list';
 import { $getBlockElement } from './article-body-block-utils';
+import type { ImageInsertionAnchor } from './article-body-image-flow';
 import styles from './article-form.module.css';
 
 /**
@@ -23,13 +25,20 @@ import styles from './article-form.module.css';
  *
  * UXE-007 — Toolbar e menu de comando `/`.
  *
- * Escopo nesta tarefa: só os itens cuja capacidade já existe hoje no editor
- * base (título H1-H3, lista não ordenada/ordenada). "Imagem" e "bloco
- * Produto-Oferta" ficam deliberadamente ausentes do menu — decisão fechada
- * com o usuário: Imagem nasce na UXE-010 (upload real + decisão de
- * alt-text/decorativo — nenhuma dessas peças é antecipada aqui) e o bloco
- * Produto-Oferta nasce na UXE-011 (seleção/inserção/edição funcional sobre
- * `ArticleProduct`). Um item ausente nunca é um item quebrado.
+ * Escopo original desta tarefa: só os itens cuja capacidade já existia no
+ * editor base (título H1-H3, lista não ordenada/ordenada). "Bloco
+ * Produto-Oferta" continua deliberadamente ausente do menu — nasce na
+ * UXE-011 (seleção/inserção/edição funcional sobre `ArticleProduct`). Um
+ * item ausente nunca é um item quebrado.
+ *
+ * "Imagem" (UXE-010, adicionado nesta rodada): cumpre o que esta própria
+ * tarefa já havia reservado ("menu `/` para inserir título/lista/imagem/
+ * bloco Produto-Oferta") — construído dentro do componente (não em
+ * `SLASH_MENU_ITEMS`, module-level) porque precisa de `onRequestImage`.
+ * Seu `apply` continua síncrono: remove `/query` do bloco atual e entrega
+ * a âncora resultante ao fluxo compartilhado de imagem
+ * (`ArticleBodyImageFlow`) — upload/diálogo/inserção acontecem fora do
+ * menu. Ver doc comment de `ArticleBodySlashMenuProps.onRequestImage`.
  *
  * Implementação deliberadamente sem `LexicalTypeaheadMenuPlugin`
  * (`@lexical/react`): não foi possível confirmar neste ambiente o shape
@@ -182,7 +191,22 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   { id: 'list-number', label: 'Lista numerada', apply: (editor) => applyListFromEmptyBlock(editor, 'number') },
 ];
 
-export function ArticleBodySlashMenu({ disabled = false }: { disabled?: boolean }) {
+interface ArticleBodySlashMenuProps {
+  disabled?: boolean;
+  /**
+   * UXE-010 — mesmo fluxo compartilhado usado por `ArticleBodyToolbar`
+   * (`onRequestImage`), nunca duplicado aqui. Diferença de preparo:
+   * este menu remove `/query` do bloco (`blockElement.clear()`) ANTES de
+   * entregar a âncora — o bloco resultante já vazio é o que
+   * `ArticleBodyImageFlow` usa tanto para inserir (substituindo-o
+   * exatamente) quanto para devolver o caret em caso de cancelamento
+   * (nunca tenta restaurar a seleção anterior que apontava para o texto
+   * `/query`, que não existe mais nesse ponto).
+   */
+  onRequestImage: (anchor: ImageInsertionAnchor) => void;
+}
+
+export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: ArticleBodySlashMenuProps) {
   const [editor] = useLexicalComposerContext();
   const baseId = useId();
 
@@ -190,7 +214,42 @@ export function ArticleBodySlashMenu({ disabled = false }: { disabled?: boolean 
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const results = SLASH_MENU_ITEMS.filter((item) => matchesSlashQuery(item.label, query));
+  /**
+   * "Imagem" (UXE-010) é construído aqui dentro (não em
+   * `SLASH_MENU_ITEMS`, que é módulo-level e não tem acesso a
+   * `onRequestImage`) — `apply` permanece síncrono: só remove `/query`
+   * do bloco atual e entrega a âncora resultante a `onRequestImage`;
+   * upload/diálogo/inserção acontecem inteiramente fora deste menu (ver
+   * doc comment de `ArticleBodyImageFlow`). `SlashMenuItem`/sua
+   * assinatura (`apply: (editor: LexicalEditor) => void`) não muda.
+   */
+  const items: SlashMenuItem[] = [
+    ...SLASH_MENU_ITEMS,
+    {
+      id: 'image',
+      label: 'Imagem',
+      apply: (editorInstance) => {
+        let capturedBlockKey: NodeKey | null = null;
+        editorInstance.update(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) {
+            return;
+          }
+          const blockElement = $getBlockElement(selection.anchor.getNode());
+          if (!blockElement) {
+            return;
+          }
+          blockElement.clear();
+          capturedBlockKey = blockElement.getKey();
+        });
+        if (capturedBlockKey) {
+          onRequestImage({ mode: 'replace-empty', blockKey: capturedBlockKey });
+        }
+      },
+    },
+  ];
+
+  const results = items.filter((item) => matchesSlashQuery(item.label, query));
 
   // Ajuste de estado em resposta a mudança de `query`/`isOpen` — feito
   // durante a própria renderização (padrão documentado do React,

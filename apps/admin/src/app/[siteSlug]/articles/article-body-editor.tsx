@@ -27,8 +27,11 @@ import {
 import type { EditorState } from 'lexical';
 import { PRODUCT_BLOCK } from './product-block/transformer';
 import { ProductBlockNode } from './product-block/node';
+import { IMAGE } from './article-body-image/transformer';
+import { ImageNode } from './article-body-image/node';
 import { ArticleBodyToolbar } from './article-body-toolbar';
 import { ArticleBodySlashMenu } from './article-body-slash-menu';
+import { ArticleBodyImageFlow, type ArticleBodyImageFlowHandle, type ImageInsertionAnchor } from './article-body-image-flow';
 import styles from './article-form.module.css';
 
 /**
@@ -58,14 +61,24 @@ import styles from './article-form.module.css';
  * citação, lista, link). Nenhum `TRANSFORMERS`/node registrado aqui foi
  * alterado por essa tarefa.
  *
- * Fora de escopo (não implementado aqui): autosave (UXE-008), item
- * "imagem" no menu `/` (UXE-010 — sem `ImageNode`/transformer/upload/
- * alt-text nesta tarefa), seletor/inserção/edição funcional de bloco
- * Produto e resolução de Produto/Oferta (UXE-011 — item ausente do menu
- * `/` até lá).
+ * UXE-010 — Upload/inserção de imagem com decisão explícita de
+ * acessibilidade: adiciona o transformer/node `IMAGE`/`ImageNode`
+ * (`./article-body-image/`) e monta `ArticleBodyImageFlow`
+ * (`./article-body-image-flow.tsx`) — fluxo único de upload+diálogo,
+ * compartilhado por `ArticleBodyToolbar` e `ArticleBodySlashMenu` via o
+ * callback síncrono `onRequestImage`, nunca duplicado entre as duas.
+ * `isImageFlowActive` (estado local deste componente) bloqueia o editor
+ * durante todo o fluxo — ver doc comment de `ArticleBodyImageFlow` para o
+ * racional completo.
+ *
+ * Fora de escopo (não implementado aqui): autosave é UXE-008 (já
+ * implementada em tarefa anterior, sem relação com esta doc); edição de
+ * imagem (crop/resize, fora do escopo da UXE-010); seletor/inserção/
+ * edição funcional de bloco Produto e resolução de Produto/Oferta
+ * (UXE-011 — item ausente do menu `/` até lá).
  */
 
-const TRANSFORMERS = [HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, LINK, BOLD_STAR, ITALIC_STAR, PRODUCT_BLOCK];
+const TRANSFORMERS = [HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, LINK, BOLD_STAR, ITALIC_STAR, PRODUCT_BLOCK, IMAGE];
 
 /**
  * Funções em escopo de módulo (não recriadas a cada renderização) usadas
@@ -91,6 +104,14 @@ function getServerMountedSnapshot(): boolean {
 interface ArticleBodyEditorProps {
   id: string;
   labelId: string;
+  /**
+   * UXE-010 — necessário para montar a URL do endpoint de upload
+   * (`/admin/sites/:siteSlug/uploads/images`), consumido por
+   * `ArticleBodyImageFlow`. `ArticleBodyEditor` continua "burro" quanto
+   * ao restante (conteúdo/mudança de `bodyMdx`) — este é o único dado
+   * novo que precisa atravessar este componente para o fluxo de imagem.
+   */
+  siteSlug: string;
   initialValue: string;
   onChange: (markdown: string) => void;
   disabled?: boolean;
@@ -121,6 +142,30 @@ function EditableSyncPlugin({ disabled }: { disabled: boolean }) {
  * montagem/import inicial e o commit da raiz DOM; a quantidade exata não é
  * uma garantia documentada da versão instalada de `@lexical/react`, então
  * o código não pode depender dela).
+ *
+ * `ignoreSelectionChange` (correção desta rodada, UXE-010): `OnChangePlugin`
+ * usa `false` como padrão — uma notificação cuja única mudança é a seleção
+ * (nenhum nó de conteúdo ficou "dirty") chega normalmente a `handleChange`.
+ * Isso nunca importava antes desta tarefa: toda notificação espúria
+ * observada até então acontecia ANTES da primeira divergência real do
+ * baseline, e a comparação abaixo (`exportedMarkdown ===
+ * baselineMarkdownRef.current`) já a descartava. UXE-010 introduziu o
+ * primeiro fluxo desta base de código que tira o foco do editor DEPOIS de
+ * uma edição real já ter ocorrido e o devolve mais tarde (seletor de
+ * arquivo + diálogo + upload) — uma notificação de seleção pura nesse
+ * momento (ex.: `editor.getRootElement()?.focus()` ao cancelar/restaurar em
+ * `ArticleBodyImageFlow`) chega DEPOIS que `hasDivergedFromBaselineRef.current`
+ * já é `true`, e a partir daí a comparação com o baseline não filtra mais
+ * nada — resultando numa chamada de `onChange` espúria, com o mesmo
+ * Markdown de antes, sem nenhuma edição nova ter ocorrido. `baselineMarkdownRef`
+ * só resolve a janela "antes da primeira divergência"; nunca teve como
+ * resolver uma notificação de seleção pura ocorrida depois dela.
+ * `ignoreSelectionChange` resolve isso na origem, para as duas janelas: uma
+ * notificação sem nenhum nó de conteúdo alterado nunca chega a
+ * `handleChange`, então nunca é uma "edição real" candidata, seja antes ou
+ * depois da primeira divergência — consistente com o propósito de
+ * `onChange` (propagar `bodyMdx` para autosave), que nunca deveria reagir a
+ * mero movimento de cursor/foco.
  *
  * `baselineMarkdownRef` é calculado uma única vez, de forma síncrona,
  * dentro da própria função `editorState` de `LexicalComposer` (ver abaixo)
@@ -170,10 +215,24 @@ function ChangeTrackerPlugin({
     [onChange, baselineMarkdownRef],
   );
 
-  return <OnChangePlugin onChange={handleChange} />;
+  return <OnChangePlugin ignoreSelectionChange onChange={handleChange} />;
 }
 
-export function ArticleBodyEditor({ id, labelId, initialValue, onChange, disabled = false }: ArticleBodyEditorProps) {
+export function ArticleBodyEditor({ id, labelId, siteSlug, initialValue, onChange, disabled = false }: ArticleBodyEditorProps) {
+  // UXE-010 — `isImageFlowActive` cobre exatamente a janela entre acionar
+  // "Imagem" (toolbar ou menu `/`) e o fluxo terminar (cancelamento,
+  // sucesso ou falha) — ver doc comment completo em
+  // `article-body-image-flow.tsx`. Somado a `disabled` (nunca
+  // substituído por ele) via `effectiveDisabled` abaixo: o editor fica
+  // não-editável tanto durante o submit do formulário quanto durante o
+  // fluxo de imagem, sem os dois mecanismos colidirem.
+  const [isImageFlowActive, setIsImageFlowActive] = useState(false);
+  const imageFlowRef = useRef<ArticleBodyImageFlowHandle>(null);
+  const handleRequestImage = useCallback((anchor: ImageInsertionAnchor) => {
+    imageFlowRef.current?.requestImage(anchor);
+  }, []);
+  const effectiveDisabled = disabled || isImageFlowActive;
+
   // Guarda client-only/SSR-safe: o Next.js ainda faz uma passada de
   // renderização no servidor para Client Components — `LexicalComposer`/
   // `ContentEditable` só montam depois da hidratação, evitando qualquer
@@ -216,7 +275,7 @@ export function ArticleBodyEditor({ id, labelId, initialValue, onChange, disable
   const [initialConfig] = useState<InitialConfigType>(() => ({
     namespace: 'article-body-editor',
     editable: !disabled,
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, ProductBlockNode],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, ProductBlockNode, ImageNode],
     onError: (error) => {
       throw error;
     },
@@ -237,7 +296,7 @@ export function ArticleBodyEditor({ id, labelId, initialValue, onChange, disable
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <ArticleBodyToolbar disabled={disabled} />
+      <ArticleBodyToolbar disabled={effectiveDisabled} onRequestImage={handleRequestImage} />
       <RichTextPlugin
         contentEditable={
           <ContentEditable
@@ -251,11 +310,12 @@ export function ArticleBodyEditor({ id, labelId, initialValue, onChange, disable
         placeholder={null}
         ErrorBoundary={LexicalErrorBoundary}
       />
-      <ArticleBodySlashMenu disabled={disabled} />
+      <ArticleBodySlashMenu disabled={effectiveDisabled} onRequestImage={handleRequestImage} />
+      <ArticleBodyImageFlow ref={imageFlowRef} siteSlug={siteSlug} onActiveChange={setIsImageFlowActive} />
       <HistoryPlugin />
       <ListPlugin />
       <LinkPlugin />
-      <EditableSyncPlugin disabled={disabled} />
+      <EditableSyncPlugin disabled={effectiveDisabled} />
       <ChangeTrackerPlugin onChange={onChange} baselineMarkdownRef={baselineMarkdownRef} />
     </LexicalComposer>
   );

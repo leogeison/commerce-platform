@@ -376,3 +376,107 @@
 .previewContent > *:last-child {
   margin-bottom: 0;
 }
+
+/*
+ * UXE-010 — Upload/inserção de imagem com decisão explícita de
+ * acessibilidade. Nível de rigor visual equivalente ao já usado por
+ * `.linkForm` (mini-formulário inline da toolbar) — sem um padrão de
+ * modal mais pesado pré-existente neste código-base para reaproveitar.
+ */
+.imageDialog {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  max-width: 28rem;
+}
+
+.imageDialogHeading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.imageDialogField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.imageDialogField legend {
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0;
+}
+
+.imageDialogField label {
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.imageDialogField input[type='text'] {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.875rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.imageDialogValidationError {
+  color: #c0392b;
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.imageDialogActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.imageDialogLoading,
+.imageDialogError {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.imageDialogError {
+  color: #c0392b;
+}
+
+.imageDialogLoadingIcon,
+.imageDialogErrorIcon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .imageDialogLoadingIcon {
+    animation: article-form-autosave-spin 1s linear infinite;
+  }
+}
+
+/**
+ * UXE-010 (correção B — seleção/remoção de `ImageNode`).
+ *
+ * Indicador visual mínimo de `NodeSelection` no bloco de imagem — mesma
+ * cor/espessura de outline já usada neste arquivo para foco (`#2563eb`,
+ * 2px, offset 1px), reaproveitada aqui para consistência, não uma decisão
+ * visual nova. Necessário para o usuário enxergar o que Delete/Backspace
+ * vai remover antes de apertar a tecla — não é toolbar/resize/caption de
+ * imagem (fora de escopo desta tarefa).
+ */
+.imageNodeSelected {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}

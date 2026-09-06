@@ -430,6 +430,7 @@ export function ArticleForm({ siteSlug, articleId, initialValues, submitLabel, o
         <ArticleBodyEditor
           id="article-body"
           labelId="article-body-label"
+          siteSlug={siteSlug}
           initialValue={initialValues.bodyMdx}
           onChange={setBodyMdx}
           disabled={isSubmitting}

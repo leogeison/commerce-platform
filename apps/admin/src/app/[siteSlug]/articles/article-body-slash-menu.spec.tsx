@@ -41,6 +41,7 @@ async function renderEditor(props: Partial<React.ComponentProps<typeof ArticleBo
         <ArticleBodyEditor
           id="article-body"
           labelId="article-body-label"
+          siteSlug={props.siteSlug ?? 'fastcompre'}
           initialValue={props.initialValue ?? ''}
           onChange={onChange}
           disabled={props.disabled}
@@ -69,7 +70,7 @@ function insertTextIntoEmptyLexicalEditor(editorRoot: HTMLElement, text: string)
 }
 
 describe('ArticleBodySlashMenu', () => {
-  it('digitar "/" no início de um bloco vazio abre o menu com as 5 capacidades já disponíveis (imagem e bloco Produto-Oferta ausentes)', async () => {
+  it('digitar "/" no início de um bloco vazio abre o menu com as 6 capacidades já disponíveis (imagem presente; bloco Produto-Oferta ausente — UXE-011)', async () => {
     const user = userEvent.setup();
     await renderEditor({ initialValue: '' });
 
@@ -82,7 +83,7 @@ describe('ArticleBodySlashMenu', () => {
     const listbox = await screen.findByRole('listbox', { name: 'Inserir bloco' });
     const options = await waitFor(() => {
       const found = screen.getAllByRole('option');
-      expect(found).toHaveLength(5);
+      expect(found).toHaveLength(6);
       return found;
     });
     expect(options.map((option) => option.textContent)).toEqual([
@@ -91,8 +92,8 @@ describe('ArticleBodySlashMenu', () => {
       'Título 3',
       'Lista',
       'Lista numerada',
+      'Imagem',
     ]);
-    expect(screen.queryByText('Imagem')).not.toBeInTheDocument();
     expect(screen.queryByText(/Produto/)).not.toBeInTheDocument();
     // Vínculo de combobox: `aria-autocomplete`/`aria-controls`/
     // `aria-activedescendant` SÃO permitidos em `role="textbox"` (ARIA
@@ -103,7 +104,7 @@ describe('ArticleBodySlashMenu', () => {
     expect(editor).toHaveAttribute('aria-autocomplete', 'list');
     expect(editor).toHaveAttribute('aria-controls', listbox.id);
     expect(editor).toHaveAttribute('aria-activedescendant', options[0]!.id);
-    expect(screen.getByRole('status')).toHaveTextContent('Título 1 selecionado, opção 1 de 5.');
+    expect(screen.getByRole('status')).toHaveTextContent('Título 1 selecionado, opção 1 de 6.');
   });
 
   it('filtra corretamente uma consulta sem acento contra rótulos acentuados (correção desta rodada: "/tit" para "Título")', async () => {
@@ -160,7 +161,7 @@ describe('ArticleBodySlashMenu', () => {
       expect(options[2]).toHaveAttribute('aria-selected', 'true');
       expect(editor).toHaveAttribute('aria-activedescendant', options[2]!.id);
     });
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Título 3 selecionado, opção 3 de 5.'));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Título 3 selecionado, opção 3 de 6.'));
     expect(editor).toHaveFocus();
   });
 
@@ -205,6 +206,35 @@ describe('ArticleBodySlashMenu', () => {
     const list = await screen.findByRole('list');
     expect(list.tagName).toBe('UL');
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('- '));
+  });
+
+  it('confirmar "Imagem" (UXE-010) remove o texto "/imagem" e aciona o fluxo compartilhado de imagem, de forma síncrona', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, '/imagem');
+    });
+    const options = await waitFor(() => {
+      const found = screen.getAllByRole('option');
+      expect(found).toHaveLength(1);
+      return found;
+    });
+    expect(options[0]).toHaveTextContent('Imagem');
+
+    await user.click(options[0]!);
+
+    // Síncrono: `/imagem` já não existe no documento e o menu já fechou —
+    // upload/diálogo (assíncronos) são cobertos em
+    // `article-body-image-flow.spec.tsx`, não aqui (mesmo racional já
+    // registrado no doc comment do arquivo: este spec cobre o menu `/`
+    // em si, não o fluxo de imagem inteiro).
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(editor).not.toHaveTextContent('/imagem');
+    expect(screen.getByLabelText('Selecionar arquivo de imagem')).toBeInTheDocument();
   });
 
   it('Escape fecha o menu sem alterar o documento', async () => {

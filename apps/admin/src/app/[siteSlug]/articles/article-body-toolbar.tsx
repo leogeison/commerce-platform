@@ -16,6 +16,7 @@ import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, typ
 import { $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from '@lexical/list';
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $getBlockElement } from './article-body-block-utils';
+import type { ImageInsertionAnchor } from './article-body-image-flow';
 import styles from './article-form.module.css';
 
 /**
@@ -133,7 +134,20 @@ function $replaceSelectedBlocks(selection: RangeSelection, createElement: () => 
   });
 }
 
-export function ArticleBodyToolbar({ disabled = false }: { disabled?: boolean }) {
+interface ArticleBodyToolbarProps {
+  disabled?: boolean;
+  /**
+   * UXE-010 — disparo síncrono do fluxo compartilhado de imagem (ver doc
+   * comment de `ArticleBodyImageFlow`). Este componente só faz seu
+   * próprio preparo síncrono (capturar a seleção/bloco atuais, sem
+   * alterar o documento — diferente do menu `/`, que remove o `/query`
+   * antes) e entrega a âncora resultante; upload/diálogo/inserção
+   * acontecem inteiramente fora daqui.
+   */
+  onRequestImage: (anchor: ImageInsertionAnchor) => void;
+}
+
+export function ArticleBodyToolbar({ disabled = false, onRequestImage }: ArticleBodyToolbarProps) {
   const [editor] = useLexicalComposerContext();
 
   const [blockType, setBlockType] = useState<ActiveBlockType>('paragraph');
@@ -141,6 +155,14 @@ export function ArticleBodyToolbar({ disabled = false }: { disabled?: boolean })
   const [isItalic, setIsItalic] = useState(false);
   const [isLink, setIsLink] = useState(false);
   const [isSelectionCollapsed, setIsSelectionCollapsed] = useState(true);
+  // UXE-010 — botão "Imagem" fica desabilitado sem seleção Lexical
+  // válida (mesmo precedente já usado pelo botão "Link" acima/abaixo,
+  // `disabled || (!isLink && isSelectionCollapsed)`): evita por
+  // construção o caso "acionado sem seleção", em vez de inventar um
+  // destino de inserção default silencioso caso isso aconteça mesmo
+  // assim (ver `handleRequestImage`, que também nunca insere por
+  // padrão nesse caso).
+  const [hasValidSelection, setHasValidSelection] = useState(false);
 
   const [isEditingLink, setIsEditingLink] = useState(false);
   const [linkUrlDraft, setLinkUrlDraft] = useState('');
@@ -151,6 +173,7 @@ export function ArticleBodyToolbar({ disabled = false }: { disabled?: boolean })
       editorState.read(() => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) {
+          setHasValidSelection(false);
           return;
         }
         setIsBold(selection.hasFormat('bold'));
@@ -158,6 +181,7 @@ export function ArticleBodyToolbar({ disabled = false }: { disabled?: boolean })
         setBlockType($getActiveBlockType(selection));
         setIsLink(findNearestLinkNode(selection.anchor.getNode()) !== null);
         setIsSelectionCollapsed(selection.isCollapsed());
+        setHasValidSelection(true);
       });
     });
   }, [editor]);
@@ -255,6 +279,29 @@ export function ArticleBodyToolbar({ disabled = false }: { disabled?: boolean })
     setIsEditingLink(false);
   }
 
+  /**
+   * Preparo síncrono da toolbar (UXE-010): captura a seleção atual
+   * (clonada, mesmo princípio já usado por `openLinkForm` acima) e o
+   * bloco de nível superior correspondente, sem alterar o documento —
+   * `onRequestImage` decide o resto. Se não houver seleção válida no
+   * instante do clique (defensivo — o botão já fica `disabled` nesse
+   * caso, ver `hasValidSelection`), não faz nada: nunca insere em
+   * nenhum destino default.
+   */
+  function handleRequestImage() {
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) {
+        return;
+      }
+      const blockElement = $getBlockElement(selection.anchor.getNode());
+      if (!blockElement) {
+        return;
+      }
+      onRequestImage({ mode: 'insert-after', blockKey: blockElement.getKey(), restoreSelection: selection.clone() });
+    });
+  }
+
   const isInList = blockType === 'bullet' || blockType === 'number';
 
   return (
@@ -348,6 +395,14 @@ export function ArticleBodyToolbar({ disabled = false }: { disabled?: boolean })
           )}
         </div>
       )}
+      <button
+        type="button"
+        onMouseDown={preventMouseDown}
+        onClick={handleRequestImage}
+        disabled={disabled || !hasValidSelection}
+      >
+        Imagem
+      </button>
     </div>
   );
 }

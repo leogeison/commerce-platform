@@ -39,6 +39,7 @@ async function renderEditor(props: Partial<React.ComponentProps<typeof ArticleBo
         <ArticleBodyEditor
           id="article-body"
           labelId="article-body-label"
+          siteSlug={props.siteSlug ?? 'fastcompre'}
           initialValue={props.initialValue ?? ''}
           onChange={onChange}
           disabled={props.disabled}
