@@ -28,7 +28,21 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { $getRoot, $getSelection, $isRangeSelection, getNearestEditorFromDOMNode } from 'lexical';
 import { ArticleBodyEditor } from './article-body-editor';
+import { ProductLookupProvider } from './product-lookup-context';
 
+const PRODUCT_DISABLED_REASON = 'salve o Artigo antes de inserir um bloco de Produto.';
+
+/**
+ * UXE-011 — sem `ProductLookupProvider` envolvendo o teste,
+ * `useProductLookup()` devolve o valor default do Context
+ * (`overallStatus: 'unavailable'`) — o mesmo estado real de
+ * `/articles/new` antes de o Artigo ser persistido. Por isso a maioria dos
+ * testes deste arquivo (herdados da UXE-007/010, sem Provider) já exercita
+ * exatamente esse caso: "Bloco Produto-Oferta" sempre presente no menu,
+ * sempre com `disabledReason` preenchido. Só o teste dedicado ao estado
+ * disponível, mais abaixo, usa `renderEditorWithLinkedProduct` (Provider
+ * real + fetch mockado).
+ */
 async function renderEditor(props: Partial<React.ComponentProps<typeof ArticleBodyEditor>> = {}) {
   const onChange = props.onChange ?? jest.fn();
   let utils!: ReturnType<typeof render>;
@@ -52,6 +66,55 @@ async function renderEditor(props: Partial<React.ComponentProps<typeof ArticleBo
   return { ...utils, onChange };
 }
 
+async function renderEditorWithLinkedProduct() {
+  const productId = 'aaaaaaaa-1111-4111-8111-111111111111';
+  global.fetch = jest.fn<typeof fetch>(async (input) => {
+    const url = String(input);
+    const ok = (body: unknown) => ({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) }) as Response;
+    if (url.endsWith('/products')) {
+      return ok({ productIds: [productId] });
+    }
+    return ok({
+      items: [
+        {
+          id: productId,
+          siteId: '22222222-2222-4222-8222-222222222222',
+          categoryId: null,
+          name: 'Fone Bluetooth',
+          slug: 'fone-bluetooth',
+          description: null,
+          imageUrl: null,
+          archivedAt: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      page: 1,
+      pageSize: 100,
+      total: 1,
+      totalPages: 1,
+    });
+  });
+
+  const onChange = jest.fn();
+  let utils!: ReturnType<typeof render>;
+  await act(async () => {
+    utils = render(
+      <ProductLookupProvider siteSlug="fastcompre" articleId="11111111-1111-4111-8111-111111111111">
+        <label id="article-body-label" htmlFor="article-body">
+          Corpo (Markdown)
+        </label>
+        <ArticleBodyEditor id="article-body" labelId="article-body-label" siteSlug="fastcompre" initialValue="" onChange={onChange} />
+      </ProductLookupProvider>,
+    );
+  });
+  // Espera a fonte compartilhada resolver antes do teste prosseguir — do
+  // contrário o item nasceria com `disabledReason` (status ainda
+  // 'loading') e o teste ficaria dependente de timing.
+  await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+  return { ...utils, onChange, productId };
+}
+
 function insertTextIntoEmptyLexicalEditor(editorRoot: HTMLElement, text: string): void {
   const editor = getNearestEditorFromDOMNode(editorRoot);
   if (!editor) {
@@ -70,7 +133,7 @@ function insertTextIntoEmptyLexicalEditor(editorRoot: HTMLElement, text: string)
 }
 
 describe('ArticleBodySlashMenu', () => {
-  it('digitar "/" no início de um bloco vazio abre o menu com as 6 capacidades já disponíveis (imagem presente; bloco Produto-Oferta ausente — UXE-011)', async () => {
+  it('digitar "/" no início de um bloco vazio abre o menu com as 7 capacidades disponíveis (Bloco Produto-Oferta sempre presente — desabilitado aqui por não haver Artigo persistido, UXE-011)', async () => {
     const user = userEvent.setup();
     await renderEditor({ initialValue: '' });
 
@@ -83,7 +146,7 @@ describe('ArticleBodySlashMenu', () => {
     const listbox = await screen.findByRole('listbox', { name: 'Inserir bloco' });
     const options = await waitFor(() => {
       const found = screen.getAllByRole('option');
-      expect(found).toHaveLength(6);
+      expect(found).toHaveLength(7);
       return found;
     });
     expect(options.map((option) => option.textContent)).toEqual([
@@ -93,8 +156,8 @@ describe('ArticleBodySlashMenu', () => {
       'Lista',
       'Lista numerada',
       'Imagem',
+      `Bloco Produto-Oferta — ${PRODUCT_DISABLED_REASON}`,
     ]);
-    expect(screen.queryByText(/Produto/)).not.toBeInTheDocument();
     // Vínculo de combobox: `aria-autocomplete`/`aria-controls`/
     // `aria-activedescendant` SÃO permitidos em `role="textbox"` (ARIA
     // 1.2) — só `aria-expanded`/`aria-haspopup` não são (comprovado por
@@ -104,7 +167,7 @@ describe('ArticleBodySlashMenu', () => {
     expect(editor).toHaveAttribute('aria-autocomplete', 'list');
     expect(editor).toHaveAttribute('aria-controls', listbox.id);
     expect(editor).toHaveAttribute('aria-activedescendant', options[0]!.id);
-    expect(screen.getByRole('status')).toHaveTextContent('Título 1 selecionado, opção 1 de 6.');
+    expect(screen.getByRole('status')).toHaveTextContent('Título 1 selecionado, opção 1 de 7.');
   });
 
   it('filtra corretamente uma consulta sem acento contra rótulos acentuados (correção desta rodada: "/tit" para "Título")', async () => {
@@ -161,7 +224,7 @@ describe('ArticleBodySlashMenu', () => {
       expect(options[2]).toHaveAttribute('aria-selected', 'true');
       expect(editor).toHaveAttribute('aria-activedescendant', options[2]!.id);
     });
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Título 3 selecionado, opção 3 de 6.'));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Título 3 selecionado, opção 3 de 7.'));
     expect(editor).toHaveFocus();
   });
 
@@ -299,5 +362,81 @@ describe('ArticleBodySlashMenu', () => {
     await screen.findByRole('listbox');
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('"Bloco Produto-Oferta" indisponível (sem Artigo persistido): explicação sempre visível (nunca só tooltip), aria-disabled, e nem clique nem Enter confirmam — menu permanece aberto, documento não muda além da digitação legítima de "/produto" (regressão: handlers de teclado chamavam apply() sem checar disabledReason)', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, '/produto');
+    });
+
+    // "/produto" é uma edição real do documento (mesmo texto digitado pelo
+    // usuário) — `onChange('/produto')` é uma emissão LEGÍTIMA, não uma
+    // falha a esconder. Espera essa emissão explicitamente antes de
+    // limpar o mock, para que as asserções seguintes (`not.toHaveBeenCalled`)
+    // provem exclusivamente que TENTAR confirmar o item desabilitado não
+    // altera o documento — nunca que digitar "/produto" não o alterou.
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('/produto'));
+    onChange.mockClear();
+
+    const option = await screen.findByRole('option', { name: `Bloco Produto-Oferta — ${PRODUCT_DISABLED_REASON}` });
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    // A explicação é texto renderizado de verdade (Testing Library só
+    // encontra por `name` acessível o que está exposto de forma real —
+    // não um atributo `title` só-hover) — reforçado checando o texto no
+    // próprio nó, sem depender de nenhum atributo de tooltip.
+    expect(option).toHaveTextContent(PRODUCT_DISABLED_REASON);
+    expect(option).not.toHaveAttribute('title');
+
+    await user.click(option);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(editor).toHaveTextContent('/produto');
+    expect(onChange).not.toHaveBeenCalled();
+
+    // Único resultado da busca "/produto" — Enter confirma a opção ativa
+    // (índice 0), que é exatamente este item desabilitado.
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(editor).toHaveTextContent('/produto');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('"Bloco Produto-Oferta" disponível (Artigo persistido, com Produto vinculado): sem disabledReason, confirmável por clique — remove "/produto" (alteração legítima do documento) e abre o diálogo do fluxo de Produto de forma síncrona', async () => {
+    const user = userEvent.setup();
+    const { onChange } = await renderEditorWithLinkedProduct();
+
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, '/produto');
+    });
+    // Emissão legítima da digitação de "/produto" — não escondida.
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('/produto'));
+
+    const option = await screen.findByRole('option', { name: 'Bloco Produto-Oferta' });
+    expect(option).not.toHaveAttribute('aria-disabled');
+
+    await user.click(option);
+
+    // Síncrono: "/produto" já não existe no documento e o menu já fechou —
+    // a seleção/inserção do Produto em si (assíncrona, via diálogo) é
+    // coberta em `article-body-product-flow.spec.tsx`, não aqui (mesmo
+    // racional já registrado no doc comment do arquivo para "Imagem"). O
+    // diálogo ter aberto é provado separadamente da mudança de documento
+    // abaixo — as duas são afirmações distintas, nenhuma esconde a outra.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(editor).not.toHaveTextContent('/produto');
+    expect(screen.getByRole('dialog', { name: 'Inserir bloco de Produto vinculado' })).toBeInTheDocument();
+
+    // `blockElement.clear()` (dentro de `apply`) é, ele mesmo, uma edição
+    // real do documento — o bloco volta a ficar um parágrafo vazio, e o
+    // Markdown exportado diverge do estado anterior ("/produto") para "".
+    // Afirmado explicitamente, nunca escondido atrás de `not.toHaveBeenCalled()`.
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(''));
   });
 });

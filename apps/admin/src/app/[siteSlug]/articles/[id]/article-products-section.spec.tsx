@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ArticleProductsSection } from './article-products-section';
+import { ProductLookupProvider } from '../product-lookup-context';
 
 const ARTICLE_ID = '11111111-1111-4111-8111-111111111111';
 const SITE_SLUG = 'fastcompre';
@@ -41,9 +42,19 @@ function productsPath() {
   return `/admin/sites/${SITE_SLUG}/articles/${ARTICLE_ID}/products`;
 }
 
+/**
+ * UXE-011 — `ArticleProductsSection` não busca mais `productIds`/catálogo
+ * por conta própria; ambos vêm de `ProductLookupProvider` (montado por
+ * `ArticleDetail`, acima do componente na composição real). Os mocks de
+ * `global.fetch` já usados por esta suíte continuam servindo as DUAS
+ * buscas (agora feitas pelo Provider) sem nenhuma alteração — mesmos
+ * endpoints, mesmas respostas.
+ */
 function render_(onProductsChanged?: () => void) {
   return render(
-    <ArticleProductsSection siteSlug={SITE_SLUG} articleId={ARTICLE_ID} onProductsChanged={onProductsChanged} />,
+    <ProductLookupProvider siteSlug={SITE_SLUG} articleId={ARTICLE_ID}>
+      <ArticleProductsSection siteSlug={SITE_SLUG} articleId={ARTICLE_ID} onProductsChanged={onProductsChanged} />
+    </ProductLookupProvider>,
   );
 }
 

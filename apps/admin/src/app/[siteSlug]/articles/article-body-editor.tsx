@@ -24,7 +24,7 @@ import {
   QUOTE,
   UNORDERED_LIST,
 } from '@lexical/markdown';
-import type { EditorState } from 'lexical';
+import { $createParagraphNode, RootNode, type EditorState } from 'lexical';
 import { PRODUCT_BLOCK } from './product-block/transformer';
 import { ProductBlockNode } from './product-block/node';
 import { IMAGE } from './article-body-image/transformer';
@@ -32,6 +32,11 @@ import { ImageNode } from './article-body-image/node';
 import { ArticleBodyToolbar } from './article-body-toolbar';
 import { ArticleBodySlashMenu } from './article-body-slash-menu';
 import { ArticleBodyImageFlow, type ArticleBodyImageFlowHandle, type ImageInsertionAnchor } from './article-body-image-flow';
+import {
+  ArticleBodyProductFlow,
+  type ArticleBodyProductFlowHandle,
+  type ProductBlockInsertionAnchor,
+} from './article-body-product-flow';
 import styles from './article-form.module.css';
 
 /**
@@ -73,9 +78,35 @@ import styles from './article-form.module.css';
  *
  * Fora de escopo (não implementado aqui): autosave é UXE-008 (já
  * implementada em tarefa anterior, sem relação com esta doc); edição de
- * imagem (crop/resize, fora do escopo da UXE-010); seletor/inserção/
- * edição funcional de bloco Produto e resolução de Produto/Oferta
- * (UXE-011 — item ausente do menu `/` até lá).
+ * imagem (crop/resize, fora do escopo da UXE-010).
+ *
+ * UXE-011 — Bloco Produto/Oferta: UI de inserção/edição. Mesmo padrão de
+ * UXE-010: `ArticleBodyProductFlow` (`./article-body-product-flow.tsx`) é
+ * o único fluxo de inserção/edição do `ProductBlockNode`
+ * (`./product-block/node.ts`, migrado para `DecoratorBlockNode` nesta
+ * tarefa), acionado pelo menu `/` (inserção, via `onRequestProductBlock`)
+ * e pelo botão "Editar bloco de Produto vinculado" do próprio decorator
+ * (edição, via `OPEN_PRODUCT_BLOCK_EDIT_COMMAND`,
+ * `./product-block/edit-command.ts` — registrado pelo próprio
+ * `ArticleBodyProductFlow`, nenhum wiring extra necessário aqui além de
+ * montar o componente). `isProductFlowActive` soma-se a
+ * `isImageFlowActive` em `effectiveDisabled`, mesmo mecanismo, nunca
+ * concorrente entre si (só um fluxo por vez pode estar ativo — cada um
+ * desabilita o próprio item que o aciona enquanto ativo, via
+ * `effectiveDisabled` já propagado à toolbar/menu).
+ *
+ * `RootNeverEmptyPlugin` (novo nesta tarefa) — garante, via
+ * `editor.registerNodeTransform(RootNode, ...)`, que `RootNode` nunca
+ * commite com zero filhos depois de Delete/Backspace remover o único/
+ * último bloco de nível superior do documento (ex.: o único
+ * `ProductBlockNode`) — Delete/Backspace sobre uma `NodeSelection` já é
+ * tratado genericamente por `registerRichText` (`@lexical/rich-text`),
+ * nenhuma reimplementação própria. Um node transform roda DENTRO do mesmo
+ * `editor.update()` que fez a remoção, antes do commit/reconciliação e
+ * antes de qualquer `registerUpdateListener`/`OnChangePlugin` — nunca um
+ * `registerUpdateListener` reparando depois de um estado com Root vazio já
+ * ter sido commitado (o que poderia propagar `bodyMdx=""` para
+ * `ChangeTrackerPlugin`/autosave antes da reparação).
  */
 
 const TRANSFORMERS = [HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, LINK, BOLD_STAR, ITALIC_STAR, PRODUCT_BLOCK, IMAGE];
@@ -129,6 +160,29 @@ function EditableSyncPlugin({ disabled }: { disabled: boolean }) {
   useEffect(() => {
     editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  return null;
+}
+
+/**
+ * UXE-011 — ver racional completo no doc comment do topo do arquivo
+ * ("RootNeverEmptyPlugin"). Registrado uma única vez por instância do
+ * editor (efeito com `[editor]` como única dependência) — o transform em
+ * si é idempotente (só age quando `getChildrenSize() === 0`), então
+ * múltiplas remoções sucessivas do único bloco continuam seguras.
+ */
+function RootNeverEmptyPlugin(): null {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    return editor.registerNodeTransform(RootNode, (root) => {
+      if (root.getChildrenSize() === 0) {
+        const paragraph = $createParagraphNode();
+        root.append(paragraph);
+        paragraph.select();
+      }
+    });
+  }, [editor]);
 
   return null;
 }
@@ -231,7 +285,17 @@ export function ArticleBodyEditor({ id, labelId, siteSlug, initialValue, onChang
   const handleRequestImage = useCallback((anchor: ImageInsertionAnchor) => {
     imageFlowRef.current?.requestImage(anchor);
   }, []);
-  const effectiveDisabled = disabled || isImageFlowActive;
+  // UXE-011 — mesmo mecanismo de `isImageFlowActive`/`imageFlowRef`, um
+  // fluxo independente (nenhum dos dois compartilha estado): só um dos
+  // dois pode estar ativo por vez na prática (cada item que aciona um
+  // fluxo já está desabilitado por `effectiveDisabled` enquanto o outro
+  // está ativo), mas a soma abaixo cobre os dois sem suposição extra.
+  const [isProductFlowActive, setIsProductFlowActive] = useState(false);
+  const productFlowRef = useRef<ArticleBodyProductFlowHandle>(null);
+  const handleRequestProductBlock = useCallback((anchor: ProductBlockInsertionAnchor) => {
+    productFlowRef.current?.requestInsert(anchor);
+  }, []);
+  const effectiveDisabled = disabled || isImageFlowActive || isProductFlowActive;
 
   // Guarda client-only/SSR-safe: o Next.js ainda faz uma passada de
   // renderização no servidor para Client Components — `LexicalComposer`/
@@ -310,12 +374,18 @@ export function ArticleBodyEditor({ id, labelId, siteSlug, initialValue, onChang
         placeholder={null}
         ErrorBoundary={LexicalErrorBoundary}
       />
-      <ArticleBodySlashMenu disabled={effectiveDisabled} onRequestImage={handleRequestImage} />
+      <ArticleBodySlashMenu
+        disabled={effectiveDisabled}
+        onRequestImage={handleRequestImage}
+        onRequestProductBlock={handleRequestProductBlock}
+      />
       <ArticleBodyImageFlow ref={imageFlowRef} siteSlug={siteSlug} onActiveChange={setIsImageFlowActive} />
+      <ArticleBodyProductFlow ref={productFlowRef} onActiveChange={setIsProductFlowActive} />
       <HistoryPlugin />
       <ListPlugin />
       <LinkPlugin />
       <EditableSyncPlugin disabled={effectiveDisabled} />
+      <RootNeverEmptyPlugin />
       <ChangeTrackerPlugin onChange={onChange} baselineMarkdownRef={baselineMarkdownRef} />
     </LexicalComposer>
   );

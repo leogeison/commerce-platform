@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { articleProductsResponseSchema, type ProductAdmin } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
-import { fetchAllProducts } from '../../../../lib/fetch-all-products';
+import { useProductLookup } from '../product-lookup-context';
 import styles from './article-products-section.module.css';
 
 interface ArticleProductsSectionProps {
@@ -12,9 +12,6 @@ interface ArticleProductsSectionProps {
   articleId: string;
   onProductsChanged?: () => void;
 }
-
-type ProductIdsState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; productIds: string[] };
-type CatalogState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; items: ProductAdmin[] };
 
 const GENERIC_LOAD_ERROR_MESSAGE = 'Não foi possível carregar os Produtos vinculados.';
 const GENERIC_ACTION_ERROR_MESSAGE = 'Não foi possível concluir a ação. Tente novamente em instantes.';
@@ -41,21 +38,23 @@ function resolveActionErrorMessage(error: unknown): string {
  * não tem `articleId`; mesmo critério de `OfferSection`, que só aparece em
  * `ProductDetail [id]`).
  *
- * Duas buscas independentes ao montar: `GET /:id/products` (incremento
- * ADM-009, `productIds` na ordem de `position`) e `fetchAllProducts`
- * (catálogo completo do Site, nova função irmã de `fetchAllCategories`/
- * `fetchAllAuthors`) — a segunda resolve nome por `productId` sem nenhuma
- * chamada extra e também alimenta o `<select>` de "disponíveis"
- * (catálogo inteiro menos os já vinculados). Produto arquivado aparece
- * rotulado "(arquivado)" mas continua selecionável — `EDT-010` não
- * bloqueia isso; só a publicação (`APP-002`, fora do escopo) exige Oferta
- * válida.
+ * UXE-011 — REFATORAÇÃO: as duas buscas independentes que este componente
+ * fazia ao montar (`GET /:id/products` e `fetchAllProducts`) foram movidas
+ * para `ProductLookupProvider` (montado por `ArticleDetail`, acima deste
+ * componente e de `ArticleForm`) — fonte agora compartilhada com o editor
+ * Lexical do corpo do Artigo (menu `/`, decorator do bloco de Produto,
+ * preview). Este componente consome essa fonte via `useProductLookup()` em
+ * vez de manter seu próprio estado/efeitos de busca; os três estados
+ * funcionais (loading/error/ready) e a combinação entre as duas buscas
+ * permanecem EXATAMENTE como antes desta refatoração — só a origem do
+ * estado mudou, nenhum comportamento visível.
  *
- * A ordem exibida (`productIds`) é SEMPRE substituída pela resposta da
- * API — no carregamento inicial e depois de cada vincular/desvincular/
- * reordenar (as três mutações de `EDT-010` já devolvem `{ productIds }`
- * atualizado). Nunca calculada ou persistida localmente além da confirmação
- * do servidor.
+ * A ordem exibida (`productIds`) continua SEMPRE substituída pela resposta
+ * da própria mutação (link/unlink/reorder) — nunca calculada ou persistida
+ * localmente além da confirmação do servidor. Cada mutação bem-sucedida
+ * chama `setProductIds` (do Provider) com o `productIds` já devolvido pela
+ * API — nunca um novo `GET`/invalidação (fechamento explícito desta
+ * tarefa: sem `refreshToken`/polling/cache preventivo).
  *
  * Reordenar via botões "Mover para cima"/"Mover para baixo" — sem
  * drag-and-drop, sem nova dependência (decisão fechada no desenho técnico
@@ -68,51 +67,10 @@ function resolveActionErrorMessage(error: unknown): string {
  * (`ArticleDetail`), que decide o que fazer com isso.
  */
 export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged }: ArticleProductsSectionProps) {
-  const [productIdsState, setProductIdsState] = useState<ProductIdsState>({ status: 'loading' });
-  const [catalogState, setCatalogState] = useState<CatalogState>({ status: 'loading' });
+  const { productIdsState, catalogState, setProductIds } = useProductLookup();
   const [selectedToLink, setSelectedToLink] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    apiRequest(productsPath(siteSlug, articleId), articleProductsResponseSchema)
-      .then((data) => {
-        if (!cancelled) {
-          setProductIdsState({ status: 'ready', productIds: data.productIds });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProductIdsState({ status: 'error' });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [siteSlug, articleId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchAllProducts(siteSlug)
-      .then((items) => {
-        if (!cancelled) {
-          setCatalogState({ status: 'ready', items });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCatalogState({ status: 'error' });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [siteSlug]);
 
   async function handleLink() {
     if (!selectedToLink || isProcessing) {
@@ -125,7 +83,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
         method: 'POST',
         body: { productId: selectedToLink },
       });
-      setProductIdsState({ status: 'ready', productIds: response.productIds });
+      setProductIds(response.productIds);
       setSelectedToLink('');
       onProductsChanged?.();
     } catch (error) {
@@ -147,7 +105,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
         articleProductsResponseSchema,
         { method: 'DELETE' },
       );
-      setProductIdsState({ status: 'ready', productIds: response.productIds });
+      setProductIds(response.productIds);
       onProductsChanged?.();
     } catch (error) {
       setActionError(resolveActionErrorMessage(error));
@@ -176,7 +134,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
         method: 'PATCH',
         body: { productIds: reordered },
       });
-      setProductIdsState({ status: 'ready', productIds: response.productIds });
+      setProductIds(response.productIds);
     } catch (error) {
       setActionError(resolveActionErrorMessage(error));
     } finally {

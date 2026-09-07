@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { type CompiledArticleBody } from './compile-article-body';
+import { ProductBlockPreview } from './product-block-preview';
 import styles from './article-form.module.css';
 
 /**
@@ -18,18 +19,27 @@ import styles from './article-form.module.css';
  *   recompila sozinho — fica marcado como desatualizado (comparação simples
  *   contra o `bodyMdx` do último compile bem-sucedido) com uma ação
  *   explícita "Atualizar preview".
- * - Sem Error Boundary: não há evidência concreta, dentro do subconjunto de
- *   Markdown aceito (mais o bloco `:::product` já existente, que sob
- *   `format: 'md'` renderiza como texto literal seguro — não há plugin de
- *   diretiva carregado), de que o componente compilado lance só durante o
- *   render, distinto de uma rejeição na própria compilação. Só a rejeição
- *   da Promise de `compileArticleBody` é tratada.
+ * - Sem Error Boundary: só a rejeição da Promise de `compileArticleBody` é
+ *   tratada (ver doc comment desse módulo).
  * - `components={{ h1: 'h2' }}` replica exatamente o remap já usado em
  *   produção por `apps/fastcompre/.../page.tsx` — mesmo racional (o H1 real
  *   da página pública é o título do Artigo, fora do corpo compilado).
  * - Fidelidade é estrutural/de conteúdo (mesmo compilador, mesma estrutura
  *   de heading), não visual/tipográfica — nenhum CSS da FastCompre é
  *   importado aqui, decisão explícita para não antecipar UXW-009.
+ *
+ * UXE-011 — MUDANÇA: `compileArticleBody` agora devolve uma LISTA de
+ * segmentos (`CompiledArticleBody`, `./compile-article-body.ts`), não mais
+ * um único componente MDX — porque `bodyMdx` pode conter blocos de Produto
+ * intercalados com Markdown comum. Este componente renderiza cada segmento
+ * pelo seu `type`: `'markdown'` continua indo por `<segment.Content
+ * components={{ h1: 'h2' }} />` (mesmo remap de sempre, agora por
+ * segmento); `'product-block'` vai para `<ProductBlockPreview
+ * productId={...} />` (`./product-block-preview.tsx`), que resolve o
+ * Produto contra `ProductLookupContext` — o bloco `:::product` NUNCA
+ * aparece como texto neste preview; `'product-block-error'` (bloco
+ * malformado, fail-closed) renderiza uma mensagem explícita de erro,
+ * nunca passthrough literal do texto original do bloco.
  *
  * `ArticleForm` continua dono de `bodyMdx` — este componente só recebe o
  * valor atual como prop, nunca o modifica.
@@ -38,7 +48,7 @@ import styles from './article-form.module.css';
 type PreviewState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; Content: CompiledArticleBody }
+  | { status: 'ready'; segments: CompiledArticleBody }
   | { status: 'error' };
 
 const GENERIC_PREVIEW_ERROR_MESSAGE = 'Não foi possível gerar o preview deste conteúdo.';
@@ -76,12 +86,12 @@ export function ArticlePreview({ bodyMdx }: ArticlePreviewProps) {
 
     try {
       const { compileArticleBody } = await import('./compile-article-body');
-      const Content = await compileArticleBody(sourceBodyMdx);
+      const segments = await compileArticleBody(sourceBodyMdx);
 
       if (latestRequestIdRef.current !== requestId) {
         return;
       }
-      setState({ status: 'ready', Content });
+      setState({ status: 'ready', segments });
       setCompiledFromBodyMdx(sourceBodyMdx);
     } catch {
       if (latestRequestIdRef.current !== requestId) {
@@ -139,7 +149,19 @@ export function ArticlePreview({ bodyMdx }: ArticlePreviewProps) {
 
           {state.status === 'ready' && (
             <div className={styles.previewContent}>
-              <state.Content components={{ h1: 'h2' }} />
+              {state.segments.map((segment) => {
+                if (segment.type === 'markdown') {
+                  return <segment.Content key={segment.key} components={{ h1: 'h2' }} />;
+                }
+                if (segment.type === 'product-block') {
+                  return <ProductBlockPreview key={segment.key} productId={segment.productId} />;
+                }
+                return (
+                  <p key={segment.key} role="alert" className={styles.previewProductBlockError}>
+                    {segment.message}
+                  </p>
+                );
+              })}
             </div>
           )}
         </section>

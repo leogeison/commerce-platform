@@ -7,6 +7,7 @@ import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
+import { ProductLookupProvider } from '../product-lookup-context';
 import { ArticleHealthChecklist } from './article-health-checklist';
 import { ArticleProductsReadOnly } from './article-products-read-only';
 import { ArticleProductsSection } from './article-products-section';
@@ -197,24 +198,34 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
 
   return (
     <div className={styles.detail}>
-      <ArticleForm
-        siteSlug={siteSlug}
-        articleId={id}
-        initialValues={{
-          type: article.type,
-          title: article.title,
-          slug: article.slug,
-          categoryId: article.categoryId,
-          authorId: article.authorId,
-          metaDescription: article.metaDescription,
-          bodyMdx: article.bodyMdx,
-          coverImageUrl: article.coverImageUrl,
-        }}
-        submitLabel="Salvar"
-        onSubmit={handleUpdate}
-      />
+      {/*
+        UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
+        (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de
+        Produto, preview) e `ArticleProductsSection` — os dois passam a ler
+        a mesma fonte de `ArticleProduct`/catálogo, nenhum dos dois busca
+        por conta própria. `ArticleHealthChecklist`/`ArticleTransitionPanel`
+        não consomem essa fonte — permanecem fora do Provider.
+      */}
+      <ProductLookupProvider siteSlug={siteSlug} articleId={id}>
+        <ArticleForm
+          siteSlug={siteSlug}
+          articleId={id}
+          initialValues={{
+            type: article.type,
+            title: article.title,
+            slug: article.slug,
+            categoryId: article.categoryId,
+            authorId: article.authorId,
+            metaDescription: article.metaDescription,
+            bodyMdx: article.bodyMdx,
+            coverImageUrl: article.coverImageUrl,
+          }}
+          submitLabel="Salvar"
+          onSubmit={handleUpdate}
+        />
 
-      <ArticleProductsSection siteSlug={siteSlug} articleId={id} onProductsChanged={handleProductsChanged} />
+        <ArticleProductsSection siteSlug={siteSlug} articleId={id} onProductsChanged={handleProductsChanged} />
+      </ProductLookupProvider>
 
       <ArticleHealthChecklist
         siteSlug={siteSlug}

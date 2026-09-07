@@ -18,6 +18,8 @@ import { $createHeadingNode, type HeadingTagType } from '@lexical/rich-text';
 import { $createListItemNode, $createListNode } from '@lexical/list';
 import { $getBlockElement } from './article-body-block-utils';
 import type { ImageInsertionAnchor } from './article-body-image-flow';
+import type { ProductBlockInsertionAnchor } from './article-body-product-flow';
+import { useProductLookup } from './product-lookup-context';
 import styles from './article-form.module.css';
 
 /**
@@ -27,9 +29,12 @@ import styles from './article-form.module.css';
  *
  * Escopo original desta tarefa: só os itens cuja capacidade já existia no
  * editor base (título H1-H3, lista não ordenada/ordenada). "Bloco
- * Produto-Oferta" continua deliberadamente ausente do menu — nasce na
- * UXE-011 (seleção/inserção/edição funcional sobre `ArticleProduct`). Um
- * item ausente nunca é um item quebrado.
+ * Produto-Oferta" (seleção/inserção/edição funcional sobre
+ * `ArticleProduct`) nasceu só na UXE-011 — até lá, ficou deliberadamente
+ * ausente do menu (um item ausente nunca é um item quebrado). A partir da
+ * UXE-011 o item passa a existir sempre (ver doc comment mais abaixo,
+ * parágrafo "Bloco Produto-Oferta (UXE-011...)"), podendo estar
+ * indisponível (nunca ausente) quando não há Artigo persistido.
  *
  * "Imagem" (UXE-010, adicionado nesta rodada): cumpre o que esta própria
  * tarefa já havia reservado ("menu `/` para inserir título/lista/imagem/
@@ -39,6 +44,27 @@ import styles from './article-form.module.css';
  * a âncora resultante ao fluxo compartilhado de imagem
  * (`ArticleBodyImageFlow`) — upload/diálogo/inserção acontecem fora do
  * menu. Ver doc comment de `ArticleBodySlashMenuProps.onRequestImage`.
+ *
+ * "Bloco Produto-Oferta" (UXE-011, adicionado nesta rodada): mesmo padrão
+ * de `apply` síncrono de "Imagem" — entrega a âncora resultante a
+ * `onRequestProductBlock` (`ArticleBodyProductFlow`, seleção/inserção
+ * acontecem fora do menu). Diferença nova: este item pode estar
+ * INDISPONÍVEL (`/articles/new`, sem `articleId` — `ProductLookupContext`
+ * em `overallStatus: 'unavailable'`) — nunca removido do menu (item
+ * ausente não é o padrão aprovado para este caso; a UXE-007 já cobria
+ * "nenhum item leva a estado quebrado", e um item omitido não explica por
+ * que sumiu). Em vez disso, o item permanece visível, com
+ * `disabledReason` preenchido — texto SEMPRE renderizado ao lado do
+ * rótulo (nunca hover/tooltip-only) e incluído na região viva
+ * (`role="status"`) quando o item está ativo — explicação acessível real,
+ * não só visual. `disabledReason` é um campo SEPARADO de `label`,
+ * propositalmente: `matchesSlashQuery` só compara contra `label` (rótulo
+ * curto "Bloco Produto-Oferta", sem "i"/"n"/"m" — não colide com nenhuma
+ * query existente, ex. "/tit"/"/lista"/"/numerada"/"/imagem"); embutir a
+ * explicação dentro do próprio `label` correspondido quebraria esse
+ * casamento por subsequência (uma frase longa o bastante acaba casando
+ * queries que não deveriam bater — verificado manualmente antes desta
+ * implementação).
  *
  * Implementação deliberadamente sem `LexicalTypeaheadMenuPlugin`
  * (`@lexical/react`): não foi possível confirmar neste ambiente o shape
@@ -119,6 +145,14 @@ import styles from './article-form.module.css';
 interface SlashMenuItem {
   id: string;
   label: string;
+  /**
+   * UXE-011 — quando presente, o item permanece visível no menu (nunca
+   * removido) mas não pode ser confirmado (`selectResult` ignora
+   * clique/Enter/Tab sobre ele) — texto sempre renderizado ao lado do
+   * rótulo e incluído na região viva quando o item está ativo, nunca só
+   * hover/tooltip. `undefined` (padrão) — item normal, sempre confirmável.
+   */
+  disabledReason?: string;
   apply: (editor: LexicalEditor) => void;
 }
 
@@ -204,10 +238,19 @@ interface ArticleBodySlashMenuProps {
    * `/query`, que não existe mais nesse ponto).
    */
   onRequestImage: (anchor: ImageInsertionAnchor) => void;
+  /**
+   * UXE-011 — mesmo fluxo compartilhado usado pelo item "Bloco
+   * Produto-Oferta" deste menu: `apply` só remove `/query` do bloco atual
+   * (quando o item não está desabilitado) e entrega a âncora resultante a
+   * `ArticleBodyProductFlow` — seleção do Produto/inserção acontecem fora
+   * deste menu.
+   */
+  onRequestProductBlock: (anchor: ProductBlockInsertionAnchor) => void;
 }
 
-export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: ArticleBodySlashMenuProps) {
+export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onRequestProductBlock }: ArticleBodySlashMenuProps) {
   const [editor] = useLexicalComposerContext();
+  const { overallStatus } = useProductLookup();
   const baseId = useId();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -247,6 +290,30 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
         }
       },
     },
+    {
+      id: 'product-block',
+      label: 'Bloco Produto-Oferta',
+      disabledReason:
+        overallStatus === 'unavailable' ? 'salve o Artigo antes de inserir um bloco de Produto.' : undefined,
+      apply: (editorInstance) => {
+        let capturedBlockKey: NodeKey | null = null;
+        editorInstance.update(() => {
+          const selection = $getSelection();
+          if (!$isRangeSelection(selection)) {
+            return;
+          }
+          const blockElement = $getBlockElement(selection.anchor.getNode());
+          if (!blockElement) {
+            return;
+          }
+          blockElement.clear();
+          capturedBlockKey = blockElement.getKey();
+        });
+        if (capturedBlockKey) {
+          onRequestProductBlock({ mode: 'replace-empty', blockKey: capturedBlockKey });
+        }
+      },
+    },
   ];
 
   const results = items.filter((item) => matchesSlashQuery(item.label, query));
@@ -273,10 +340,16 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
   const isOpenRef = useRef(isOpen);
   const resultsRef = useRef(results);
   const activeIndexRef = useRef(activeIndex);
+  // "Sempre atual" também para `selectResult` (recriada a cada
+  // renderização) — o efeito de comandos de teclado abaixo roda uma única
+  // vez (deps: [editor]) e precisa chamar sempre a versão mais recente,
+  // nunca uma capturada na primeira renderização.
+  const selectResultRef = useRef(selectResult);
   useEffect(() => {
     isOpenRef.current = isOpen;
     resultsRef.current = results;
     activeIndexRef.current = activeIndex;
+    selectResultRef.current = selectResult;
   });
 
   // Detecta "/query" do início ao cursor no bloco atual — ver doc comment
@@ -311,8 +384,16 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
     });
   }, [editor, disabled]);
 
+  // Único ponto de confirmação de um item — usado tanto pelo clique do
+  // mouse (`onClick`, abaixo) quanto pelos comandos de teclado Enter/Tab
+  // (efeito logo abaixo). Item com `disabledReason` nunca é aplicado nem
+  // fecha o menu, por NENHUM dos dois caminhos — antes desta correção, os
+  // handlers de teclado chamavam `item.apply(editor)` diretamente, sem
+  // checar `disabledReason`, permitindo confirmar por teclado um item que o
+  // clique já recusava (regressão silenciosa do critério "não pode ser
+  // confirmado" para o item "Bloco Produto-Oferta" indisponível).
   function selectResult(item: SlashMenuItem | undefined) {
-    if (!item) {
+    if (!item || item.disabledReason) {
       return;
     }
     item.apply(editor);
@@ -360,11 +441,7 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
           return false;
         }
         event?.preventDefault();
-        const item = resultsRef.current[activeIndexRef.current];
-        if (item) {
-          item.apply(editor);
-        }
-        setIsOpen(false);
+        selectResultRef.current(resultsRef.current[activeIndexRef.current]);
         return true;
       },
       COMMAND_PRIORITY_HIGH,
@@ -376,11 +453,7 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
           return false;
         }
         event?.preventDefault();
-        const item = resultsRef.current[activeIndexRef.current];
-        if (item) {
-          item.apply(editor);
-        }
-        setIsOpen(false);
+        selectResultRef.current(resultsRef.current[activeIndexRef.current]);
         return true;
       },
       COMMAND_PRIORITY_HIGH,
@@ -413,7 +486,9 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
   const liveMessage = !isVisible
     ? ''
     : results.length > 0
-      ? `${activeItem?.label ?? ''} selecionado, opção ${activeIndex + 1} de ${results.length}.`
+      ? activeItem?.disabledReason
+        ? `${activeItem.label}, indisponível: ${activeItem.disabledReason} Opção ${activeIndex + 1} de ${results.length}.`
+        : `${activeItem?.label ?? ''} selecionado, opção ${activeIndex + 1} de ${results.length}.`
       : 'Nenhum resultado encontrado.';
 
   // Vínculo ARIA de combobox entre o `contentEditable` e o popup
@@ -470,12 +545,16 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage }: Artic
                   id={`${baseId}-option-${item.id}`}
                   role="option"
                   aria-selected={index === activeIndex}
+                  aria-disabled={item.disabledReason ? true : undefined}
                   className={index === activeIndex ? styles.slashMenuOptionActive : styles.slashMenuOption}
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => selectResult(item)}
                 >
                   {item.label}
+                  {item.disabledReason && (
+                    <span className={styles.slashMenuOptionDisabledReason}> — {item.disabledReason}</span>
+                  )}
                 </li>
               ))
             ) : (

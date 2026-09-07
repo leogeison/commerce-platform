@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { articleAdminSchema, type CreateArticleRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
+import { ProductLookupProvider } from '../product-lookup-context';
 
 interface CreateArticleProps {
   siteSlug: string;
@@ -60,5 +61,14 @@ export function CreateArticle({ siteSlug }: CreateArticleProps) {
     router.replace(`/${encodeURIComponent(siteSlug)}/articles/${encodeURIComponent(article.id)}`);
   }
 
-  return <ArticleForm siteSlug={siteSlug} initialValues={EMPTY_VALUES} submitLabel="Criar" onSubmit={handleSubmit} />;
+  return (
+    // UXE-011 — `articleId={null}`: nenhum Artigo persistido ainda, nenhum
+    // `ArticleProduct` pode existir — `ProductLookupContext` fica em
+    // `overallStatus: 'unavailable'`, sem disparar nenhuma busca. É o que
+    // mantém o item "Bloco Produto-Oferta" do menu `/` indisponível (com
+    // explicação acessível) em `/articles/new`.
+    <ProductLookupProvider siteSlug={siteSlug} articleId={null}>
+      <ArticleForm siteSlug={siteSlug} initialValues={EMPTY_VALUES} submitLabel="Criar" onSubmit={handleSubmit} />
+    </ProductLookupProvider>
+  );
 }

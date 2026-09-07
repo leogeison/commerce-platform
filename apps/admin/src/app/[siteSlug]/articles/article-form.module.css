@@ -480,3 +480,151 @@
   outline: 2px solid #2563eb;
   outline-offset: 1px;
 }
+
+/*
+ * UXE-011 — Bloco Produto/Oferta: UI de inserção/edição.
+ *
+ * `.productBlockNode`/`.productBlockNodeSelected` — mesmo nível de rigor
+ * visual de `.imageNodeSelected` (bloco atômico do editor): contorno
+ * `#2563eb`, 2px, offset 1px, reaproveitado por consistência (não uma
+ * decisão visual nova). Diferente de `ImageNode`, o bloco de Produto
+ * sempre tem uma borda/fundo mínimos mesmo sem seleção — é um bloco de
+ * texto (rótulo do Produto + botão "Editar"), não uma imagem
+ * autoexplicativa.
+ */
+.productBlockNode,
+.productBlockNodeSelected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fafafa;
+}
+
+.productBlockNodeSelected {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.productBlockNodeLabel {
+  font-size: 0.875rem;
+}
+
+.productBlockNodeEditButton {
+  flex-shrink: 0;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.productBlockNodeEditButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/*
+ * `.productDialog*` — mesmo padrão visual de `.imageDialog*` (nível de
+ * rigor equivalente a `.linkForm`, sem um padrão de modal mais pesado
+ * pré-existente neste código-base para reaproveitar).
+ */
+.productDialog {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  max-width: 28rem;
+}
+
+.productDialogHeading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.productDialogField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.productDialogField select {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.875rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.productDialogActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.productDialogError,
+.productDialogEmpty,
+.productDialogLoading {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.productDialogError {
+  color: #c0392b;
+}
+
+.productDialogLoadingIcon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .productDialogLoadingIcon {
+    animation: article-form-autosave-spin 1s linear infinite;
+  }
+}
+
+/*
+ * UXE-011 — explicação acessível do item "Bloco Produto-Oferta" quando
+ * indisponível (`/articles/new`) — texto SEMPRE renderizado ao lado do
+ * rótulo (nunca hover/tooltip-only), só com destaque visual reduzido
+ * (nunca cor como único sinal — o texto em si já comunica o estado).
+ */
+.slashMenuOptionDisabledReason {
+  color: #6b7280;
+}
+
+/*
+ * `.previewProductBlock*` — bloco de Produto resolvido/erro dentro do
+ * preview Admin (`ProductBlockPreview`). `.previewProductBlock` reaproveita
+ * o mesmo visual mínimo de `.productBlockNode` (sem o botão "Editar",
+ * que não existe no preview); `.previewProductBlockError` reaproveita a
+ * cor de erro já usada em `.previewError`/`.imageDialogError`.
+ */
+.previewProductBlock {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fafafa;
+  font-size: 0.875rem;
+}
+
+.previewProductBlockLoading {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.previewProductBlockError {
+  color: #c0392b;
+  font-size: 0.875rem;
+}

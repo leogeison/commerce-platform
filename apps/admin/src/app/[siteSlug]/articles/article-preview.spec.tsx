@@ -3,47 +3,41 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ElementType, ReactElement } from 'react';
 import { ArticlePreview } from './article-preview';
-import type { CompiledArticleBody } from './compile-article-body';
+import { ProductLookupProvider } from './product-lookup-context';
+import type { CompiledArticleBody, CompiledBodySegment } from './compile-article-body';
 
 /**
  * apps/admin/src/app/[siteSlug]/articles/article-preview.spec.tsx
  *
- * UXE-009 — Preview do Artigo.
+ * UXE-009 — Preview do Artigo (base).
+ * UXE-011 — Bloco Produto/Oferta: UI de inserção/edição (REESCRITO).
  *
  * `jest.mock('./compile-article-body', ...)` é ESTÁTICO — nunca
- * `jest.doMock` nem `jest.resetModules`. `ArticlePreview` é importado
- * estaticamente, uma única vez, exatamente como qualquer outro componente
- * testado neste diretório; `react`/`react-dom` também são carregados uma
- * única vez, sem nenhum risco de instância duplicada.
+ * `jest.doMock` nem `jest.resetModules`. Ver o comentário original mais
+ * abaixo (mantido) sobre por que `compileArticleBody` é obtido via
+ * `jest.requireMock()`, nunca por import estático direto.
  *
- * A referência para configurar o mock (`compileArticleBody`) é obtida via
- * `jest.requireMock()`, não por `import { compileArticleBody } from
- * './compile-article-body'` — ver comentário junto a essa linha, mais
- * abaixo, para a causa raiz exata de por que o import estático não
- * funciona aqui.
+ * MUDANÇA (UXE-011): antes, `compileArticleBody` resolvia para um único
+ * componente MDX; agora resolve para uma LISTA de segmentos
+ * (`CompiledArticleBody`, `./compile-article-body.ts`) — `'markdown'`
+ * (mesmo componente MDX de sempre, um por segmento), `'product-block'`
+ * (resolvido de verdade via `ProductLookupContext`, nunca MDX) e
+ * `'product-block-error'` (mensagem de erro explícita, fail-closed). Os
+ * helpers `markdownSegment`/`productBlockSegment`/`productBlockErrorSegment`
+ * abaixo substituem o antigo `fakeCompiled` (que devolvia um componente
+ * único) por construtores de segmento individuais — o teste continua sem
+ * depender do parser MDX real (só mocka a fronteira de
+ * `compileArticleBody`), exatamente como antes.
  *
- * Por que mockar `compileArticleBody` em vez de deixar rodar de verdade:
- * `@mdx-js/mdx` é ESM puro, e `apps/admin/next.config.ts` não declara
- * `transpilePackages` para ele — decisão que permanece em aberto, fora do
- * escopo deste ajuste test-only (não altera `next.config.ts`). Em vez de
- * depender do Jest conseguir carregar essa árvore ESM real, este arquivo
- * testa só o CONTRATO de UI de `ArticlePreview`: que ele chama
- * `compileArticleBody(bodyMdx)`, trata os estados loading/sucesso/
- * desatualizado corretamente, e passa `components={{ h1: 'h2' }}` adiante
- * para o que quer que seja retornado. Os componentes "compilados" abaixo
- * são fakes controlados pelo teste, não uma simulação do parser MDX real.
- *
- * O cenário do bloco `:::product` (mais abaixo) usa a mesma técnica: o
- * fake retorna o texto literal que o pipeline real já produz para esse
- * bloco sob `format: 'md'` — comportamento comprovado empiricamente em
- * `docs/editorial/editorial-serialization-contract.md` (§7, spikes
- * `product-block-round-trip-full-cycle.mjs`) e por `compile-article-body.spec.ts`
- * (que mocka `@mdx-js/mdx` para testar só os argumentos passados a
- * `evaluate`) — nenhum dos dois é substituído por este teste. Este arquivo
- * NÃO valida o parsing real de `:::product`; valida só que, dado um
- * resultado de compilação nesse formato, `ArticlePreview` o exibe sem
- * quebrar. A validação do compilador real permanece onde já estava,
- * separada da cobertura de UI.
+ * O cenário antigo "exibe o bloco :::product como texto literal seguro"
+ * não existe mais — era o comportamento ANTES da UXE-011 fechar essa
+ * lacuna (nenhum plugin de diretiva sob `format: 'md'` fazia o bloco cair
+ * como texto cru). Ele foi substituído por dois cenários novos, abaixo:
+ * um confirmando que um segmento `'product-block'` nunca aparece como
+ * texto (`:::product`) e é resolvido de verdade contra
+ * `ProductLookupContext` real (via `ProductLookupProvider` + fetch
+ * mockado), e outro confirmando que um segmento `'product-block-error'`
+ * também nunca faz passthrough literal do texto original do bloco.
  */
 jest.mock('./compile-article-body', () => ({
   compileArticleBody: jest.fn(),
@@ -71,10 +65,59 @@ jest.mock('./compile-article-body', () => ({
 const { compileArticleBody } = jest.requireMock<typeof import('./compile-article-body')>('./compile-article-body');
 const compileArticleBodyMock = jest.mocked(compileArticleBody);
 
-function fakeCompiled(
+function markdownSegment(
+  key: string,
   renderContent: (props: { components?: Record<string, unknown> }) => ReactElement,
-): CompiledArticleBody {
-  return renderContent as unknown as CompiledArticleBody;
+): CompiledBodySegment {
+  return {
+    type: 'markdown',
+    key,
+    Content: renderContent as unknown as Extract<CompiledBodySegment, { type: 'markdown' }>['Content'],
+  };
+}
+
+function productBlockSegment(key: string, productId: string): CompiledBodySegment {
+  return { type: 'product-block', key, productId };
+}
+
+function productBlockErrorSegment(key: string, message: string): CompiledBodySegment {
+  return { type: 'product-block-error', key, message };
+}
+
+function segments(...items: CompiledBodySegment[]): CompiledArticleBody {
+  return items;
+}
+
+const PRODUCT_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
+
+function mockLinkedProductFetch(): void {
+  global.fetch = jest.fn<typeof fetch>(async (input) => {
+    const url = String(input);
+    const ok = (body: unknown) => ({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) }) as Response;
+    if (url.endsWith('/products')) {
+      return ok({ productIds: [PRODUCT_ID] });
+    }
+    return ok({
+      items: [
+        {
+          id: PRODUCT_ID,
+          siteId: '22222222-2222-4222-8222-222222222222',
+          categoryId: null,
+          name: 'Fone Bluetooth',
+          slug: 'fone-bluetooth',
+          description: null,
+          imageUrl: null,
+          archivedAt: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      page: 1,
+      pageSize: 100,
+      total: 1,
+      totalPages: 1,
+    });
+  });
 }
 
 afterEach(() => {
@@ -83,7 +126,7 @@ afterEach(() => {
 
 describe('ArticlePreview', () => {
   it('abre o preview e mostra o conteúdo resolvido por compileArticleBody', async () => {
-    compileArticleBodyMock.mockResolvedValueOnce(fakeCompiled(() => <p>Parágrafo de teste.</p>));
+    compileArticleBodyMock.mockResolvedValueOnce(segments(markdownSegment('segment-0', () => <p>Parágrafo de teste.</p>)));
 
     render(<ArticlePreview bodyMdx={'Parágrafo de teste.'} />);
     await userEvent.click(screen.getByRole('button', { name: 'Ver preview' }));
@@ -110,7 +153,7 @@ describe('ArticlePreview', () => {
       expect(screen.getByText('Gerando preview...')).toBeInTheDocument();
     });
 
-    resolveCompile(fakeCompiled(() => <p>Parágrafo de teste.</p>));
+    resolveCompile(segments(markdownSegment('segment-0', () => <p>Parágrafo de teste.</p>)));
 
     await waitFor(() => {
       expect(screen.getByText('Parágrafo de teste.')).toBeInTheDocument();
@@ -119,7 +162,7 @@ describe('ArticlePreview', () => {
   });
 
   it('fecha o preview ao clicar em "Fechar preview" e devolve o foco ao botão', async () => {
-    compileArticleBodyMock.mockResolvedValueOnce(fakeCompiled(() => <p>Parágrafo de teste.</p>));
+    compileArticleBodyMock.mockResolvedValueOnce(segments(markdownSegment('segment-0', () => <p>Parágrafo de teste.</p>)));
 
     render(<ArticlePreview bodyMdx={'Parágrafo de teste.'} />);
     const toggleButton = screen.getByRole('button', { name: 'Ver preview' });
@@ -136,10 +179,12 @@ describe('ArticlePreview', () => {
 
   it('passa components={{ h1: "h2" }} adiante — heading nível 1 do conteúdo compilado sai como heading nível 2', async () => {
     compileArticleBodyMock.mockResolvedValueOnce(
-      fakeCompiled(({ components }) => {
-        const Heading = (components?.h1 as ElementType) ?? 'h1';
-        return <Heading>Seção do artigo</Heading>;
-      }),
+      segments(
+        markdownSegment('segment-0', ({ components }) => {
+          const Heading = (components?.h1 as ElementType) ?? 'h1';
+          return <Heading>Seção do artigo</Heading>;
+        }),
+      ),
     );
 
     render(<ArticlePreview bodyMdx={'# Seção do artigo'} />);
@@ -153,40 +198,68 @@ describe('ArticlePreview', () => {
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
-  it('exibe o bloco :::product como texto literal seguro, sem quebrar — mesmo resultado já validado do pipeline real', async () => {
-    // Fixture: o texto que `evaluate(bodyMdx, { format: 'md' })` REAL já
-    // produz para este bloco (nenhum plugin de diretiva presente sob
-    // `format: 'md'`) — evidência em
-    // `docs/editorial/editorial-serialization-contract.md` §7. Este teste
-    // não invoca o compilador real; só confirma que `ArticlePreview` exibe
-    // fielmente o que compileArticleBody devolver, sem cair em erro.
+  it('segmento "product-block": resolve de verdade contra ProductLookupContext — nome do Produto aparece, ":::product" nunca aparece como texto', async () => {
+    mockLinkedProductFetch();
     compileArticleBodyMock.mockResolvedValueOnce(
-      fakeCompiled(() => (
-        <>
-          <p>Texto antes do bloco.</p>
-          <p>{':::product\nversion: 1\nproductId: 123e4567-e89b-12d3-a456-426614174000\n:::'}</p>
-          <p>Texto depois do bloco.</p>
-        </>
-      )),
+      segments(
+        markdownSegment('segment-0', () => <p>Texto antes do bloco.</p>),
+        productBlockSegment('segment-1', PRODUCT_ID),
+        markdownSegment('segment-2', () => <p>Texto depois do bloco.</p>),
+      ),
     );
 
-    const { container } = render(<ArticlePreview bodyMdx={'(irrelevante para este teste, ver mock acima)'} />);
+    const { container } = render(
+      <ProductLookupProvider siteSlug="fastcompre" articleId="11111111-1111-4111-8111-111111111111">
+        <ArticlePreview bodyMdx={'(irrelevante para este teste, ver mock acima)'} />
+      </ProductLookupProvider>,
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Ver preview' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Texto antes do bloco.')).toBeInTheDocument();
+      expect(screen.getByText('Fone Bluetooth')).toBeInTheDocument();
     });
 
-    expect(container.textContent).toContain(':::product');
-    expect(container.textContent).toContain('productId: 123e4567-e89b-12d3-a456-426614174000');
+    expect(screen.getByText('Texto antes do bloco.')).toBeInTheDocument();
     expect(screen.getByText('Texto depois do bloco.')).toBeInTheDocument();
+    expect(container.textContent).not.toContain(':::product');
+    expect(container.textContent).not.toContain('productId:');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('segmento "product-block" sem ProductLookupProvider (fonte indisponível): mostra mensagem explícita, nunca ":::product" cru', async () => {
+    compileArticleBodyMock.mockResolvedValueOnce(segments(productBlockSegment('segment-0', PRODUCT_ID)));
+
+    const { container } = render(<ArticlePreview bodyMdx={'(irrelevante, ver mock acima)'} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Ver preview' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Não foi possível carregar o Produto vinculado.')).toBeInTheDocument();
+    });
+    expect(container.textContent).not.toContain(':::product');
+  });
+
+  it('segmento "product-block-error" (bloco malformado): mostra a mensagem de erro explícita, nunca o texto original do bloco', async () => {
+    compileArticleBodyMock.mockResolvedValueOnce(
+      segments(
+        markdownSegment('segment-0', () => <p>Texto antes.</p>),
+        productBlockErrorSegment('segment-1', 'productId não é um UUID válido (recebido "nao-e-uuid").'),
+      ),
+    );
+
+    const { container } = render(<ArticlePreview bodyMdx={'(irrelevante, ver mock acima)'} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Ver preview' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('productId não é um UUID válido');
+    });
+    expect(container.textContent).not.toContain(':::product');
+    expect(screen.getByText('Texto antes.')).toBeInTheDocument();
   });
 
   it('marca o preview como desatualizado quando bodyMdx muda com o painel aberto, e "Atualizar preview" recompila', async () => {
     compileArticleBodyMock
-      .mockResolvedValueOnce(fakeCompiled(() => <p>Conteúdo original.</p>))
-      .mockResolvedValueOnce(fakeCompiled(() => <p>Conteúdo novo.</p>));
+      .mockResolvedValueOnce(segments(markdownSegment('segment-0', () => <p>Conteúdo original.</p>)))
+      .mockResolvedValueOnce(segments(markdownSegment('segment-0', () => <p>Conteúdo novo.</p>)));
 
     const { rerender } = render(<ArticlePreview bodyMdx={'Conteúdo original.'} />);
 
