@@ -44,15 +44,18 @@ function DirtyPublisher({ isDirty }: { isDirty: boolean }) {
  * inicial quanto em `rerender(...)` com um `pathname` diferente — é assim
  * que os testes de fechamento por navegação simulam uma troca de rota
  * real sem depender de um router de verdade.
+ *
+ * UXE-013: `isInert` é um parâmetro novo, com default `false` — nenhum
+ * teste herdado precisa mudar.
  */
-function buildTree(pathname: string, isDirty = false): ReactElement {
+function buildTree(pathname: string, isDirty = false, isInert = false): ReactElement {
   return (
     <RouterContext.Provider value={mockLegacyRouter as never}>
       <AppRouterContext.Provider value={mockRouter}>
         <PathnameContext.Provider value={pathname}>
           <UnsavedChangesProvider>
             <DirtyPublisher isDirty={isDirty} />
-            <SidebarNav siteSlug="fastcompre" />
+            <SidebarNav siteSlug="fastcompre" isInert={isInert} />
           </UnsavedChangesProvider>
         </PathnameContext.Provider>
       </AppRouterContext.Provider>
@@ -60,8 +63,8 @@ function buildTree(pathname: string, isDirty = false): ReactElement {
   );
 }
 
-function renderSidebarNav(pathname: string, isDirty = false) {
-  return render(buildTree(pathname, isDirty));
+function renderSidebarNav(pathname: string, isDirty = false, isInert = false) {
+  return render(buildTree(pathname, isDirty, isInert));
 }
 
 describe('SidebarNav', () => {
@@ -544,6 +547,76 @@ describe('SidebarNav', () => {
       act(() => {
         changeListeners[0]({ matches: false });
       });
+
+      expect(screen.getByRole('dialog', { name: 'Menu de navegação' })).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * UXE-013 — `isInert`: toda a navegação lateral fica indisponível
+   * enquanto o page modal (drawer do `ArticleContextPanel`) está aberto.
+   * Ver doc comment da prop em `sidebar-nav.tsx` para o contrato completo.
+   */
+  describe('UXE-013 — isInert', () => {
+    it('isInert=true: wrapper do trigger mobile e o rail desktop recebem o atributo inert', () => {
+      renderSidebarNav('/fastcompre/categories', false, true);
+
+      const trigger = screen.getByRole('button', { name: 'Menu' });
+      const wrapper = trigger.parentElement;
+      const rail = screen.getByRole('navigation', { name: 'Navegação do Site' });
+
+      expect(wrapper).toHaveAttribute('inert');
+      expect(rail).toHaveAttribute('inert');
+    });
+
+    it('isInert=false (default): nenhum inert é aplicado, comportamento normal preservado', () => {
+      renderSidebarNav('/fastcompre/categories');
+
+      const trigger = screen.getByRole('button', { name: 'Menu' });
+      const wrapper = trigger.parentElement;
+      const rail = screen.getByRole('navigation', { name: 'Navegação do Site' });
+
+      expect(wrapper).not.toHaveAttribute('inert');
+      expect(rail).not.toHaveAttribute('inert');
+    });
+
+    it('clicar no trigger enquanto isInert=true não abre o drawer', () => {
+      renderSidebarNav('/fastcompre/categories', false, true);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+
+      expect(screen.queryByRole('dialog', { name: 'Menu de navegação' })).not.toBeInTheDocument();
+    });
+
+    it('se o drawer já estiver aberto, isInert passar a true o fecha (nunca dois modais simultâneos)', () => {
+      const { rerender } = render(buildTree('/fastcompre/categories', false, false));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      expect(screen.getByRole('dialog', { name: 'Menu de navegação' })).toBeInTheDocument();
+
+      rerender(buildTree('/fastcompre/categories', false, true));
+
+      expect(screen.queryByRole('dialog', { name: 'Menu de navegação' })).not.toBeInTheDocument();
+    });
+
+    it('enquanto isInert permanece true, o drawer não reabre por nenhum caminho existente (nova tentativa de clique)', () => {
+      const { rerender } = render(buildTree('/fastcompre/categories', false, false));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      expect(screen.getByRole('dialog', { name: 'Menu de navegação' })).toBeInTheDocument();
+
+      rerender(buildTree('/fastcompre/categories', false, true));
+      expect(screen.queryByRole('dialog', { name: 'Menu de navegação' })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      expect(screen.queryByRole('dialog', { name: 'Menu de navegação' })).not.toBeInTheDocument();
+    });
+
+    it('isInert voltando a false restaura o comportamento normal (trigger volta a abrir o drawer)', () => {
+      const { rerender } = render(buildTree('/fastcompre/categories', false, true));
+
+      rerender(buildTree('/fastcompre/categories', false, false));
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
 
       expect(screen.getByRole('dialog', { name: 'Menu de navegação' })).toBeInTheDocument();
     });

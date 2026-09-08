@@ -8,6 +8,7 @@ import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtim
 import { PathnameContext } from 'next/dist/shared/lib/hooks-client-context.shared-runtime';
 import { AuthenticatedShell } from './authenticated-shell';
 import { CategoryForm } from './categories/category-form';
+import { usePageModal } from './page-modal-context';
 import { useSiteRole } from './site-role-context';
 import { UnsavedChangesProvider } from './unsaved-changes-context';
 
@@ -61,6 +62,30 @@ const mockLegacyRouter = {
 function RoleProbe() {
   const role = useSiteRole();
   return <p>Role via Context: {role}</p>;
+}
+
+/**
+ * UXE-013 — simula uma página descendente reportando abertura/fechamento
+ * do seu próprio modal via `usePageModal()`, o mesmo hook consumido por
+ * `ArticleContextPanel` em produção. Só a comunicação página→shell é
+ * exercitada aqui (dois botões chamando o setter diretamente) — o
+ * mecanismo de drawer em si (Escape/backdrop/focus trap/scroll lock,
+ * inertização do `.content`) já está integralmente coberto em
+ * `article-context-panel.spec.tsx`/`article-detail.spec.tsx`, então não é
+ * reexercitado neste arquivo.
+ */
+function PageModalProbe() {
+  const setPageModalOpen = usePageModal();
+  return (
+    <div>
+      <button type="button" onClick={() => setPageModalOpen(true)}>
+        Simular modal de página aberto
+      </button>
+      <button type="button" onClick={() => setPageModalOpen(false)}>
+        Simular modal de página fechado
+      </button>
+    </div>
+  );
 }
 
 function renderShell(pathname: string, children: ReactNode = <p>Conteúdo da página</p>) {
@@ -608,6 +633,63 @@ describe('AuthenticatedShell', () => {
       await screen.findByRole('dialog', { name: 'Menu de navegação' });
 
       expect(await axe(container)).toHaveNoViolations();
+    });
+  });
+
+  /**
+   * UXE-013 — responsabilidade que `AuthenticatedShell` assume ao receber
+   * `PageModalContext` de um descendente: inertizar toda a chrome fora do
+   * modal de página (skip link, `<header>`, `SidebarNav` via `isInert`) e
+   * suprimir o atalho global da Command Palette (`suppressShortcut`) —
+   * ver doc comment "UXE-013" em `authenticated-shell.tsx`. Cobertura
+   * MÍNIMA desta responsabilidade específica — não duplica os testes
+   * internos já existentes de `SidebarNav.isInert`
+   * (`sidebar-nav.spec.tsx`) nem de `CommandPalette.suppressShortcut`
+   * (`command-palette.spec.tsx`), só prova que este componente REPASSA o
+   * booleano certo para os lugares certos.
+   */
+  describe('UXE-013 — PageModalContext inertiza a chrome do shell', () => {
+    it('modal de página aberto: inertiza skip link, header, SidebarNav (isInert) e Command Palette (suppressShortcut); fechar restaura tudo', async () => {
+      const user = userEvent.setup();
+      global.fetch = jest.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, meResponse));
+
+      renderShell('/fastcompre/categories', <PageModalProbe />);
+
+      const skipLink = await screen.findByRole('link', { name: 'Pular para o conteúdo principal' });
+      const header = screen.getByRole('banner');
+      const sidebarWrapper = screen.getByRole('button', { name: 'Menu' }).parentElement;
+      const rail = screen.getByRole('navigation', { name: 'Navegação do Site' });
+
+      expect(skipLink).not.toHaveAttribute('inert');
+      expect(header).not.toHaveAttribute('inert');
+      expect(sidebarWrapper).not.toHaveAttribute('inert');
+      expect(rail).not.toHaveAttribute('inert');
+
+      await user.click(screen.getByRole('button', { name: 'Simular modal de página aberto' }));
+
+      expect(skipLink).toHaveAttribute('inert');
+      expect(header).toHaveAttribute('inert');
+      expect(sidebarWrapper).toHaveAttribute('inert');
+      expect(rail).toHaveAttribute('inert');
+
+      // Ctrl/Cmd+K não deve abrir a Command Palette enquanto o modal de
+      // página está aberto (suppressShortcut).
+      act(() => {
+        fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+      });
+      expect(screen.queryByRole('combobox', { name: 'Buscar navegação' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Simular modal de página fechado' }));
+
+      expect(skipLink).not.toHaveAttribute('inert');
+      expect(header).not.toHaveAttribute('inert');
+      expect(sidebarWrapper).not.toHaveAttribute('inert');
+      expect(rail).not.toHaveAttribute('inert');
+
+      act(() => {
+        fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+      });
+      expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
     });
   });
 });

@@ -7,6 +7,7 @@ import { meResponseSchema, type MeResponse } from '@commerce-platform/contracts'
 import { apiRequest } from '../../lib/api-client';
 import { AdminApiError } from '../../lib/api-error';
 import { CommandPalette } from './command-palette';
+import { PageModalProvider } from './page-modal-context';
 import { SidebarNav } from './sidebar-nav';
 import { SiteRoleProvider } from './site-role-context';
 import { Topbar } from './topbar';
@@ -170,6 +171,57 @@ function categoriesHref(siteSlug: string): string {
  * só reagem ao clique/ativação do skip link em si, nunca a uma mudança de
  * `pathname`; este componente continua sem `usePathname()` próprio, mesma
  * decisão já registrada em UXA-006.
+ *
+ * UXE-013 — inertização completa da chrome enquanto o page modal (drawer
+ * mobile do `ArticleContextPanel`) está aberto.
+ *
+ * `isPageModalOpen` é o único estado novo aqui — um booleano simples, sem
+ * saber o que é um "page modal" além de "algo que uma página descendente
+ * está reportando como aberto". Exposto às páginas via
+ * `PageModalProvider` (`page-modal-context.tsx`), montado ao redor de
+ * `{children}` dentro de `<main>` — só o setter é exposto, nunca o valor
+ * de leitura (nenhum consumidor de página precisa saber se OUTRA parte da
+ * árvore também reportou `true`, e este componente não precisa de um
+ * registry para isso, porque só existe um consumidor real hoje).
+ *
+ * Três consumidores desse booleano, todos aqui, nenhum genérico:
+ * - `inert={isPageModalOpen || undefined}` no skip link (`<a>`) e no
+ *   `<header>` — os dois únicos nós que este componente possui
+ *   DIRETAMENTE fora de `<main>` (React 19.2, já em uso neste projeto,
+ *   suporta `inert` como atributo JSX nativo — nenhum ref/`setAttribute`
+ *   manual necessário aqui);
+ * - `isInert={isPageModalOpen}` em `SidebarNav` — API nova, mínima e
+ *   aditiva (default `false`) desse componente: ele já retorna um
+ *   Fragment de três irmãos (botão "Menu", `<nav>` rail, `<dialog>` do
+ *   próprio drawer de navegação) que participam diretamente do grid do
+ *   shell, então não há um único nó aqui para `AuthenticatedShell` marcar
+ *   `inert` de fora — só o próprio `SidebarNav` pode aplicar isso aos seus
+ *   dois nós sempre visíveis (ver doc comment de `isInert` em
+ *   `sidebar-nav.tsx`). O `<dialog>` do drawer de navegação não recebe
+ *   `inert` explícito: fechado, já é nativamente excluído de foco/árvore
+ *   de acessibilidade, e `isInert` também o fecha se estiver aberto no
+ *   momento em que `isPageModalOpen` vira `true` (nunca dois modais
+ *   simultâneos);
+ * - `suppressShortcut={isPageModalOpen}` em `CommandPalette` — o atalho
+ *   global `Ctrl/Cmd+K` já tinha uma guarda de concorrência
+ *   (`document.querySelector('dialog[open]')`), mas ela só enxerga
+ *   `<dialog>` nativo; o drawer do `ArticleContextPanel` é deliberadamente
+ *   um `<div role="dialog">`, não um `<dialog>` (Opção B refinada da
+ *   UXE-013 — ver `article-context-panel.tsx`), então essa guarda sozinha
+ *   não o detectaria. `suppressShortcut` estende a mesma política sem
+ *   generalizar para um gerenciador de overlays: um prop a mais em
+ *   `CommandPalette`, reaproveitando o booleano que este componente já
+ *   precisa manter por causa dos dois itens acima.
+ *
+ * `<main>` NUNCA recebe `inert` — é ancestral do próprio drawer que está
+ * reportando `isPageModalOpen`. O conteúdo editorial irmão do painel
+ * dentro de `ArticleDetail` (`.content`) é inertizado separadamente, de
+ * forma local, por `ArticleContextPanel` (fora do escopo deste arquivo).
+ *
+ * Nenhum wrapper DOM novo foi introduzido para viabilizar isto: o skip
+ * link e o `<header>` já eram elementos próprios deste componente: a
+ * contagem/ordem/tipo dos filhos diretos de `.shell` não muda, então o
+ * grid (`grid-template-areas`) permanece intocado.
  */
 export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellProps) {
   const router = useRouter();
@@ -178,6 +230,7 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isPageModalOpen, setIsPageModalOpen] = useState(false);
   const paletteId = useId();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -265,13 +318,18 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
 
   return (
     <div className={styles.shell}>
-      <a href="#main-content" onClick={handleSkipLinkClick} className={SKIP_LINK_CLASSES}>
+      <a
+        href="#main-content"
+        onClick={handleSkipLinkClick}
+        className={SKIP_LINK_CLASSES}
+        inert={isPageModalOpen || undefined}
+      >
         Pular para o conteúdo principal
       </a>
 
-      <SidebarNav siteSlug={siteSlug} />
+      <SidebarNav siteSlug={siteSlug} isInert={isPageModalOpen} />
 
-      <header className={styles.header}>
+      <header className={styles.header} inert={isPageModalOpen || undefined}>
         <Topbar
           siteSlug={siteSlug}
           sites={sites}
@@ -287,7 +345,9 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
       </header>
 
       <main id="main-content" tabIndex={-1} ref={mainRef} className={styles.content}>
-        <SiteRoleProvider value={currentSite.role}>{children}</SiteRoleProvider>
+        <PageModalProvider setPageModalOpen={setIsPageModalOpen}>
+          <SiteRoleProvider value={currentSite.role}>{children}</SiteRoleProvider>
+        </PageModalProvider>
       </main>
 
       <CommandPalette
@@ -296,6 +356,7 @@ export function AuthenticatedShell({ siteSlug, children }: AuthenticatedShellPro
         role={currentSite.role}
         isOpen={isPaletteOpen}
         onOpenChange={setIsPaletteOpen}
+        suppressShortcut={isPageModalOpen}
       />
     </div>
   );

@@ -13,11 +13,24 @@ import { apiRequest } from '../../../../lib/api-client';
 import { fetchAllProducts } from '../../../../lib/fetch-all-products';
 import styles from './article-health-checklist.module.css';
 
+/**
+ * UXE-013 — forma resumida de `HealthState` para consumo externo (o
+ * indicador de "Status e ações do Artigo" em `ArticleContextPanel`). Não
+ * é um segundo estado de saúde: é só a projeção mínima que
+ * `onHealthChange` reporta a cada mudança de `healthState` — ownership de
+ * `/health` continua inteiramente aqui.
+ */
+export type HealthSummary =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; pendingCount: number; healthy: boolean };
+
 interface ArticleHealthChecklistProps {
   siteSlug: string;
   articleId: string;
   status: ArticleStatus;
   refreshKey: number;
+  onHealthChange?: (summary: HealthSummary) => void;
 }
 
 type HealthState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; health: ArticleHealthResponse };
@@ -101,8 +114,25 @@ function resolveProductLabel(product: InvalidArticleProduct, state: CatalogState
  * O efeito de catálogo (`fetchAllProducts`, só para nomear
  * `invalidProducts`) depende só de `[siteSlug]` — nomes de Produto não
  * mudam por revisão de saúde nem por transição de status.
+ *
+ * UXE-013 — `onHealthChange` (opcional): reporta `HealthSummary` a
+ * `ArticleContextPanel` para o indicador externo "Status e ações do
+ * Artigo", visível mesmo com o drawer mobile fechado. Efeito próprio,
+ * separado do efeito de fetch acima — nunca dispara uma segunda
+ * requisição, nunca cria um segundo estado de saúde: só projeta
+ * `healthState` (já computado por este componente) sempre que ele muda.
+ * `ArticleContextPanel` é responsável por passar um `onHealthChange`
+ * memoizado (`useCallback` com deps vazias) — caso contrário, uma nova
+ * identidade de função a cada render disparia este efeito indefinidamente
+ * (ele depende de `onHealthChange`, não só de `healthState`).
  */
-export function ArticleHealthChecklist({ siteSlug, articleId, status, refreshKey }: ArticleHealthChecklistProps) {
+export function ArticleHealthChecklist({
+  siteSlug,
+  articleId,
+  status,
+  refreshKey,
+  onHealthChange,
+}: ArticleHealthChecklistProps) {
   const fetchKey = `${siteSlug}:${articleId}:${status}:${refreshKey}`;
   const [healthState, setHealthState] = useState<HealthState>({ status: 'loading' });
   const [catalogState, setCatalogState] = useState<CatalogState>({ status: 'loading' });
@@ -157,6 +187,22 @@ export function ArticleHealthChecklist({ siteSlug, articleId, status, refreshKey
       cancelled = true;
     };
   }, [siteSlug]);
+
+  // UXE-013 — projeção externa de `healthState`, ver doc comment acima.
+  useEffect(() => {
+    if (!onHealthChange) {
+      return;
+    }
+    if (healthState.status === 'ready') {
+      onHealthChange({
+        status: 'ready',
+        pendingCount: countPending(healthState.health),
+        healthy: healthState.health.healthy,
+      });
+    } else {
+      onHealthChange({ status: healthState.status });
+    }
+  }, [healthState, onHealthChange]);
 
   const heading = FRAMING_BY_STATUS[status];
   const sectionClassName = status === 'ARCHIVED' ? `${styles.section} ${styles.muted}` : styles.section;

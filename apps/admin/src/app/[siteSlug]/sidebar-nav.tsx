@@ -29,6 +29,29 @@ import styles from './sidebar-nav.module.css';
 
 interface SidebarNavProps {
   siteSlug: string;
+  /**
+   * UXE-013 — quando `true`, toda a navegação lateral fica indisponível
+   * enquanto outro modal de página (o drawer do `ArticleContextPanel`)
+   * está aberto: o trigger mobile e o rail desktop recebem o atributo
+   * HTML `inert` (React 19, suporte nativo — ver `authenticated-shell.tsx`,
+   * único chamador que passa esta prop hoje).
+   *
+   * `inert` sozinho não é tratado como prova suficiente aqui: o handler do
+   * trigger também ignora cliques enquanto `isInert` é `true` — defesa
+   * independente de `inert` bloquear eventos no ambiente de execução
+   * (jsdom não reproduz toda a semântica de bloqueio de `inert`; ver
+   * `sidebar-nav.spec.tsx`).
+   *
+   * Se o drawer deste componente já estiver aberto no momento em que
+   * `isInert` passa a `true`, ele é fechado — nunca dois modais
+   * simultâneos (decisão fechada na aprovação da UXE-013). Enquanto
+   * `isInert` permanece `true`, nenhum caminho existente reabre o drawer
+   * (o único caminho é o clique no trigger, já guardado acima).
+   *
+   * Default `false`, aditivo: nenhum consumidor existente antes desta
+   * tarefa (só `layout.tsx`, via `AuthenticatedShell`) precisa mudar.
+   */
+  isInert?: boolean;
 }
 
 /**
@@ -320,6 +343,20 @@ interface SidebarNavProps {
  * existe um em `tailwind-theme.css`); a compactação vem só do `gap`
  * reduzido do `<nav>`, que aproxima o bloco de branding do restante do
  * conteúdo.
+ *
+ * UXE-013 — `isInert` (ver doc comment da prop, acima).
+ *
+ * `inert={isInert || undefined}` é aplicado nos dois nós SEMPRE visíveis
+ * deste componente — o wrapper do trigger mobile e o `<nav>` persistente
+ * — porque são os únicos alcançáveis por `AuthenticatedShell` sem alterar
+ * a API deste componente: como este retorna um Fragment de três irmãos
+ * (não um único nó), `AuthenticatedShell` não tem como marcar `inert` de
+ * fora sem um wrapper novo, que reabriria exatamente o problema que a
+ * UXA-019B já evitou (ver doc comment acima). O `<dialog>` do próprio
+ * drawer não recebe `inert`: fechado, já é nativamente excluído de
+ * foco/árvore de acessibilidade; se estiver aberto no momento em que
+ * `isInert` passa a `true`, o efeito abaixo o fecha (nunca dois modais
+ * simultâneos).
  */
 const BUTTON_CLASSES =
   'rounded-control border border-outline bg-surface px-control-x py-control-y text-body-sm font-ui font-action text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus';
@@ -373,7 +410,7 @@ function iconForSegment(segment: string): LucideIcon {
   return SEGMENT_ICONS[segment as NavSegment];
 }
 
-export function SidebarNav({ siteSlug }: SidebarNavProps) {
+export function SidebarNav({ siteSlug, isInert = false }: SidebarNavProps) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -418,6 +455,16 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
     };
   }, []);
 
+  // UXE-013 — fecha o drawer se `isInert` passar a `true` enquanto ele
+  // está aberto (nunca dois modais simultâneos — decisão fechada na
+  // aprovação do desenho). `onClose` (JSX abaixo) já mantém `isOpen`
+  // sincronizado com o `close()` nativo disparado aqui.
+  useEffect(() => {
+    if (isInert && dialogRef.current?.open) {
+      dialogRef.current.close();
+    }
+  }, [isInert]);
+
   function renderNavList(listClassName: string): ReactNode {
     return (
       <ul className={listClassName}>
@@ -454,7 +501,10 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
 
   return (
     <>
-      <div className="lg:hidden [grid-area:menu] flex items-center border-b border-[#e5e7eb] pl-6 pr-1">
+      <div
+        className="lg:hidden [grid-area:menu] flex items-center border-b border-[#e5e7eb] pl-6 pr-1"
+        inert={isInert || undefined}
+      >
         <button
           type="button"
           data-density="compact"
@@ -463,6 +513,9 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
           aria-expanded={isOpen}
           aria-controls={drawerId}
           onClick={() => {
+            if (isInert) {
+              return;
+            }
             dialogRef.current?.showModal();
             setIsOpen(true);
           }}
@@ -476,6 +529,7 @@ export function SidebarNav({ siteSlug }: SidebarNavProps) {
         aria-label="Navegação do Site"
         data-density="compact"
         className="hidden lg:flex lg:[grid-area:rail] lg:flex-col lg:gap-4 lg:border-r lg:border-outline lg:p-3"
+        inert={isInert || undefined}
       >
         <span className="flex flex-col font-ui text-body-sm font-action leading-tight text-fg">
           <span>FastCompre</span>

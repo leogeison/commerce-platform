@@ -22,6 +22,7 @@ interface CommandPaletteProps {
   role: Role;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  suppressShortcut?: boolean;
 }
 
 type PaletteGroup = 'navigate' | 'create';
@@ -151,6 +152,19 @@ export function matchesQuery(label: string, query: string): boolean {
  * componente nunca tem o atributo `open` (reflexo nativo de
  * `showModal()`/`close()`) — não pode se autobloquear.
  *
+ * UXE-013 — `suppressShortcut` (opcional, padrão `false`): cobre a
+ * concorrência com o drawer mobile custom de `ArticleContextPanel`, que
+ * NÃO usa `<dialog>` (ver doc comment do próprio componente) — logo o
+ * guard `document.querySelector('dialog[open]')` acima, por desenho, não
+ * o enxerga. `AuthenticatedShell` repassa `suppressShortcut={isPageModalOpen}`
+ * (o mesmo booleano que também inertiza a chrome — ver
+ * `authenticated-shell.tsx`). Quando `true`, o atalho global é ignorado
+ * exatamente como no caso "outro `<dialog open>` já presente" acima: sem
+ * `preventDefault()`, sem reabrir/resetar — a paleta continua sem assumir
+ * o atalho do SO/navegador nesse cenário. Não generaliza para um registro
+ * de múltiplos overlays: é um segundo booleano de entrada no mesmo guard
+ * que já existia, nada além disso.
+ *
  * Botão "Fechar busca rápida" + wrap mínimo de `Tab` (achado empírico
  * desta revisão): o padrão combobox/listbox mantém o foco real do DOM só
  * no `<input>` — as opções da listbox nunca são tabbable (por desenho,
@@ -226,7 +240,14 @@ export function matchesQuery(label: string, query: string): boolean {
  * `confirmLeave()` continua precedendo todo `router.push()`, inclusive
  * para os hrefs de `/new`.
  */
-export function CommandPalette({ id, siteSlug, role, isOpen, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({
+  id,
+  siteSlug,
+  role,
+  isOpen,
+  onOpenChange,
+  suppressShortcut = false,
+}: CommandPaletteProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { confirmLeave } = useUnsavedChangesGuard();
@@ -290,7 +311,8 @@ export function CommandPalette({ id, siteSlug, role, isOpen, onOpenChange }: Com
     }
   }, [pathname]);
 
-  // Atalho global — ver doc comment acima para a política de precedência.
+  // Atalho global — ver doc comment acima para a política de precedência
+  // (incluindo `suppressShortcut`, UXE-013).
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
       const isShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k';
@@ -301,7 +323,7 @@ export function CommandPalette({ id, siteSlug, role, isOpen, onOpenChange }: Com
         event.preventDefault();
         return;
       }
-      if (document.querySelector('dialog[open]')) {
+      if (suppressShortcut || document.querySelector('dialog[open]')) {
         return;
       }
       event.preventDefault();
@@ -312,7 +334,7 @@ export function CommandPalette({ id, siteSlug, role, isOpen, onOpenChange }: Com
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [isOpen, onOpenChange]);
+  }, [isOpen, onOpenChange, suppressShortcut]);
 
   async function activateResult(result: PaletteResult | undefined) {
     if (!result) {

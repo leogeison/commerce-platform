@@ -46,15 +46,20 @@ function DirtyPublisher({ isDirty }: { isDirty: boolean }) {
  * nenhuma alteração: com `VIEWER`, `createResults` é sempre vazio, então
  * o comportamento observado é idêntico ao de antes desta tarefa. Os
  * testes específicos da matriz de Role passam `role` explicitamente.
+ *
+ * UXE-013: `suppressShortcut` é um parâmetro novo, com default `false` —
+ * mesmo motivo: nenhum teste herdado precisa mudar.
  */
 function ControlledPalette({
   pathname,
   isDirty = false,
   role = 'VIEWER',
+  suppressShortcut = false,
 }: {
   pathname: string;
   isDirty?: boolean;
   role?: Role;
+  suppressShortcut?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -68,6 +73,7 @@ function ControlledPalette({
             role={role}
             isOpen={isOpen}
             onOpenChange={setIsOpen}
+            suppressShortcut={suppressShortcut}
           />
         </UnsavedChangesProvider>
       </AppRouterContext.Provider>
@@ -75,8 +81,8 @@ function ControlledPalette({
   );
 }
 
-function buildTree(pathname: string, isDirty = false, role: Role = 'VIEWER'): ReactElement {
-  return <ControlledPalette pathname={pathname} isDirty={isDirty} role={role} />;
+function buildTree(pathname: string, isDirty = false, role: Role = 'VIEWER', suppressShortcut = false): ReactElement {
+  return <ControlledPalette pathname={pathname} isDirty={isDirty} role={role} suppressShortcut={suppressShortcut} />;
 }
 
 function pressShortcut() {
@@ -440,6 +446,35 @@ describe('CommandPalette', () => {
 
       expect(event.defaultPrevented).toBe(false);
       expect(screen.queryByRole('combobox', { name: 'Buscar navegação' })).not.toBeInTheDocument();
+    });
+
+    /**
+     * UXE-013 — `suppressShortcut` cobre a concorrência com o drawer
+     * mobile custom de `ArticleContextPanel`, que não usa `<dialog>` (ver
+     * doc comment de `command-palette.tsx`) — logo o guard
+     * `document.querySelector('dialog[open]')` não o detecta sozinho.
+     * `AuthenticatedShell` repassa `suppressShortcut={isPageModalOpen}`.
+     */
+    describe('UXE-013 — suppressShortcut', () => {
+      it('com suppressShortcut=true, Ctrl/Cmd+K não abre a paleta, sem preventDefault', () => {
+        render(buildTree('/fastcompre/categories', false, 'VIEWER', true));
+
+        const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true });
+        act(() => {
+          document.dispatchEvent(event);
+        });
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(screen.queryByRole('combobox', { name: 'Buscar navegação' })).not.toBeInTheDocument();
+      });
+
+      it('com suppressShortcut=false (default): comportamento normal preservado', () => {
+        render(buildTree('/fastcompre/categories', false, 'VIEWER', false));
+
+        act(() => pressShortcut());
+
+        expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
+      });
     });
   });
 

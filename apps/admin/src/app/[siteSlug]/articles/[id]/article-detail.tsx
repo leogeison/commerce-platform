@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { articleAdminSchema, type ArticleAdmin, type UpdateArticleRequest } from '@commerce-platform/contracts';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
@@ -115,11 +115,25 @@ function articlePath(siteSlug: string, id: string): string {
  * coberta à parte, via a própria prop `status`). Nem `ArticleForm` nem
  * `ArticleProductsSection` ganham conhecimento de `/health` — só
  * comunicam sucesso a este orquestrador.
+ *
+ * UXE-013 (ajuste pós-revisão) — `contentRef` (`useRef<HTMLDivElement>(null)`)
+ * é anexado ao MESMO `<div className={styles.content}>` já existente nas
+ * duas composições (nenhum elemento novo) e repassado a
+ * `ArticleContextPanel` via `backgroundContentRef`. É este componente —
+ * dono real do `.content` — quem sabe qual elemento é "o fundo" que deve
+ * ficar `inert` enquanto o drawer mobile do painel contextual está
+ * aberto; `ArticleContextPanel` só recebe o `ref` já resolvido, nunca
+ * descobre isso sozinho por posição relativa no DOM (ver doc comment de
+ * `backgroundContentRef` em `article-context-panel.tsx`). Um único
+ * `contentRef` serve às duas composições porque só uma delas está
+ * montada por vez (o `if (!isDraft || !canEdit)` abaixo é um retorno
+ * antecipado, nunca as duas árvores coexistindo).
  */
 export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   const role = useSiteRole();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [healthRevision, setHealthRevision] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,7 +202,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   if (!isDraft || !canEdit) {
     return (
       <div className={styles.readOnly}>
-        <div className={styles.content}>
+        <div ref={contentRef} className={styles.content}>
           <ArticleReadOnly siteSlug={siteSlug} article={article} />
           <ArticleProductsReadOnly siteSlug={siteSlug} articleId={id} />
         </div>
@@ -198,6 +212,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
           status={article.status}
           healthRefreshKey={healthRevision}
           onTransition={handleTransition}
+          backgroundContentRef={contentRef}
         />
       </div>
     );
@@ -205,7 +220,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
 
   return (
     <div className={styles.detail}>
-      <div className={styles.content}>
+      <div ref={contentRef} className={styles.content}>
         {/*
           UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
           (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de
@@ -242,6 +257,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
         status={article.status}
         healthRefreshKey={healthRevision}
         onTransition={handleTransition}
+        backgroundContentRef={contentRef}
       />
     </div>
   );

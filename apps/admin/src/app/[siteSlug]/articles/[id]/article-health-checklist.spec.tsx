@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react';
 import type { ArticleHealthResponse, ArticleStatus } from '@commerce-platform/contracts';
-import { ArticleHealthChecklist } from './article-health-checklist';
+import { ArticleHealthChecklist, type HealthSummary } from './article-health-checklist';
 
 const SITE_SLUG = 'fastcompre';
 const ARTICLE_ID = '11111111-1111-4111-8111-111111111111';
@@ -44,9 +44,19 @@ function mockFetch(options: { health?: () => Response; catalog?: () => Response 
   return fetchMock;
 }
 
-function render_(status: ArticleStatus = 'DRAFT', refreshKey = 0) {
+function render_(
+  status: ArticleStatus = 'DRAFT',
+  refreshKey = 0,
+  onHealthChange?: (summary: HealthSummary) => void,
+) {
   return render(
-    <ArticleHealthChecklist siteSlug={SITE_SLUG} articleId={ARTICLE_ID} status={status} refreshKey={refreshKey} />,
+    <ArticleHealthChecklist
+      siteSlug={SITE_SLUG}
+      articleId={ARTICLE_ID}
+      status={status}
+      refreshKey={refreshKey}
+      onHealthChange={onHealthChange}
+    />,
   );
 }
 
@@ -259,5 +269,101 @@ describe('ArticleHealthChecklist', () => {
 
     await screen.findByText('Sem pendências.');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  // --- UXE-013: onHealthChange (projeção externa para ArticleContextPanel) ---
+
+  describe('UXE-013 — onHealthChange', () => {
+    it('reporta {status: "loading"} enquanto a requisição está em voo', () => {
+      global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
+      const onHealthChange = jest.fn();
+      render_('DRAFT', 0, onHealthChange);
+
+      expect(onHealthChange).toHaveBeenCalledWith({ status: 'loading' });
+    });
+
+    it('reporta {status: "error"} quando /health falha', async () => {
+      mockFetch({ health: () => jsonResponse(500, {}) });
+      const onHealthChange = jest.fn();
+      render_('DRAFT', 0, onHealthChange);
+
+      await screen.findByText('Não foi possível carregar o checklist de saúde do Artigo.');
+      expect(onHealthChange).toHaveBeenLastCalledWith({ status: 'error' });
+    });
+
+    it('reporta {status: "ready", pendingCount: 0, healthy: true} quando saudável', async () => {
+      mockFetch();
+      const onHealthChange = jest.fn();
+      render_('DRAFT', 0, onHealthChange);
+
+      await screen.findByText('Sem pendências.');
+      expect(onHealthChange).toHaveBeenLastCalledWith({ status: 'ready', pendingCount: 0, healthy: true });
+    });
+
+    it('reporta {status: "ready", pendingCount: 4, healthy: false} reaproveitando o mesmo cálculo de countPending', async () => {
+      mockFetch({
+        health: () =>
+          jsonResponse(200, {
+            ...healthyResponse(),
+            categoryActive: false,
+            metaDescriptionFilled: false,
+            coverImagePresent: false,
+            slugUnique: false,
+            healthy: false,
+          }),
+      });
+      const onHealthChange = jest.fn();
+      render_('DRAFT', 0, onHealthChange);
+
+      await screen.findByText('4 pendência(s) encontrada(s).');
+      expect(onHealthChange).toHaveBeenLastCalledWith({ status: 'ready', pendingCount: 4, healthy: false });
+    });
+
+    it('reporta novamente após rerender com refreshKey diferente, refletindo o novo valor', async () => {
+      const fetchMock = mockFetch({
+        health: () => jsonResponse(200, healthyResponse()),
+      });
+      const onHealthChange = jest.fn();
+      const { rerender } = render(
+        <ArticleHealthChecklist
+          siteSlug={SITE_SLUG}
+          articleId={ARTICLE_ID}
+          status="DRAFT"
+          refreshKey={0}
+          onHealthChange={onHealthChange}
+        />,
+      );
+
+      await screen.findByText('Sem pendências.');
+      expect(onHealthChange).toHaveBeenLastCalledWith({ status: 'ready', pendingCount: 0, healthy: true });
+
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return jsonResponse(200, { ...healthyResponse(), categoryActive: false, healthy: false });
+        }
+        return catalogResponse();
+      });
+
+      rerender(
+        <ArticleHealthChecklist
+          siteSlug={SITE_SLUG}
+          articleId={ARTICLE_ID}
+          status="DRAFT"
+          refreshKey={1}
+          onHealthChange={onHealthChange}
+        />,
+      );
+
+      await screen.findByText('1 pendência(s) encontrada(s).');
+      expect(onHealthChange).toHaveBeenLastCalledWith({ status: 'ready', pendingCount: 1, healthy: false });
+    });
+
+    it('sem onHealthChange (prop omitida): comportamento e requisições continuam idênticos', async () => {
+      mockFetch();
+      render_('DRAFT', 0, undefined);
+
+      expect(await screen.findByText('Sem pendências.')).toBeInTheDocument();
+    });
   });
 });

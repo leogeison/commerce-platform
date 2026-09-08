@@ -6,6 +6,7 @@ import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared
 import { $createParagraphNode, $getRoot, getNearestEditorFromDOMNode } from 'lexical';
 import type { Role } from '@commerce-platform/contracts';
 import { ArticleDetail } from './article-detail';
+import { PageModalProvider } from '../../page-modal-context';
 import { SiteRoleProvider } from '../../site-role-context';
 import { UnsavedChangesProvider } from '../../unsaved-changes-context';
 
@@ -66,13 +67,31 @@ const mockRouter: ContextType<typeof AppRouterContext> = {
  * envolve com `UnsavedChangesProvider` ao redor de `AuthenticatedShell`
  * — nunca o próprio `ArticleDetail`. Este helper reproduz essa mesma
  * hierarquia real, não uma adaptação só para o teste passar.
+ *
+ * UXE-013 (ajuste pós-revisão) — `AuthenticatedShell` é quem monta
+ * `<PageModalProvider>` em produção (ver `authenticated-shell.tsx`),
+ * nunca `ArticleDetail`/`SiteLayout` diretamente; mas como este helper já
+ * reproduz a hierarquia real "de fora para dentro" a partir de
+ * `UnsavedChangesProvider` (sem montar a shell inteira, chrome/roteamento
+ * não fazem parte do que estes testes exercitam), `PageModalProvider`
+ * precisa ser adicionado aqui pelo MESMO motivo: `ArticleContextPanel`
+ * (via `ArticleDetail`) chama `usePageModal()` incondicionalmente, e essa
+ * chamada é hoje um erro de programação fora de um Provider (ver
+ * `page-modal-context.tsx`) — nunca deve virar opcional/no-op só para o
+ * teste passar. `setPageModalOpen` é um `jest.fn()` novo por render,
+ * suficiente porque nenhum teste desta suíte precisa inspecionar
+ * chamadas a ele (isso já é coberto em `article-context-panel.spec.tsx`)
+ * — só a fiação real com `.content` (ver os dois testes de integração
+ * "UXE-013" abaixo).
  */
 function renderDetail(role: Role = 'OWNER') {
   return render(
     <AppRouterContext.Provider value={mockRouter}>
       <UnsavedChangesProvider>
         <SiteRoleProvider value={role}>
-          <ArticleDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+          <PageModalProvider setPageModalOpen={jest.fn()}>
+            <ArticleDetail siteSlug="fastcompre" id="11111111-1111-4111-8111-111111111111" />
+          </PageModalProvider>
         </SiteRoleProvider>
       </UnsavedChangesProvider>
     </AppRouterContext.Provider>,
@@ -292,6 +311,48 @@ describe('ArticleDetail', () => {
     expect(screen.getByRole('complementary', { name: 'Status do Artigo' })).toBeInTheDocument();
   });
 
+  // --- UXE-013 (ajuste pós-revisão): integração real do backgroundContentRef ---
+  //
+  // `article-context-panel.spec.tsx` já cobre exaustivamente o mecanismo
+  // de inertização em si (dado UM ref qualquer); os dois testes abaixo
+  // cobrem só a FIAÇÃO real entre `ArticleDetail` (dono do `.content`) e
+  // `ArticleContextPanel` — a costura que quebraria silenciosamente se o
+  // `ref` fosse esquecido ou anexado ao elemento errado, sem duplicar a
+  // cobertura interna do drawer (Escape/backdrop/focus trap/scroll lock
+  // não são reexercitados aqui).
+
+  it('UXE-013: abrir o drawer mobile na composição DRAFT editável real deixa o .content (ArticleForm) inert; fechar remove', async () => {
+    const user = userEvent.setup();
+    mockFetch({ article: () => jsonResponse(200, draftArticle) });
+    const { container } = renderDetail();
+
+    await screen.findByLabelText('Título');
+    const content = container.querySelector('[class*="content"]');
+    expect(content).not.toHaveAttribute('inert');
+
+    await user.click(screen.getByRole('button', { name: 'Status e ações do Artigo' }));
+    expect(content).toHaveAttribute('inert');
+
+    await user.click(await screen.findByRole('button', { name: 'Fechar Status e ações do Artigo' }));
+    expect(content).not.toHaveAttribute('inert');
+  });
+
+  it('UXE-013: abrir o drawer mobile na composição read-only real deixa o .content (ArticleReadOnly) inert; fechar remove', async () => {
+    const user = userEvent.setup();
+    mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
+    const { container } = renderDetail();
+
+    await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' });
+    const content = container.querySelector('[class*="content"]');
+    expect(content).not.toHaveAttribute('inert');
+
+    await user.click(screen.getByRole('button', { name: 'Status e ações do Artigo' }));
+    expect(content).toHaveAttribute('inert');
+
+    await user.click(await screen.findByRole('button', { name: 'Fechar Status e ações do Artigo' }));
+    expect(content).not.toHaveAttribute('inert');
+  });
+
   it('status !== DRAFT (PUBLISHED): composição somente leitura + Produtos somente leitura + botão "Arquivar", sem ArticleForm', async () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
     renderDetail();
@@ -338,9 +399,22 @@ describe('ArticleDetail', () => {
     await user.click(await screen.findByRole('button', { name: 'Enviar para revisão' }));
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
-    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(screen.getAllByText('Em revisão')).toHaveLength(2);
+    // UXE-013 (ajuste pós-revisão): desde a UXE-013, o indicador externo de
+    // `ArticleContextPanel` deixou de repetir o rótulo de status isolado —
+    // seu texto agora é composto (rótulo + resumo de saúde, ex.: "Em
+    // revisão · Sem pendências"), então não há mais duas ocorrências
+    // EXATAS de "Em revisão" no DOM (a antiga contagem `toHaveLength(2)`
+    // ficaria presa em 1). As duas invariantes seguem valendo, só
+    // verificadas de outra forma: (1) `ArticleReadOnly` continua exibindo
+    // o rótulo isolado — `getByText` exato já é inequívoco, pois só sobra
+    // essa ocorrência; (2) o indicador externo — localizado pelo seu
+    // trigger correspondente ("Status e ações do Artigo", por papel/nome
+    // acessível), não por posição — continua perceptibilizando o mesmo
+    // status, verificado por conteúdo (substring), nunca por contagem de
+    // strings idênticas.
+    expect(screen.getByText('Em revisão')).toBeInTheDocument();
+    const externalIndicator = screen.getByRole('button', { name: 'Status e ações do Artigo' }).parentElement;
+    expect(externalIndicator).toHaveTextContent('Em revisão');
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(fetchState.getArticleCallCount()).toBe(1);
   });
@@ -569,9 +643,18 @@ describe('ArticleDetail', () => {
 
     await user.click(screen.getByRole('button', { name: 'Publicar' }));
 
-    // UXE-012: "Publicado" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(await screen.findAllByText('Publicado')).toHaveLength(2);
+    // UXE-013 (ajuste pós-revisão): ver nota equivalente no teste "DRAFT →
+    // PENDING_REVIEW" acima — o indicador externo de `ArticleContextPanel`
+    // agora combina o rótulo de status com o resumo de saúde, então não há
+    // mais duas ocorrências EXATAS de "Publicado". `ArticleReadOnly`
+    // continua exibindo o rótulo isolado (invariante 1); o indicador
+    // externo — localizado pelo trigger correspondente ("Status e ações
+    // do Artigo", por papel/nome acessível) — continua perceptibilizando o
+    // mesmo status dentro do seu texto composto, verificado por conteúdo,
+    // nunca por contagem de strings idênticas (invariante 2).
+    expect(await screen.findByText('Publicado')).toBeInTheDocument();
+    const externalIndicator = screen.getByRole('button', { name: 'Status e ações do Artigo' }).parentElement;
+    expect(externalIndicator).toHaveTextContent('Publicado');
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
   });
 
@@ -596,7 +679,13 @@ describe('ArticleDetail', () => {
 
     await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' });
     expect(screen.queryByRole('button', { name: 'Enviar para revisão' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // UXE-013: o único botão presente é o trigger mobile "Status e ações
+    // do Artigo" de `ArticleContextPanel` — chrome de UI, sempre montado,
+    // nunca uma ação de transição — por isso é excluído explicitamente em
+    // vez de esperar zero botões no total.
+    expect(
+      screen.queryAllByRole('button').filter((button) => button.textContent !== 'Status e ações do Artigo'),
+    ).toHaveLength(0);
   });
 
   it('EDITOR em DRAFT: composição editável, igual ao comportamento já existente (Role suficiente)', async () => {
@@ -626,6 +715,11 @@ describe('ArticleDetail', () => {
     // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
     // badge de `ArticleContextPanel` — ver nota acima.
     expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // UXE-013: ver nota equivalente no teste "VIEWER em DRAFT" acima — o
+    // trigger mobile de `ArticleContextPanel` é chrome de UI sempre
+    // montada, não uma ação de transição.
+    expect(
+      screen.queryAllByRole('button').filter((button) => button.textContent !== 'Status e ações do Artigo'),
+    ).toHaveLength(0);
   });
 });

@@ -5,13 +5,106 @@
  * 320px em desktop) é definida pelo grid do CONTÊINER (ver `.detail`/
  * `.readOnly` em `article-detail.module.css`, que dedica uma faixa de
  * `minmax(280px, 320px)` para este componente) — este arquivo não impõe
- * largura própria, só a organização vertical do conteúdo interno do
- * painel, em qualquer largura de tela.
+ * largura própria em desktop, só a organização vertical do conteúdo
+ * interno do painel.
+ *
+ * UXE-013 — modalidade mobile (<1024px), sem nenhuma animação (decisão
+ * fechada no desenho técnico). `.root` é a raiz única deste componente
+ * (wrapper neutro em desktop/mobile fechado, `role="dialog"` em mobile
+ * aberto — troca de atributo em JS, nunca de classe/estilo aqui). O
+ * trigger e o badge (`.trigger`/`.statusBadge`) só existem no desktop e
+ * no mobile fechado (montagem condicional em JS, não `display`) — em
+ * `>=1024px` o trigger permanece sempre oculto via `display: none`
+ * (nunca é útil em desktop, onde o painel já é sempre visível).
+ *
+ * `.panel` é o `<aside>` em si — mesmo elemento em qualquer estado; só
+ * ganha `.overlay` (via JS) quando funciona como drawer mobile. Em
+ * `<1024px` sem `.overlay`, `.panel` fica `display: none` (removido
+ * visualmente E da árvore de acessibilidade via CSS, conforme decisão
+ * fechada) — a subtree continua montada no React, só oculta.
+ *
+ * Largura do drawer (`min(90vw, 340px)`): valor de trabalho dentro da
+ * faixa aprovada (320–360px) — NÃO é um teto final fechado; pendente de
+ * validação manual de reflow/overflow em telas reais antes de qualquer
+ * fechamento de valor definitivo.
  */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid #ccc;
+  border-radius: 9999px;
+  background: #fff;
+}
+
+@media (min-width: 1024px) {
+  .trigger {
+    display: none;
+  }
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(17, 24, 39, 0.5);
+}
+
+@media (min-width: 1024px) {
+  .backdrop {
+    display: none;
+  }
+}
+
 .panel {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+@media (max-width: 1023.98px) {
+  .panel {
+    display: none;
+  }
+
+  .panel.overlay {
+    display: flex;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    width: min(90vw, 340px);
+    max-width: min(90vw, 340px);
+    margin: 0;
+    overflow-y: auto;
+    padding: 1.5rem 1rem;
+    background: #fff;
+    border: none;
+    border-left: 1px solid #ccc;
+  }
+}
+
+.closeButton {
+  align-self: flex-end;
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid #ccc;
+  border-radius: 9999px;
+  background: #f3f4f6;
 }
 
 .heading {
@@ -23,8 +116,8 @@
  * Badge de status — mesmo nível de rigor visual já usado neste
  * código-base para indicadores curtos de estado (borda 1px `#ccc`,
  * `border-radius`, fundo neutro), sem nenhuma dependência nova. Cor não é
- * o único sinal: o próprio texto já é o rótulo de status
- * (`STATUS_LABELS`), nunca só uma cor.
+ * o único sinal: o próprio texto já combina status + resumo de saúde
+ * (`summaryText()`, ver `article-context-panel.tsx`), nunca só uma cor.
  */
 .statusBadge {
   display: inline-flex;
