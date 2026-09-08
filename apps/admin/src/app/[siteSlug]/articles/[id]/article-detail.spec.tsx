@@ -262,12 +262,44 @@ describe('ArticleDetail', () => {
     expect(screen.getByRole('button', { name: 'Enviar para revisão' })).toBeInTheDocument();
   });
 
+  // --- UXE-012: painel lateral contextual (ArticleContextPanel) ---
+  //
+  // Nas composições NÃO-DRAFT, o rótulo de status (`STATUS_LABELS`) passa
+  // a aparecer DUAS vezes no DOM depois desta tarefa: uma no resumo
+  // (`<dl>`) de `ArticleReadOnly` (já existia antes) e outra no badge
+  // sempre visível de `ArticleContextPanel` (novo nesta tarefa) — os dois
+  // com propósito diferente, não uma duplicação acidental. Os testes
+  // abaixo que já verificavam esse rótulo foram ajustados de
+  // `getByText`/`findByText` (que exigem exatamente 1 ocorrência) para
+  // `getAllByText`/`findAllByText` com `toHaveLength(2)`, refletindo esse
+  // comportamento aprovado. Na composição DRAFT editável não há
+  // duplicação (`ArticleForm` nunca mostrou rótulo de status) — nenhum
+  // teste dela precisou mudar por causa disso.
+
+  it('UXE-012: ArticleContextPanel (região "Status do Artigo") presente na composição DRAFT editável', async () => {
+    mockFetch({ article: () => jsonResponse(200, draftArticle) });
+    renderDetail();
+
+    await screen.findByLabelText('Título');
+    expect(screen.getByRole('complementary', { name: 'Status do Artigo' })).toBeInTheDocument();
+  });
+
+  it('UXE-012: ArticleContextPanel (região "Status do Artigo") presente na composição read-only', async () => {
+    mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' });
+    expect(screen.getByRole('complementary', { name: 'Status do Artigo' })).toBeInTheDocument();
+  });
+
   it('status !== DRAFT (PUBLISHED): composição somente leitura + Produtos somente leitura + botão "Arquivar", sem ArticleForm', async () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
     renderDetail();
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
-    expect(screen.getByText('Publicado')).toBeInTheDocument();
+    // UXE-012: "Publicado" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(screen.getAllByText('Publicado')).toHaveLength(2);
     expect(screen.getByText('Review')).toBeInTheDocument();
     expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Arquivar' })).toBeInTheDocument();
@@ -279,7 +311,9 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail();
 
-    expect(await screen.findByText('Em revisão')).toBeInTheDocument();
+    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
@@ -289,7 +323,9 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'ARCHIVED' }) });
     renderDetail();
 
-    expect(await screen.findByText('Arquivado')).toBeInTheDocument();
+    // UXE-012: "Arquivado" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(await screen.findAllByText('Arquivado')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Restaurar para rascunho' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
   });
@@ -302,7 +338,9 @@ describe('ArticleDetail', () => {
     await user.click(await screen.findByRole('button', { name: 'Enviar para revisão' }));
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
-    expect(screen.getByText('Em revisão')).toBeInTheDocument();
+    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(screen.getAllByText('Em revisão')).toHaveLength(2);
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(fetchState.getArticleCallCount()).toBe(1);
   });
@@ -531,7 +569,9 @@ describe('ArticleDetail', () => {
 
     await user.click(screen.getByRole('button', { name: 'Publicar' }));
 
-    expect(await screen.findByText('Publicado')).toBeInTheDocument();
+    // UXE-012: "Publicado" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(await screen.findAllByText('Publicado')).toHaveLength(2);
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
   });
 
@@ -542,7 +582,9 @@ describe('ArticleDetail', () => {
     renderDetail('VIEWER');
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
-    expect(screen.getByText('Rascunho')).toBeInTheDocument();
+    // UXE-012: "Rascunho" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(screen.getAllByText('Rascunho')).toHaveLength(2);
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(screen.queryByText('Adicionar Produto')).not.toBeInTheDocument();
     expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
@@ -569,7 +611,9 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail('EDITOR');
 
-    expect(await screen.findByText('Em revisão')).toBeInTheDocument();
+    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
@@ -579,7 +623,9 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail('VIEWER');
 
-    expect(await screen.findByText('Em revisão')).toBeInTheDocument();
+    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
+    // badge de `ArticleContextPanel` — ver nota acima.
+    expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

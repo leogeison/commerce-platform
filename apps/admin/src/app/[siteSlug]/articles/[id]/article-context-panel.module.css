@@ -1,0 +1,39 @@
+/*
+ * apps/admin/src/app/[siteSlug]/articles/[id]/article-context-panel.module.css
+ *
+ * UXE-012 — layout do painel em si. A largura própria do painel (~300-
+ * 320px em desktop) é definida pelo grid do CONTÊINER (ver `.detail`/
+ * `.readOnly` em `article-detail.module.css`, que dedica uma faixa de
+ * `minmax(280px, 320px)` para este componente) — este arquivo não impõe
+ * largura própria, só a organização vertical do conteúdo interno do
+ * painel, em qualquer largura de tela.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.heading {
+  font-size: 1rem;
+  margin: 0;
+}
+
+/*
+ * Badge de status — mesmo nível de rigor visual já usado neste
+ * código-base para indicadores curtos de estado (borda 1px `#ccc`,
+ * `border-radius`, fundo neutro), sem nenhuma dependência nova. Cor não é
+ * o único sinal: o próprio texto já é o rótulo de status
+ * (`STATUS_LABELS`), nunca só uma cor.
+ */
+.statusBadge {
+  display: inline-flex;
+  align-self: flex-start;
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid #ccc;
+  border-radius: 9999px;
+  background: #f3f4f6;
+}

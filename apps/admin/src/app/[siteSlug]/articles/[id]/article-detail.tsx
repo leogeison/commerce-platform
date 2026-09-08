@@ -8,11 +8,10 @@ import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
 import { ProductLookupProvider } from '../product-lookup-context';
-import { ArticleHealthChecklist } from './article-health-checklist';
+import { ArticleContextPanel } from './article-context-panel';
 import { ArticleProductsReadOnly } from './article-products-read-only';
 import { ArticleProductsSection } from './article-products-section';
 import { ArticleReadOnly } from './article-read-only';
-import { ArticleTransitionPanel } from './article-transition-panel';
 import styles from './article-detail.module.css';
 
 interface ArticleDetailProps {
@@ -54,13 +53,22 @@ function articlePath(siteSlug: string, id: string): string {
  * definidas em Architecture.md §32.
  *
  * `status !== 'DRAFT'` (ADM-010): `ArticleReadOnly` (conteúdo em modo
- * leitura) + `ArticleProductsReadOnly` (Produtos vinculados, sem mutação) +
- * `ArticleTransitionPanel` (ações válidas para o status atual) —
+ * leitura) + `ArticleProductsReadOnly` (Produtos vinculados, sem mutação) —
  * composição inteiramente diferente da de `DRAFT`, nunca o mesmo
  * formulário desabilitado (Architecture.md §32).
  *
- * `DRAFT` ganha, além do já existente, `ArticleTransitionPanel` só com a
- * ação externa "Enviar para revisão" — orquestrada por este componente via
+ * UXE-012 — Painel lateral contextual: `ArticleHealthChecklist` e
+ * `ArticleTransitionPanel`, antes montados soltos abaixo do formulário/
+ * conteúdo nas duas composições, agora são recompostos dentro de
+ * `ArticleContextPanel` (região `complementary`, sempre visível em
+ * desktop — ver `article-context-panel.tsx`/`.module.css` e o grid de
+ * duas colunas em `article-detail.module.css`). `ArticleContextPanel` é
+ * montado nas DUAS composições, sempre com as mesmas props que este
+ * componente já calculava para os dois filhos antes desta tarefa —
+ * nenhuma mudança de dado, de busca ou de regra de transição/saúde.
+ *
+ * `DRAFT` ganha, além do já existente, o painel só com a ação externa
+ * "Enviar para revisão" — orquestrada por este componente via
  * `handleTransition`, nunca pelo próprio `ArticleForm` (que continua
  * responsável só pelos campos editáveis/salvamento, sem conhecer a máquina
  * de estados).
@@ -68,20 +76,21 @@ function articlePath(siteSlug: string, id: string): string {
  * Composição por Role × status (ADM-012) — as duas responsabilidades
  * ficam deliberadamente separadas, nunca fundidas numa regra nova:
  * `status` continua sendo o único dono da máquina de estados (só
- * `ArticleTransitionPanel`/`ACTIONS_BY_STATUS` sabem quais transições
- * existem para cada status — nada disso muda aqui); `canEdit` (Role atual
- * `>= EDITOR`) só decide se a composição atual é editável ou não. As duas
- * condições são combinadas por `||` porque convergem na MESMA UI já
- * aprovada na ADM-010: um `VIEWER` abrindo um Artigo em `DRAFT` também cai
- * na composição read-only (Architecture.md §32: "`VIEWER` abre detalhe em
+ * `ArticleTransitionPanel`/`ACTIONS_BY_STATUS`, dentro de
+ * `ArticleContextPanel`, sabem quais transições existem para cada status
+ * — nada disso muda aqui); `canEdit` (Role atual `>= EDITOR`) só decide
+ * se a composição atual é editável ou não. As duas condições são
+ * combinadas por `||` porque convergem na MESMA UI já aprovada na
+ * ADM-010: um `VIEWER` abrindo um Artigo em `DRAFT` também cai na
+ * composição read-only (Architecture.md §32: "`VIEWER` abre detalhe em
  * modo somente leitura") — não é uma composição nova, é o motivo "Role
  * insuficiente" reaproveitando a mesma UI que já existe para o motivo
  * "status não é DRAFT". Nem `ArticleForm` nem `ArticleProductsSection`
  * mudam: continuam só renderizados quando `isDraft && canEdit`.
- * `ArticleTransitionPanel` é montado nas duas composições e decide sozinho
- * (via `useSiteRole()` + `MIN_ROLE_BY_TRANSITION`) quais botões aparecem —
- * nunca `null` por causa de Role aqui, só por causa de `status`
- * (`ACTIONS_BY_STATUS`).
+ * `ArticleContextPanel`/`ArticleTransitionPanel` são montados nas duas
+ * composições e decidem sozinhos (via `useSiteRole()` +
+ * `MIN_ROLE_BY_TRANSITION`) quais botões aparecem — nunca `null` por
+ * causa de Role aqui, só por causa de `status` (`ACTIONS_BY_STATUS`).
  *
  * `handleTransition` é o único callback usado pelas 5 transições
  * possíveis: recebe o `ArticleAdmin` já retornado pela própria API e
@@ -98,13 +107,14 @@ function articlePath(siteSlug: string, id: string): string {
  * desvincular Produto com sucesso (`handleProductsChanged`, repassado a
  * `ArticleProductsSection`). Nunca incrementado em falha, nunca em
  * reordenar (a ordem não é uma das condições de `/health`).
- * `ArticleHealthChecklist` recebe `refreshKey={healthRevision}` nas duas
- * composições e refaz `GET :id/health` sempre que essa revisão muda — é
- * o único jeito do checklist não ficar obsoleto depois que o usuário
- * corrige uma pendência em `DRAFT` sem trocar de status (transição de
- * status já é coberta à parte, via a própria prop `status`). Nem
- * `ArticleForm` nem `ArticleProductsSection` ganham conhecimento de
- * `/health` — só comunicam sucesso a este orquestrador.
+ * `ArticleContextPanel` recebe `healthRefreshKey={healthRevision}` nas
+ * duas composições e repassa para `ArticleHealthChecklist.refreshKey`,
+ * que refaz `GET :id/health` sempre que essa revisão muda — é o único
+ * jeito do checklist não ficar obsoleto depois que o usuário corrige uma
+ * pendência em `DRAFT` sem trocar de status (transição de status já é
+ * coberta à parte, via a própria prop `status`). Nem `ArticleForm` nem
+ * `ArticleProductsSection` ganham conhecimento de `/health` — só
+ * comunicam sucesso a este orquestrador.
  */
 export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   const role = useSiteRole();
@@ -178,18 +188,15 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   if (!isDraft || !canEdit) {
     return (
       <div className={styles.readOnly}>
-        <ArticleReadOnly siteSlug={siteSlug} article={article} />
-        <ArticleProductsReadOnly siteSlug={siteSlug} articleId={id} />
-        <ArticleHealthChecklist
+        <div className={styles.content}>
+          <ArticleReadOnly siteSlug={siteSlug} article={article} />
+          <ArticleProductsReadOnly siteSlug={siteSlug} articleId={id} />
+        </div>
+        <ArticleContextPanel
           siteSlug={siteSlug}
           articleId={id}
           status={article.status}
-          refreshKey={healthRevision}
-        />
-        <ArticleTransitionPanel
-          siteSlug={siteSlug}
-          articleId={id}
-          status={article.status}
+          healthRefreshKey={healthRevision}
           onTransition={handleTransition}
         />
       </div>
@@ -198,46 +205,42 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
 
   return (
     <div className={styles.detail}>
-      {/*
-        UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
-        (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de
-        Produto, preview) e `ArticleProductsSection` — os dois passam a ler
-        a mesma fonte de `ArticleProduct`/catálogo, nenhum dos dois busca
-        por conta própria. `ArticleHealthChecklist`/`ArticleTransitionPanel`
-        não consomem essa fonte — permanecem fora do Provider.
-      */}
-      <ProductLookupProvider siteSlug={siteSlug} articleId={id}>
-        <ArticleForm
-          siteSlug={siteSlug}
-          articleId={id}
-          initialValues={{
-            type: article.type,
-            title: article.title,
-            slug: article.slug,
-            categoryId: article.categoryId,
-            authorId: article.authorId,
-            metaDescription: article.metaDescription,
-            bodyMdx: article.bodyMdx,
-            coverImageUrl: article.coverImageUrl,
-          }}
-          submitLabel="Salvar"
-          onSubmit={handleUpdate}
-        />
+      <div className={styles.content}>
+        {/*
+          UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
+          (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de
+          Produto, preview) e `ArticleProductsSection` — os dois passam a ler
+          a mesma fonte de `ArticleProduct`/catálogo, nenhum dos dois busca
+          por conta própria. `ArticleContextPanel` (health/transição) não
+          consome essa fonte — permanece fora do Provider.
+        */}
+        <ProductLookupProvider siteSlug={siteSlug} articleId={id}>
+          <ArticleForm
+            siteSlug={siteSlug}
+            articleId={id}
+            initialValues={{
+              type: article.type,
+              title: article.title,
+              slug: article.slug,
+              categoryId: article.categoryId,
+              authorId: article.authorId,
+              metaDescription: article.metaDescription,
+              bodyMdx: article.bodyMdx,
+              coverImageUrl: article.coverImageUrl,
+            }}
+            submitLabel="Salvar"
+            onSubmit={handleUpdate}
+          />
 
-        <ArticleProductsSection siteSlug={siteSlug} articleId={id} onProductsChanged={handleProductsChanged} />
-      </ProductLookupProvider>
+          <ArticleProductsSection siteSlug={siteSlug} articleId={id} onProductsChanged={handleProductsChanged} />
+        </ProductLookupProvider>
+      </div>
 
-      <ArticleHealthChecklist
+      <ArticleContextPanel
         siteSlug={siteSlug}
         articleId={id}
         status={article.status}
-        refreshKey={healthRevision}
-      />
-
-      <ArticleTransitionPanel
-        siteSlug={siteSlug}
-        articleId={id}
-        status={article.status}
+        healthRefreshKey={healthRevision}
         onTransition={handleTransition}
       />
     </div>

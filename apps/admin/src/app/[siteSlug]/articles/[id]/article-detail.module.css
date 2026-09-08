@@ -1,18 +1,68 @@
-.detail {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  max-width: 480px;
-}
-
 .status {
   font-size: 1rem;
   margin: 0;
 }
 
+/*
+ * UXE-012 — Painel lateral contextual do Artigo (desktop).
+ *
+ * Antes desta tarefa, `.detail`/`.readOnly` eram diretamente a largura de
+ * leitura do conteúdo (`max-width: 480px` aplicado à TELA INTEIRA). Esta
+ * tarefa separa três larguras que antes eram uma só:
+ *
+ * 1. largura do shell (`.detail`/`.readOnly`) — só precisa comportar
+ *    coluna editorial + gap + painel;
+ * 2. largura da coluna editorial (`.content`) — continua dominante, com a
+ *    MESMA largura de leitura de sempre (480px, igual a `ArticleForm`/
+ *    `ArticleReadOnly`, que já tinham esse `max-width` em seus próprios
+ *    módulos — nenhuma mudança de legibilidade do conteúdo em si);
+ * 3. largura do painel (`ArticleContextPanel`) — ~280-320px, definida
+ *    aqui como a segunda coluna do grid (o próprio painel não impõe
+ *    largura própria, ver `article-context-panel.module.css`).
+ *
+ * Abaixo de 1024px: nenhuma mudança de comportamento em relação a antes
+ * desta tarefa — `.detail`/`.readOnly` continuam em coluna única
+ * (`flex-direction: column`), o painel permanece SEMPRE VISÍVEL, só que
+ * no fluxo vertical normal, depois do conteúdo. Nenhum drawer/sheet/
+ * trigger/indicador mobile é implementado aqui — pertence à UXE-013, que
+ * herda exatamente este mesmo componente/CSS como ponto de partida.
+ *
+ * Em >=1024px: grid de duas colunas. `max-width: 832px` no shell é a
+ * soma explícita das duas colunas + gap (480 + 320 + 32) — não um valor
+ * arbitrário; ajustar qualquer uma das duas larguras exige revisar este
+ * total. `align-items: start` evita que o painel (mais curto que o
+ * formulário/conteúdo em muitos casos) seja esticado para a altura da
+ * coluna editorial.
+ */
+.detail,
 .readOnly {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+}
+
+/*
+ * `max-width: 480px` aqui é o que já existia antes desta tarefa (mesma
+ * largura de leitura de `ArticleForm`/`ArticleReadOnly`) — continua
+ * correto tanto na pilha vertical (<1024px) quanto dentro da primeira
+ * track do grid (>=1024px, ver abaixo): a track nunca excede 480px, então
+ * este valor nunca entra em conflito com ela, só reforça o mesmo limite
+ * em qualquer contexto em que `.content` seja usado fora deste grid.
+ */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
   max-width: 480px;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .detail,
+  .readOnly {
+    display: grid;
+    grid-template-columns: minmax(0, 480px) minmax(280px, 320px);
+    align-items: start;
+    max-width: 832px;
+  }
 }
