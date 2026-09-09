@@ -10,7 +10,6 @@ import { ArticleForm, type ArticleFormValues } from '../article-form';
 import { ProductLookupProvider } from '../product-lookup-context';
 import { ArticleContextPanel } from './article-context-panel';
 import { ArticleProductsReadOnly } from './article-products-read-only';
-import { ArticleProductsSection } from './article-products-section';
 import { ArticleReadOnly } from './article-read-only';
 import styles from './article-detail.module.css';
 
@@ -48,9 +47,13 @@ function articlePath(siteSlug: string, id: string): string {
  * (Architecture.md §32: "Nunca a mesma tela com campos simplesmente
  * desabilitados — são composições visuais diferentes").
  *
- * `status === 'DRAFT'`: `ArticleForm` (edição completa) + `ArticleProductsSection`
- * (vínculo de Produtos, `EDT-010`) — as duas únicas peças do modo DRAFT
- * definidas em Architecture.md §32.
+ * `status === 'DRAFT'`: `ArticleForm` (edição completa, dentro de
+ * `.content`) + `ArticleProductsSection` (vínculo de Produtos, `EDT-010`)
+ * — as duas únicas peças do modo DRAFT definidas em Architecture.md §32.
+ * UXE-014 — `ArticleProductsSection` passou a ser montado dentro de
+ * `ArticleContextPanel` (via `canManageProducts`, ver abaixo) em vez de
+ * `.content`; continua existindo só nesta composição, com a MESMA lógica
+ * funcional de antes.
  *
  * `status !== 'DRAFT'` (ADM-010): `ArticleReadOnly` (conteúdo em modo
  * leitura) + `ArticleProductsReadOnly` (Produtos vinculados, sem mutação) —
@@ -105,7 +108,9 @@ function articlePath(siteSlug: string, id: string): string {
  * `healthRevision` (ADM-011) — contador local incrementado só em dois
  * pontos de sucesso: PATCH do Artigo (`handleUpdate`) e vincular/
  * desvincular Produto com sucesso (`handleProductsChanged`, repassado a
- * `ArticleProductsSection`). Nunca incrementado em falha, nunca em
+ * `ArticleContextPanel.onProductsChanged`, que encaminha a
+ * `ArticleProductsSection` desde a UXE-014 — ver doc comment de
+ * `ArticleContextPanel`). Nunca incrementado em falha, nunca em
  * reordenar (a ordem não é uma das condições de `/health`).
  * `ArticleContextPanel` recebe `healthRefreshKey={healthRevision}` nas
  * duas composições e repassa para `ArticleHealthChecklist.refreshKey`,
@@ -220,16 +225,26 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
 
   return (
     <div className={styles.detail}>
-      <div ref={contentRef} className={styles.content}>
-        {/*
-          UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
-          (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de
-          Produto, preview) e `ArticleProductsSection` — os dois passam a ler
-          a mesma fonte de `ArticleProduct`/catálogo, nenhum dos dois busca
-          por conta própria. `ArticleContextPanel` (health/transição) não
-          consome essa fonte — permanece fora do Provider.
-        */}
-        <ProductLookupProvider siteSlug={siteSlug} articleId={id}>
+      {/*
+        UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
+        (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de
+        Produto, preview) e de `ArticleProductsSection` — os dois passam a
+        ler a mesma fonte de `ArticleProduct`/catálogo, nenhum dos dois
+        busca por conta própria.
+
+        UXE-014 — fronteira do Provider ampliada para envolver também
+        `ArticleContextPanel`, já que `ArticleProductsSection` passou a ser
+        montado DENTRO dele (ver `canManageProducts` abaixo), nesta mesma
+        composição (`isDraft && canEdit`) que já precisava do Provider.
+        Solução conservadora, decisão explícita desta tarefa: o Provider
+        NUNCA é montado na composição read-only (abaixo) só para
+        neutralizá-lo com `articleId: null` — lá `ArticleContextPanel`
+        simplesmente não recebe `canManageProducts`, então nunca monta
+        `ArticleProductsSection`, e nenhuma busca nova do Provider
+        (`GET :id/products`/catálogo) é disparada nessa composição.
+      */}
+      <ProductLookupProvider siteSlug={siteSlug} articleId={id}>
+        <div ref={contentRef} className={styles.content}>
           <ArticleForm
             siteSlug={siteSlug}
             articleId={id}
@@ -246,19 +261,19 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
             submitLabel="Salvar"
             onSubmit={handleUpdate}
           />
+        </div>
 
-          <ArticleProductsSection siteSlug={siteSlug} articleId={id} onProductsChanged={handleProductsChanged} />
-        </ProductLookupProvider>
-      </div>
-
-      <ArticleContextPanel
-        siteSlug={siteSlug}
-        articleId={id}
-        status={article.status}
-        healthRefreshKey={healthRevision}
-        onTransition={handleTransition}
-        backgroundContentRef={contentRef}
-      />
+        <ArticleContextPanel
+          siteSlug={siteSlug}
+          articleId={id}
+          status={article.status}
+          healthRefreshKey={healthRevision}
+          onTransition={handleTransition}
+          backgroundContentRef={contentRef}
+          canManageProducts
+          onProductsChanged={handleProductsChanged}
+        />
+      </ProductLookupProvider>
     </div>
   );
 }

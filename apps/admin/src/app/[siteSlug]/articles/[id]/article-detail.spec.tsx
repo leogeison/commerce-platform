@@ -1,6 +1,6 @@
 import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { $createParagraphNode, $getRoot, getNearestEditorFromDOMNode } from 'lexical';
@@ -201,6 +201,7 @@ function mockFetch(options: {
 }) {
   let getArticleCallCount = 0;
   let getHealthCallCount = 0;
+  let getProductsCallCount = 0;
 
   const fetchMock = jest.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
@@ -232,6 +233,16 @@ function mockFetch(options: {
       return emptyPaginated();
     }
     if (url.endsWith('/products')) {
+      // UXE-014 — GET .../articles/:id/products (vínculos): na composição
+      // DRAFT editável, esta é a busca de `ProductLookupProvider` (que
+      // agora também envolve `ArticleContextPanel`, ver `article-detail.tsx`);
+      // na composição read-only, é a busca própria e independente de
+      // `ArticleProductsReadOnly` — `ProductLookupProvider` nunca é montado
+      // lá (decisão conservadora da UXE-014). `getProductsCallCount` conta
+      // as duas indistintamente, de propósito: o que os testes abaixo
+      // verificam é que o TOTAL não dobra por causa do painel, nunca qual
+      // dos dois disparou.
+      getProductsCallCount += 1;
       return jsonResponse(200, { productIds: options.productIds ?? [] });
     }
     if (url.includes('/products')) {
@@ -244,7 +255,11 @@ function mockFetch(options: {
 
   global.fetch = fetchMock;
 
-  return { getArticleCallCount: () => getArticleCallCount, getHealthCallCount: () => getHealthCallCount };
+  return {
+    getArticleCallCount: () => getArticleCallCount,
+    getHealthCallCount: () => getHealthCallCount,
+    getProductsCallCount: () => getProductsCallCount,
+  };
 }
 
 describe('ArticleDetail', () => {
@@ -353,6 +368,73 @@ describe('ArticleDetail', () => {
     expect(content).not.toHaveAttribute('inert');
   });
 
+  // --- UXE-014: ArticleProductsSection dentro do painel (integração real) ---
+  //
+  // `article-context-panel.spec.tsx` já cobre a composição do painel em
+  // isolamento (presença/ausência/ordem/focus trap); os testes abaixo
+  // cobrem só a FIAÇÃO real entre `ArticleDetail` e o painel: o gating
+  // (`canManageProducts`) recebendo o `isDraft && canEdit` real já
+  // calculado por este componente, e a fronteira ampliada de
+  // `ProductLookupProvider` (decisão conservadora da UXE-014) não
+  // introduzindo nenhuma busca nova na composição read-only.
+
+  it('UXE-014: composição DRAFT editável real — Produtos vinculados aparece dentro do painel "Status do Artigo", com controles funcionais', async () => {
+    const user = userEvent.setup();
+    mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [],
+      catalogItems: [PRODUCT_A],
+      link: () => jsonResponse(200, { productIds: [PRODUCT_A.id] }),
+    });
+    renderDetail();
+
+    await screen.findByLabelText('Título');
+    const panel = screen.getByRole('complementary', { name: 'Status do Artigo' });
+    const productsHeading = screen.getByRole('heading', { name: 'Produtos vinculados' });
+    expect(panel).toContainElement(productsHeading);
+
+    await user.selectOptions(screen.getByLabelText('Adicionar Produto'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Vincular' }));
+
+    await waitFor(() => expect(screen.getByText('Fone Bluetooth')).toBeInTheDocument());
+  });
+
+  it('UXE-014: composição read-only real — nenhuma busca extra de vínculos por causa do painel (ProductLookupProvider não é montado nesta composição)', async () => {
+    const fetchState = mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' });
+    await screen.findByText('Nenhum Produto vinculado.');
+
+    // CORREÇÃO (pós-revisão): `ArticleProductsReadOnly` (dentro de
+    // `.content`, intocado por esta tarefa) TAMBÉM renderiza um heading
+    // "Produtos vinculados" — `queryByRole` global para esse heading é
+    // ambíguo por natureza (ele é esperado, só que numa superfície
+    // diferente da que este teste quer excluir). A invariante real é
+    // dupla, verificada por escopo/semântica em vez de posição: (1) esse
+    // heading continua existindo exatamente 1 vez no total, vindo de
+    // `ArticleProductsReadOnly` (comportamento preexistente, inalterado);
+    // (2) o painel "Status do Artigo" (`ArticleContextPanel`, localizado
+    // por role/nome acessível) especificamente NÃO o contém — ou seja,
+    // `ArticleProductsSection` (gerenciável) continua fora do painel
+    // nesta composição.
+    expect(screen.getAllByRole('heading', { name: 'Produtos vinculados' })).toHaveLength(1);
+    const panel = screen.getByRole('complementary', { name: 'Status do Artigo' });
+    expect(within(panel).queryByRole('heading', { name: 'Produtos vinculados' })).not.toBeInTheDocument();
+
+    // "Adicionar Produto" é um controle exclusivo de `ArticleProductsSection`
+    // (gerenciável) — `ArticleProductsReadOnly` nunca o renderiza, então
+    // sua ausência global continua sendo uma verificação inequívoca, sem
+    // precisar de escopo.
+    expect(screen.queryByLabelText('Adicionar Produto')).not.toBeInTheDocument();
+
+    // Só `ArticleProductsReadOnly` busca `.../products` nesta composição
+    // (comportamento já existente, inalterado). Se `ProductLookupProvider`
+    // fosse indevidamente montado aqui, o mesmo endpoint seria chamado uma
+    // segunda vez.
+    expect(fetchState.getProductsCallCount()).toBe(1);
+  });
+
   it('status !== DRAFT (PUBLISHED): composição somente leitura + Produtos somente leitura + botão "Arquivar", sem ArticleForm', async () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PUBLISHED' }) });
     renderDetail();
@@ -404,16 +486,35 @@ describe('ArticleDetail', () => {
     // seu texto agora é composto (rótulo + resumo de saúde, ex.: "Em
     // revisão · Sem pendências"), então não há mais duas ocorrências
     // EXATAS de "Em revisão" no DOM (a antiga contagem `toHaveLength(2)`
-    // ficaria presa em 1). As duas invariantes seguem valendo, só
-    // verificadas de outra forma: (1) `ArticleReadOnly` continua exibindo
-    // o rótulo isolado — `getByText` exato já é inequívoco, pois só sobra
-    // essa ocorrência; (2) o indicador externo — localizado pelo seu
-    // trigger correspondente ("Status e ações do Artigo", por papel/nome
-    // acessível), não por posição — continua perceptibilizando o mesmo
-    // status, verificado por conteúdo (substring), nunca por contagem de
-    // strings idênticas.
-    expect(screen.getByText('Em revisão')).toBeInTheDocument();
+    // ficaria presa em 1).
+    //
+    // CORREÇÃO (pós-revisão): DRAFT → PENDING_REVIEW troca de branch
+    // (`isDraft` muda de `true` para `false`), então `ArticleContextPanel`
+    // REMONTA como uma instância nova — seu `healthSummary` local volta a
+    // nascer em `{status:'loading'}`, e enquanto o novo `GET :id/health`
+    // dessa instância não resolve, `summaryText()` mostra só o rótulo
+    // isolado ("Em revisão"), sem o sufixo de saúde. Isso cria uma
+    // corrida real (não uma regra de produção): entre o instante em que
+    // `ArticleReadOnly` aparece e o instante em que essa nova instância
+    // termina de buscar `/health`, existem MOMENTANEAMENTE duas
+    // ocorrências exatas de "Em revisão" — o texto isolado de
+    // `ArticleReadOnly` e o texto isolado (ainda não composto) do
+    // indicador externo. `getByText` sozinho, logo após o `findByRole` do
+    // heading, cai nessa janela. A correção é esperar o indicador externo
+    // assentar no seu texto composto final ANTES de afirmar as duas
+    // invariantes — cada uma continua verificada pela sua própria
+    // superfície, nenhuma contagem global.
     const externalIndicator = screen.getByRole('button', { name: 'Status e ações do Artigo' }).parentElement;
+    await waitFor(() => expect(externalIndicator).toHaveTextContent('Em revisão · Sem pendências'));
+
+    // (1) `ArticleReadOnly` continua exibindo o rótulo isolado — `getByText`
+    // exato já é inequívoco agora que o indicador externo assentou no
+    // texto composto (só sobra essa ocorrência).
+    expect(screen.getByText('Em revisão')).toBeInTheDocument();
+    // (2) o indicador externo — localizado pelo seu trigger correspondente
+    // ("Status e ações do Artigo", por papel/nome acessível), não por
+    // posição — continua perceptibilizando o mesmo status, verificado por
+    // conteúdo (substring), nunca por contagem de strings idênticas.
     expect(externalIndicator).toHaveTextContent('Em revisão');
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(fetchState.getArticleCallCount()).toBe(1);
@@ -626,7 +727,19 @@ describe('ArticleDetail', () => {
 
     await user.click(screen.getByRole('button', { name: `Mover ${PRODUCT_A.name} para baixo` }));
 
-    await waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(PRODUCT_B.name));
+    // CORREÇÃO (pós-revisão): `ArticleProductsSection` agora vive dentro
+    // do mesmo `<aside>` que `ArticleHealthChecklist`, cujo próprio
+    // checklist (6 condições) também é uma `<ul>` de `<li>` —
+    // `getAllByRole('listitem')` GLOBAL passou a misturar as duas listas
+    // (a do checklist vem primeiro no DOM, então `[0]` deixou de ser um
+    // Produto). Escopo explícito à `<section>` de `ArticleProductsSection`
+    // — localizada pelo seu próprio heading, por role/nome acessível, não
+    // por posição — preserva exatamente a mesma verificação de ordem de
+    // antes, sem depender de índice global nem enfraquecer a asserção.
+    const productsSection = screen.getByRole('heading', { name: 'Produtos vinculados' }).closest('section');
+    await waitFor(() =>
+      expect(within(productsSection!).getAllByRole('listitem')[0]).toHaveTextContent(PRODUCT_B.name),
+    );
     expect(fetchState.getHealthCallCount()).toBe(1);
   });
 

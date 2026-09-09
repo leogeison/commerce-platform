@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { ArticleProductsSection } from './article-products-section';
 import { ProductLookupProvider } from '../product-lookup-context';
 
@@ -49,6 +50,17 @@ function productsPath() {
  * `global.fetch` já usados por esta suíte continuam servindo as DUAS
  * buscas (agora feitas pelo Provider) sem nenhuma alteração — mesmos
  * endpoints, mesmas respostas.
+ *
+ * UXE-014 — reskin para os primitives/padrões aprovados (`Button`/`Text`,
+ * `LoadingState`/`ErrorState`/`EmptyState`); nenhum teste abaixo depende de
+ * classe CSS/estrutura de markup (todos usam role/texto/label acessível),
+ * então nenhuma assertion comportamental precisou mudar por causa do
+ * reskin em si — só o teste de `jest-axe`, novo nesta tarefa, foi
+ * adicionado ao final. A relocação deste componente para dentro de
+ * `ArticleContextPanel` (composição real de `ArticleDetail`) é coberta
+ * separadamente em `article-context-panel.spec.tsx`/`article-detail.spec.tsx`;
+ * esta suíte continua testando o componente isolado, com seu próprio
+ * `ProductLookupProvider` local.
  */
 function render_(onProductsChanged?: () => void) {
   return render(
@@ -365,5 +377,22 @@ describe('ArticleProductsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Vincular' }));
 
     await waitFor(() => expect(screen.getByText('Fone Bluetooth')).toBeInTheDocument());
+  });
+
+  // --- UXE-014: acessibilidade ---
+
+  it('UXE-014: não tem violação de acessibilidade (jest-axe)', async () => {
+    global.fetch = jest.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [PRODUCT_B.id, PRODUCT_A.id] });
+      }
+      return catalogResponse([PRODUCT_A, PRODUCT_B, PRODUCT_ARCHIVED]);
+    });
+    const { container } = render_();
+
+    await screen.findByText('Fone Bluetooth');
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

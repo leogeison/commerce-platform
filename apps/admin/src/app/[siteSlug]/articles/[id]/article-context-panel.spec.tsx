@@ -7,6 +7,7 @@ import type { ArticleAdmin, ArticleStatus, Role } from '@commerce-platform/contr
 import { ArticleContextPanel } from './article-context-panel';
 import { SiteRoleProvider } from '../../site-role-context';
 import { PageModalProvider } from '../../page-modal-context';
+import { ProductLookupProvider } from '../product-lookup-context';
 
 /**
  * apps/admin/src/app/[siteSlug]/articles/[id]/article-context-panel.spec.tsx
@@ -47,6 +48,18 @@ import { PageModalProvider } from '../../page-modal-context';
  * A presença do painel nas DUAS composições de `ArticleDetail` (DRAFT
  * editável e read-only) é coberta em `article-detail.spec.tsx`, não
  * aqui — este arquivo cobre só o componente em si.
+ *
+ * UXE-014 — `canManageProducts` (nova prop, default `false`) decide se
+ * `ArticleProductsSection` é montado dentro do painel, entre
+ * `ArticleHealthChecklist` e `ArticleTransitionPanel`. `Harness` só monta
+ * `ProductLookupProvider` (real, não mockado) quando um teste passa
+ * `canManageProducts: true` — os demais testes desta suíte continuam sem
+ * ele, exatamente como antes desta tarefa, provando que a ausência da prop
+ * (e do Provider) não quebra nada. A cobertura funcional completa de
+ * `ArticleProductsSection` (link/unlink/reorder/estados/erros) permanece
+ * inteiramente em `article-products-section.spec.tsx` — aqui só se prova a
+ * composição (presença/ausência, ordem, compatibilidade com o focus trap
+ * do drawer mobile).
  */
 
 const SITE_SLUG = 'fastcompre';
@@ -114,7 +127,11 @@ function makeArticle(overrides: Partial<ArticleAdmin> = {}): ArticleAdmin {
 }
 
 function mockFetch(
-  options: { transition?: () => Response | Promise<Response>; health?: () => Response } = {},
+  options: {
+    transition?: () => Response | Promise<Response>;
+    health?: () => Response;
+    productIds?: string[];
+  } = {},
 ) {
   const fetchMock = jest.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
@@ -123,6 +140,15 @@ function mockFetch(
     }
     if (url.endsWith('/health')) {
       return options.health ? options.health() : jsonResponse(200, healthyResponse());
+    }
+    // UXE-014 — `ArticleProductsSection`/`ProductLookupProvider` (só
+    // presentes quando um teste usa `canManageProducts: true`) buscam
+    // `GET .../articles/:id/products` (sem querystring) para os vínculos —
+    // distinto do catálogo completo do Site (`fetchAllProducts`, com
+    // querystring `?page=...`), que continua caindo no `catalogResponse()`
+    // genérico abaixo, como já acontecia antes desta tarefa.
+    if (url.endsWith('/products')) {
+      return jsonResponse(200, { productIds: options.productIds ?? [] });
     }
     return catalogResponse();
   });
@@ -136,15 +162,32 @@ interface HarnessProps {
   role: Role;
   setPageModalOpen: (isOpen: boolean) => void;
   withBackground: boolean;
+  canManageProducts?: boolean;
 }
 
 /**
  * Cria o `ref` localmente (papel de `ArticleDetail.contentRef` em
  * produção) e só o repassa a `ArticleContextPanel` quando
  * `withBackground` é `true` — ver doc comment do arquivo.
+ *
+ * UXE-014 — `ProductLookupProvider` (real, não mockado) só é montado
+ * quando `canManageProducts` é `true` — mesma fronteira conservadora
+ * decidida para `ArticleDetail` (ver doc comment de `article-detail.tsx`):
+ * nunca montado "à toa" só para exercitar um caso que não precisa dele.
  */
-function Harness({ status, onTransition, role, setPageModalOpen, withBackground }: HarnessProps) {
+function Harness({ status, onTransition, role, setPageModalOpen, withBackground, canManageProducts }: HarnessProps) {
   const backgroundRef = useRef<HTMLDivElement>(null);
+  const panel = (
+    <ArticleContextPanel
+      siteSlug={SITE_SLUG}
+      articleId={ARTICLE_ID}
+      status={status}
+      healthRefreshKey={0}
+      onTransition={onTransition}
+      backgroundContentRef={withBackground ? backgroundRef : undefined}
+      canManageProducts={canManageProducts}
+    />
+  );
   return (
     <SiteRoleProvider value={role}>
       <PageModalProvider setPageModalOpen={setPageModalOpen}>
@@ -153,14 +196,13 @@ function Harness({ status, onTransition, role, setPageModalOpen, withBackground 
             Conteúdo do editor
           </div>
         )}
-        <ArticleContextPanel
-          siteSlug={SITE_SLUG}
-          articleId={ARTICLE_ID}
-          status={status}
-          healthRefreshKey={0}
-          onTransition={onTransition}
-          backgroundContentRef={withBackground ? backgroundRef : undefined}
-        />
+        {canManageProducts ? (
+          <ProductLookupProvider siteSlug={SITE_SLUG} articleId={ARTICLE_ID}>
+            {panel}
+          </ProductLookupProvider>
+        ) : (
+          panel
+        )}
       </PageModalProvider>
     </SiteRoleProvider>
   );
@@ -170,7 +212,7 @@ function renderPanel(
   status: ArticleStatus,
   onTransition: (article: ArticleAdmin) => void = jest.fn(),
   role: Role = 'OWNER',
-  extra: { setPageModalOpen?: (isOpen: boolean) => void; withBackground?: boolean } = {},
+  extra: { setPageModalOpen?: (isOpen: boolean) => void; withBackground?: boolean; canManageProducts?: boolean } = {},
 ) {
   return render(
     <Harness
@@ -179,6 +221,7 @@ function renderPanel(
       role={role}
       setPageModalOpen={extra.setPageModalOpen ?? jest.fn()}
       withBackground={extra.withBackground ?? true}
+      canManageProducts={extra.canManageProducts}
     />,
   );
 }
@@ -624,6 +667,62 @@ describe('ArticleContextPanel', () => {
       });
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  // --- UXE-014: ArticleProductsSection dentro do painel ---
+
+  describe('UXE-014 — ArticleProductsSection dentro do painel', () => {
+    it('canManageProducts ausente (default false): ArticleProductsSection NÃO é montado', async () => {
+      mockFetch();
+      renderPanel('DRAFT');
+
+      await screen.findByText('Rascunho · Sem pendências');
+      expect(screen.queryByRole('heading', { name: 'Produtos vinculados' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Adicionar Produto')).not.toBeInTheDocument();
+    });
+
+    it('canManageProducts=true: ArticleProductsSection é montado dentro do <aside>, entre o health checklist e o painel de transição', async () => {
+      mockFetch({ productIds: [] });
+      const { container } = renderPanel('DRAFT', jest.fn(), 'OWNER', { canManageProducts: true });
+
+      await screen.findByText('Rascunho · Sem pendências');
+      const productsHeading = await screen.findByRole('heading', { name: 'Produtos vinculados' });
+      const healthHeading = screen.getByRole('heading', { name: HEALTH_FRAMING_BY_STATUS.DRAFT });
+      const submitButton = screen.getByRole('button', { name: 'Enviar para revisão' });
+
+      const aside = container.querySelector('aside');
+      expect(aside).toContainElement(productsHeading);
+
+      // Ordem aprovada: status (badge/heading do painel) → health/pendências
+      // → Produtos vinculados → transição. `compareDocumentPosition` com a
+      // flag `DOCUMENT_POSITION_FOLLOWING` confirma que cada elemento vem
+      // DEPOIS do anterior na mesma árvore.
+      expect(healthHeading.compareDocumentPosition(productsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(productsHeading.compareDocumentPosition(submitButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('canManageProducts=true: controles de Produtos continuam alcançáveis dentro do drawer mobile (mesmo focus trap, sem exceção)', async () => {
+      const user = userEvent.setup();
+      mockFetch({ productIds: [] });
+      renderPanel('DRAFT', jest.fn(), 'OWNER', { canManageProducts: true });
+
+      await user.click(await screen.findByRole('button', { name: 'Status e ações do Artigo' }));
+      await screen.findByRole('dialog', { name: 'Status do Artigo' });
+
+      expect(await screen.findByRole('heading', { name: 'Produtos vinculados' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Adicionar Produto')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Vincular' })).toBeInTheDocument();
+    });
+
+    it('jest-axe: nenhuma violação com ArticleProductsSection dentro do painel (fechado/desktop)', async () => {
+      mockFetch({ productIds: [] });
+      const { container } = renderPanel('DRAFT', jest.fn(), 'OWNER', { canManageProducts: true });
+
+      await screen.findByText('Rascunho · Sem pendências');
+      await screen.findByRole('heading', { name: 'Produtos vinculados' });
+
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });

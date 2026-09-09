@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { articleProductsResponseSchema, type ProductAdmin } from '@commerce-platform/contracts';
+import { Button, Text } from '@commerce-platform/ui';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
+import { EmptyState, ErrorState, LoadingState } from '../../async-state';
 import { useProductLookup } from '../product-lookup-context';
-import styles from './article-products-section.module.css';
 
 interface ArticleProductsSectionProps {
   siteSlug: string;
@@ -65,6 +66,28 @@ function resolveActionErrorMessage(error: unknown): string {
  * não é uma das condições de `/health`). Este componente continua sem
  * conhecer `/health`: só comunica sucesso ao orquestrador
  * (`ArticleDetail`), que decide o que fazer com isso.
+ *
+ * UXE-014 — reposicionado de dentro de `.content` (`ArticleDetail`) para
+ * dentro de `ArticleContextPanel` (painel lateral/drawer, ver
+ * `article-context-panel.tsx`), sempre na composição `isDraft && canEdit`
+ * — nenhuma mudança de comportamento funcional, só de localização/
+ * apresentação. `ArticleContextPanel` não conhece Role nem reconstrói essa
+ * condição: quem decide montar este componente continua sendo
+ * `ArticleDetail`, via a prop de gating explícita que repassa a
+ * `ArticleContextPanel` (ver doc comment de `ArticleDetail`).
+ *
+ * Reskin (UXE-014) para os primitives/padrões já aprovados em UXA-001/
+ * UXA-014 — `Button`/`Text` (`packages/ui`) e `LoadingState`/`ErrorState`/
+ * `EmptyState` (`../../async-state`), mesmo vocabulário de `OfferSection`
+ * (`products/[id]/offer-section.tsx`), usado aqui só como referência
+ * visual/estrutural. Nenhum comportamento de domínio foi importado por
+ * analogia: sem tratamento novo para Produto arquivado (o rótulo "
+ * (arquivado)" já existia antes desta tarefa, inalterado), sem paginação,
+ * sem toasts — a lógica funcional (`handleLink`/`handleUnlink`/
+ * `handleMove`, `isProcessing`, `actionError`, `selectedToLink`) é
+ * exatamente a mesma de antes, só a apresentação mudou. `article-products-
+ * section.module.css` foi removido nesta tarefa por ter ficado sem
+ * nenhum consumidor.
  */
 export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged }: ArticleProductsSectionProps) {
   const { productIdsState, catalogState, setProductIds } = useProductLookup();
@@ -144,21 +167,19 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
 
   if (productIdsState.status === 'loading' || catalogState.status === 'loading') {
     return (
-      <div className={styles.section}>
-        <h2>Produtos vinculados</h2>
-        <p className={styles.status}>Carregando Produtos vinculados...</p>
-      </div>
+      <section className="flex flex-col gap-4">
+        <h2 className="m-0 font-ui text-lg">Produtos vinculados</h2>
+        <LoadingState>Carregando Produtos vinculados...</LoadingState>
+      </section>
     );
   }
 
   if (productIdsState.status === 'error' || catalogState.status === 'error') {
     return (
-      <div className={styles.section}>
-        <h2>Produtos vinculados</h2>
-        <p role="alert" className={styles.status}>
-          {GENERIC_LOAD_ERROR_MESSAGE}
-        </p>
-      </div>
+      <section className="flex flex-col gap-4">
+        <h2 className="m-0 font-ui text-lg">Produtos vinculados</h2>
+        <ErrorState>{GENERIC_LOAD_ERROR_MESSAGE}</ErrorState>
+      </section>
     );
   }
 
@@ -169,52 +190,62 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
   const availableProducts = catalogState.items.filter((product) => !productIdsState.productIds.includes(product.id));
 
   return (
-    <div className={styles.section}>
-      <h2>Produtos vinculados</h2>
+    <section className="flex flex-col gap-4">
+      <h2 className="m-0 font-ui text-lg">Produtos vinculados</h2>
 
       {linkedProducts.length === 0 ? (
-        <p className={styles.status}>Nenhum Produto vinculado.</p>
+        <EmptyState>Nenhum Produto vinculado.</EmptyState>
       ) : (
-        <ul className={styles.items}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {linkedProducts.map((product, index) => (
-            <li key={product.id} className={styles.item}>
-              <span>
+            <li
+              key={product.id}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-control border border-outline px-3 py-2"
+            >
+              <Text as="span" className="m-0 min-w-0 break-words">
                 {product.name}
                 {product.archivedAt ? ' (arquivado)' : ''}
-              </span>
-              <div className={styles.itemActions}>
-                <button
+              </Text>
+              <div className="flex flex-wrap gap-2">
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => handleMove(index, -1)}
                   disabled={isProcessing || index === 0}
                   aria-label={`Mover ${product.name} para cima`}
                 >
                   Mover para cima
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => handleMove(index, 1)}
                   disabled={isProcessing || index === linkedProducts.length - 1}
                   aria-label={`Mover ${product.name} para baixo`}
                 >
                   Mover para baixo
-                </button>
-                <button type="button" onClick={() => handleUnlink(product.id)} disabled={isProcessing}>
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => handleUnlink(product.id)} disabled={isProcessing}>
                   Remover
-                </button>
+                </Button>
               </div>
             </li>
           ))}
         </ul>
       )}
 
-      <div className={styles.addField}>
-        <label htmlFor="article-add-product">Adicionar Produto</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="article-add-product" className="font-ui text-body-sm font-action">
+          Adicionar Produto
+        </label>
         <select
           id="article-add-product"
           value={selectedToLink}
           onChange={(event) => setSelectedToLink(event.target.value)}
           disabled={isProcessing}
+          className="rounded-control border border-outline px-3 py-2 font-ui text-body"
         >
           <option value="">Selecione um Produto</option>
           {availableProducts.map((product) => (
@@ -224,16 +255,12 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
             </option>
           ))}
         </select>
-        <button type="button" onClick={handleLink} disabled={isProcessing || !selectedToLink}>
+        <Button type="button" size="sm" onClick={handleLink} disabled={isProcessing || !selectedToLink}>
           Vincular
-        </button>
+        </Button>
       </div>
 
-      {actionError && (
-        <p role="alert" className={styles.status}>
-          {actionError}
-        </p>
-      )}
-    </div>
+      {actionError && <ErrorState>{actionError}</ErrorState>}
+    </section>
   );
 }

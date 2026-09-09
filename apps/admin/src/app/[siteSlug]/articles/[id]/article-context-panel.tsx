@@ -13,6 +13,7 @@ import type { ArticleAdmin, ArticleStatus } from '@commerce-platform/contracts';
 import { STATUS_LABELS } from '../../../../lib/article-labels';
 import { usePageModal } from '../../page-modal-context';
 import { ArticleHealthChecklist, type HealthSummary } from './article-health-checklist';
+import { ArticleProductsSection } from './article-products-section';
 import { ArticleTransitionPanel } from './article-transition-panel';
 import styles from './article-context-panel.module.css';
 
@@ -27,6 +28,25 @@ interface ArticleContextPanelProps {
    */
   healthRefreshKey: number;
   onTransition: (article: ArticleAdmin) => void;
+  /**
+   * UXE-014 — capacidade explícita, já resolvida por `ArticleDetail`
+   * (dono de `isDraft`/`canEdit`), decidindo se `ArticleProductsSection`
+   * deve ser montado dentro deste painel. Este componente NUNCA conhece
+   * Role nem reconstrói `isDraft && canEdit` (ou qualquer outra regra
+   * editorial) por conta própria — só consome este booleano já resolvido,
+   * exatamente como já fazia com `status`/`healthRefreshKey`. Default
+   * `false`: os consumidores de teste que não exercitam Produtos (a
+   * maioria da suíte de UXE-012/UXE-013) continuam funcionando sem
+   * precisar montar `ProductLookupProvider`.
+   */
+  canManageProducts?: boolean;
+  /**
+   * UXE-014 — repassado direto para `ArticleProductsSection.onProductsChanged`
+   * quando `canManageProducts` é `true`. Mesmo papel que já tinha quando
+   * `ArticleDetail` montava `ArticleProductsSection` diretamente: apenas
+   * encaminhado, nunca interpretado por este componente.
+   */
+  onProductsChanged?: () => void;
   /**
    * UXE-013 (ajuste pós-revisão) — ref explícito e tipado, criado e
    * possuído por `ArticleDetail`, apontando para o elemento de fundo
@@ -88,10 +108,19 @@ function summaryText(status: ArticleStatus, health: HealthSummary): string {
  * COMPOSIÇÃO/LAYOUT — nunca dono de dado ou regra de negócio (ver doc
  * comment original da UXE-012, ainda válido: `ArticleHealthChecklist`/
  * `ArticleTransitionPanel` continuam recebendo exatamente as mesmas props
- * de sempre; `ArticleProductsSection`/`ArticleProductsReadOnly`
- * continuam fora deste painel, escopo da UXE-014).
+ * de sempre).
  *
  * UXE-013 — modalidade mobile (<1024px) sem desmontar/remontar nada.
+ *
+ * UXE-014 — `ArticleProductsSection` passa a ser montado dentro deste
+ * painel (ver `canManageProducts` na interface acima), entre
+ * `ArticleHealthChecklist` e `ArticleTransitionPanel` (ordem aprovada:
+ * status → health/pendências → Produtos vinculados → transição). Este
+ * componente continua sem conhecer Role/`isDraft`: `canManageProducts` já
+ * chega resolvido por `ArticleDetail`. `ArticleProductsReadOnly` continua
+ * fora deste painel — permanece dentro de `.content`, sem alteração
+ * (escopo desta tarefa: só `ArticleProductsSection`, na composição que já
+ * permite gerenciamento de Produtos).
  *
  * Invariante central: `ArticleHealthChecklist` e `ArticleTransitionPanel`
  * são montados exatamente UMA VEZ, dentro do MESMO `<aside>`, em TODAS as
@@ -206,6 +235,8 @@ export function ArticleContextPanel({
   status,
   healthRefreshKey,
   onTransition,
+  canManageProducts = false,
+  onProductsChanged,
   backgroundContentRef,
 }: ArticleContextPanelProps) {
   const setPageModalOpen = usePageModal();
@@ -393,6 +424,9 @@ export function ArticleContextPanel({
           refreshKey={healthRefreshKey}
           onHealthChange={handleHealthChange}
         />
+        {canManageProducts && (
+          <ArticleProductsSection siteSlug={siteSlug} articleId={articleId} onProductsChanged={onProductsChanged} />
+        )}
         <ArticleTransitionPanel siteSlug={siteSlug} articleId={articleId} status={status} onTransition={onTransition} />
       </aside>
     </div>
