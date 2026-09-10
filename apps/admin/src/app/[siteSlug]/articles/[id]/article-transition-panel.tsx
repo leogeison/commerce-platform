@@ -13,6 +13,19 @@ interface ArticleTransitionPanelProps {
   articleId: string;
   status: ArticleStatus;
   onTransition: (article: ArticleAdmin) => void;
+  /**
+   * UXE-015 — hook opcional de coordenação com o autosave de `bodyMdx`
+   * (UXE-008), acionado ANTES do `POST` de qualquer transição. Resolve
+   * `true` quando é seguro prosseguir (nada pendente ou persistido com
+   * sucesso) e `false` quando a transição deve ser bloqueada (persistência
+   * necessária falhou). Este painel NÃO conhece `bodyMdx`, autosave, refs
+   * internos de `ArticleForm` nem `UnsavedChangesContext` — só invoca o
+   * callback e trata o booleano devolvido; quem sabe o que fazer para
+   * "garantir salvo" é `ArticleDetail` (via `ArticleContextPanel`). Ausente
+   * (`undefined`) em composições sem `ArticleForm` editável, onde o
+   * comportamento é idêntico ao anterior à UXE-015 (transição direta).
+   */
+  onBeforeTransition?: () => Promise<boolean>;
 }
 
 type TransitionKey = 'submit-for-review' | 'revert-to-draft' | 'publish' | 'archive' | 'restore-to-draft';
@@ -25,6 +38,13 @@ interface TransitionAction {
 
 const GENERIC_ACTION_ERROR_MESSAGE = 'Não foi possível concluir a ação. Tente novamente em instantes.';
 const BUSINESS_ERROR_STATUS_CODES = new Set([403, 404, 409, 422]);
+/**
+ * UXE-015 — exibida quando `onBeforeTransition` resolve `false` (ou
+ * rejeita): a persistência necessária de `bodyMdx` falhou, então a
+ * transição nunca chega a ser solicitada ao backend.
+ */
+const PENDING_SAVE_ERROR_MESSAGE =
+  'Não foi possível salvar as últimas alterações do corpo do Artigo. Tente novamente antes de mudar o status.';
 
 /**
  * Ações válidas por status (Architecture.md §19 — tabela de transições de
@@ -110,8 +130,22 @@ function resolveActionErrorMessage(error: unknown): string {
  * e troca o label só do botão clicado — mesmo padrão de "Salvando..." em
  * `ArticleForm`. Um clique repetido (mesma ação ou outra) é ignorado no
  * início do handler enquanto `pendingAction` não for `null`.
+ *
+ * UXE-015 — `onBeforeTransition`, quando presente, é aguardado ANTES do
+ * `POST` de transição (ordem: `onBeforeTransition()` → sucesso → `POST` →
+ * `onTransition`). Uma rejeição/exceção é tratada da mesma forma que
+ * `false` (defensivo: nunca deixa uma falha inesperada do callback abrir
+ * caminho para uma transição com corpo pendente). Em nenhum dos dois casos
+ * o `POST` chega a ser disparado — o mesmo mecanismo de erro do painel
+ * (`actionError`/`role="alert"`) é reaproveitado, sem elemento novo.
  */
-export function ArticleTransitionPanel({ siteSlug, articleId, status, onTransition }: ArticleTransitionPanelProps) {
+export function ArticleTransitionPanel({
+  siteSlug,
+  articleId,
+  status,
+  onTransition,
+  onBeforeTransition,
+}: ArticleTransitionPanelProps) {
   const role = useSiteRole();
   const [pendingAction, setPendingAction] = useState<TransitionKey | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -122,6 +156,21 @@ export function ArticleTransitionPanel({ siteSlug, articleId, status, onTransiti
     }
     setActionError(null);
     setPendingAction(key);
+
+    if (onBeforeTransition) {
+      let canProceed: boolean;
+      try {
+        canProceed = await onBeforeTransition();
+      } catch {
+        canProceed = false;
+      }
+      if (!canProceed) {
+        setActionError(PENDING_SAVE_ERROR_MESSAGE);
+        setPendingAction(null);
+        return;
+      }
+    }
+
     try {
       const article = await apiRequest(transitionPath(siteSlug, articleId, key), articleAdminSchema, {
         method: 'POST',

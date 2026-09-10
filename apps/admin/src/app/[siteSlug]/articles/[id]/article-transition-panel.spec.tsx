@@ -47,7 +47,14 @@ function transitionUrl(path: string): string {
  * explicitamente.
  */
 function renderPanel(
-  props: { status: ArticleStatus; onTransition: (article: ArticleAdmin) => void },
+  props: {
+    status: ArticleStatus;
+    onTransition: (article: ArticleAdmin) => void;
+    // UXE-015 — opcional: ausente em todos os testes pré-existentes acima
+    // (regressão: comportamento idêntico a antes desta tarefa, POST direto
+    // sem nenhuma checagem prévia).
+    onBeforeTransition?: () => Promise<boolean>;
+  },
   role: Role = 'OWNER',
 ) {
   return render(
@@ -57,6 +64,7 @@ function renderPanel(
         articleId={ARTICLE_ID}
         status={props.status}
         onTransition={props.onTransition}
+        onBeforeTransition={props.onBeforeTransition}
       />
     </SiteRoleProvider>,
   );
@@ -286,5 +294,88 @@ describe('ArticleTransitionPanel', () => {
     renderPanel({ status: 'DRAFT', onTransition: jest.fn() }, 'VIEWER');
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  // --- UXE-015: onBeforeTransition ---
+
+  it('onBeforeTransition resolve true: é chamado ANTES do POST de transição, que segue normalmente', async () => {
+    const user = userEvent.setup();
+    const order: string[] = [];
+    const updatedArticle = makeArticle({ status: 'PENDING_REVIEW' });
+    global.fetch = jest.fn<typeof fetch>(async () => {
+      order.push('post');
+      return jsonResponse(200, updatedArticle);
+    });
+    const onBeforeTransition = jest.fn<() => Promise<boolean>>(async () => {
+      order.push('onBeforeTransition');
+      return true;
+    });
+    const onTransition = jest.fn<(article: ArticleAdmin) => void>();
+
+    renderPanel({ status: 'DRAFT', onTransition, onBeforeTransition });
+
+    await user.click(screen.getByRole('button', { name: 'Enviar para revisão' }));
+
+    await waitFor(() => expect(onTransition).toHaveBeenCalledWith(updatedArticle));
+    expect(order).toEqual(['onBeforeTransition', 'post']);
+    expect(onBeforeTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it('onBeforeTransition resolve false: bloqueia a transição, nenhum POST é feito, mostra erro perceptível e reabilita o botão', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>();
+    const onBeforeTransition = jest.fn<() => Promise<boolean>>(async () => false);
+    const onTransition = jest.fn<(article: ArticleAdmin) => void>();
+
+    renderPanel({ status: 'DRAFT', onTransition, onBeforeTransition });
+
+    const button = screen.getByRole('button', { name: 'Enviar para revisão' });
+    await user.click(button);
+
+    expect(
+      await screen.findByText(
+        'Não foi possível salvar as últimas alterações do corpo do Artigo. Tente novamente antes de mudar o status.',
+      ),
+    ).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(onTransition).not.toHaveBeenCalled();
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it('onBeforeTransition rejeita: tratado defensivamente como false, mesmo bloqueio, nenhum POST', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>();
+    const onBeforeTransition = jest.fn<() => Promise<boolean>>(async () => {
+      throw new Error('falha inesperada');
+    });
+    const onTransition = jest.fn<(article: ArticleAdmin) => void>();
+
+    renderPanel({ status: 'DRAFT', onTransition, onBeforeTransition });
+
+    const button = screen.getByRole('button', { name: 'Enviar para revisão' });
+    await user.click(button);
+
+    expect(
+      await screen.findByText(
+        'Não foi possível salvar as últimas alterações do corpo do Artigo. Tente novamente antes de mudar o status.',
+      ),
+    ).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(onTransition).not.toHaveBeenCalled();
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it('sem onBeforeTransition: comportamento idêntico a antes da UXE-015, POST direto', async () => {
+    const user = userEvent.setup();
+    const updatedArticle = makeArticle({ status: 'PENDING_REVIEW' });
+    global.fetch = jest.fn<typeof fetch>(async () => jsonResponse(200, updatedArticle));
+    const onTransition = jest.fn<(article: ArticleAdmin) => void>();
+
+    renderPanel({ status: 'DRAFT', onTransition });
+
+    await user.click(screen.getByRole('button', { name: 'Enviar para revisão' }));
+
+    await waitFor(() => expect(onTransition).toHaveBeenCalledWith(updatedArticle));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

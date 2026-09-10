@@ -2,13 +2,53 @@ import type { ContextType } from 'react';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
-import { $createParagraphNode, $getRoot, getNearestEditorFromDOMNode } from 'lexical';
+import {
+  $createParagraphNode,
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  getNearestEditorFromDOMNode,
+} from 'lexical';
 import type { Role } from '@commerce-platform/contracts';
 import { ArticleDetail } from './article-detail';
 import { PageModalProvider } from '../../page-modal-context';
 import { SiteRoleProvider } from '../../site-role-context';
 import { UnsavedChangesProvider } from '../../unsaved-changes-context';
+import { ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS } from '../use-article-body-autosave';
+import type { CompiledArticleBody, CompiledBodySegment } from '../compile-article-body';
+
+/**
+ * UXE-015 (correção pós-revisão, cenário consolidado) — `compileArticleBody`
+ * real depende de `import('@mdx-js/mdx')` (pacote ESM puro). Diagnóstico
+ * isolado (spec temporário, real, já removido) comprovou que a suíte de
+ * Jest deste projeto (`next/jest`, `transformIgnorePatterns` padrão, sem
+ * nenhuma acomodação para ESM em `node_modules`) não consegue carregá-lo:
+ * `SyntaxError: Unexpected token 'export'`, disparada dentro do próprio
+ * `node_modules/@mdx-js/mdx/index.js`. É a MESMA limitação que já levou
+ * `article-preview.spec.tsx`/`article-preview-error.spec.tsx` (`apps/admin`)
+ * e `compile-article-body.spec.ts` (`apps/fastcompre`) a nunca exercitar a
+ * compilação real dentro do Jest — nenhum desses arquivos prova nada além
+ * do wrapper. Este spec é o único, em toda a composição `ArticleDetail`,
+ * que chega a abrir `ArticlePreview` (nenhum outro teste deste arquivo
+ * interage com "Ver preview"/o painel "Preview") — por isso o mock abaixo
+ * só é configurado dentro do próprio cenário consolidado, nunca globalmente
+ * para todos os testes.
+ *
+ * Mesma técnica de obtenção já estabelecida em `article-preview.spec.tsx`
+ * (`jest.requireMock()`, nunca `import { compileArticleBody } from
+ * '../compile-article-body'` estático — a razão é de ordem de precedência
+ * de imports ES, documentada lá, não específica deste arquivo).
+ */
+jest.mock('../compile-article-body', () => ({
+  compileArticleBody: jest.fn(),
+}));
+
+const { compileArticleBody } = jest.requireMock<typeof import('../compile-article-body')>(
+  '../compile-article-body',
+);
+const compileArticleBodyMock = jest.mocked(compileArticleBody);
 
 /**
  * Helper de teste ESTRITO A ESTA ÁREA (Artigos) — mesma estratégia já
@@ -40,6 +80,53 @@ function clearRealLexicalEditor(editorRoot: HTMLElement): void {
       const root = $getRoot();
       root.clear();
       root.append($createParagraphNode());
+    },
+    { discrete: true },
+  );
+}
+
+/**
+ * UXE-015 — mesma técnica/racional de `article-body-image-flow.spec.tsx`/
+ * `article-body-product-flow.spec.tsx` (ver o comentário completo lá):
+ * `user.type()` num `contentEditable` estruturalmente vazio não é confiável
+ * no jsdom para este editor Lexical real. Usado só no cenário consolidado
+ * abaixo, para digitar texto NOVO (diferente de `clearRealLexicalEditor`,
+ * que apaga).
+ */
+function insertTextIntoEmptyLexicalEditor(editorRoot: HTMLElement, text: string): void {
+  const editor = getNearestEditorFromDOMNode(editorRoot);
+  if (!editor) {
+    throw new Error('insertTextIntoEmptyLexicalEditor: nenhuma instância de LexicalEditor encontrada a partir do DOM.');
+  }
+  editor.update(
+    () => {
+      $getRoot().selectStart();
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        selection.insertText(text);
+      }
+    },
+    { discrete: true },
+  );
+}
+
+/**
+ * Insere na seleção ATUAL, sem reposicioná-la — usado depois que a imagem
+ * já foi inserida pela toolbar (o caret já está no parágrafo criado logo
+ * depois dela, ver `article-body-image-flow.spec.tsx`), para então digitar
+ * o comando `/produto` no lugar certo.
+ */
+function insertTextAtCurrentSelection(editorRoot: HTMLElement, text: string): void {
+  const editor = getNearestEditorFromDOMNode(editorRoot);
+  if (!editor) {
+    throw new Error('insertTextAtCurrentSelection: nenhuma instância de LexicalEditor encontrada a partir do DOM.');
+  }
+  editor.update(
+    () => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        selection.insertText(text);
+      }
     },
     { discrete: true },
   );
@@ -112,6 +199,12 @@ function emptyPaginated() {
 
 function catalogResponse(items: unknown[]) {
   return jsonResponse(200, { items, page: 1, pageSize: 100, total: items.length, totalPages: 1 });
+}
+
+// UXE-015 — mesmo helper de `article-body-image-flow.spec.tsx`, usado só
+// pelo cenário consolidado abaixo.
+function makeFile(name = 'foto.jpg'): File {
+  return new File(['fake-image-bytes'], name, { type: 'image/jpeg' });
 }
 
 const TRANSITION_PATH_PATTERN = /\/(submit-for-review|revert-to-draft|publish|archive|restore-to-draft)$/;
@@ -198,15 +291,29 @@ function mockFetch(options: {
   link?: () => Response;
   unlink?: () => Response;
   reorder?: () => Response;
+  // UXE-015 — só usado pelo cenário consolidado abaixo (upload de imagem de
+  // corpo, `ArticleBodyImageFlow`); default replica exatamente
+  // `mockUploadFetch` de `article-body-image-flow.spec.tsx`.
+  upload?: () => Response;
 }) {
   let getArticleCallCount = 0;
   let getHealthCallCount = 0;
   let getProductsCallCount = 0;
+  // UXE-015 — só o `bodyMdx` de cada PATCH do Artigo (nunca Categorias/
+  // Autores/Produtos/transição/upload), na ordem em que os PATCHs saíram —
+  // usado pelos testes que precisam provar o CONTEÚDO final persistido e/ou
+  // a ORDEM entre um PATCH de autosave e o POST de uma transição.
+  const patchBodies: string[] = [];
 
   const fetchMock = jest.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     const method = init?.method;
 
+    if (url.includes('/uploads/images')) {
+      return options.upload
+        ? options.upload()
+        : jsonResponse(201, { url: 'https://cdn.exemplo.com/uploaded.jpg' });
+    }
     if (method === 'POST' && TRANSITION_PATH_PATTERN.test(url)) {
       return options.transition ? options.transition() : jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' });
     }
@@ -224,7 +331,9 @@ function mockFetch(options: {
       return options.reorder ? options.reorder() : jsonResponse(200, { productIds: options.productIds ?? [] });
     }
     if (method === 'PATCH' && !url.includes('/products')) {
-      return options.patch ? options.patch() : jsonResponse(200, draftArticle);
+      const parsed: { bodyMdx?: string } = init?.body ? JSON.parse(String(init.body)) : {};
+      patchBodies.push(parsed.bodyMdx ?? '');
+      return options.patch ? options.patch() : jsonResponse(200, { ...draftArticle, bodyMdx: parsed.bodyMdx ?? draftArticle.bodyMdx });
     }
     if (url.includes('/categories')) {
       return emptyPaginated();
@@ -259,6 +368,7 @@ function mockFetch(options: {
     getArticleCallCount: () => getArticleCallCount,
     getHealthCallCount: () => getHealthCallCount,
     getProductsCallCount: () => getProductsCallCount,
+    getPatchBodies: () => patchBodies,
   };
 }
 
@@ -834,5 +944,283 @@ describe('ArticleDetail', () => {
     expect(
       screen.queryAllByRole('button').filter((button) => button.textContent !== 'Status e ações do Artigo'),
     ).toHaveLength(0);
+  });
+
+  // --- UXE-015: coordenação autosave (bodyMdx) × transição editorial ---
+
+  it('UXE-015: cenário consolidado — editar texto, inserir imagem, inserir bloco de Produto, autosave da versão composta, preview reflete tudo, transição só ocorre depois do autosave (jest-axe limpo)', async () => {
+    const user = userEvent.setup();
+    const fetchState = mockFetch({
+      article: () => jsonResponse(200, draftArticle),
+      productIds: [PRODUCT_A.id],
+      catalogItems: [PRODUCT_A],
+    });
+    const { container } = renderDetail();
+
+    const editor = await screen.findByLabelText('Corpo (Markdown)');
+    await user.click(editor);
+    // Ver o racional completo em `clearRealLexicalEditor`: `user.clear()`
+    // não é confiável no jsdom para este editor Lexical real.
+    act(() => {
+      clearRealLexicalEditor(editor);
+    });
+    await waitFor(() => expect(editor.textContent).toBe(''));
+
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, 'Texto do cenário consolidado');
+    });
+    await waitFor(() => expect(editor).toHaveTextContent('Texto do cenário consolidado'));
+
+    // Inserção de imagem via toolbar — mesmo fluxo de
+    // `article-body-image-flow.spec.tsx`.
+    const imageButton = await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Imagem' });
+      expect(button).toBeEnabled();
+      return button;
+    });
+    await user.click(imageButton);
+    await user.upload(screen.getByLabelText('Selecionar arquivo de imagem'), makeFile());
+    await screen.findByRole('dialog', { name: 'Inserir imagem' });
+    await user.type(screen.getByLabelText('Texto alternativo'), 'Descrição da imagem');
+    await user.click(screen.getByRole('button', { name: 'Inserir imagem' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await screen.findByAltText('Descrição da imagem');
+
+    // Inserção do bloco de Produto/Oferta via menu "/", na seleção ATUAL
+    // (o parágrafo vazio criado depois da imagem, ver
+    // `article-body-image-flow.spec.tsx`).
+    //
+    // CORREÇÃO (pós-revisão): diferente de `article-body-product-flow.spec.tsx`
+    // (que renderiza só `ArticleBodyEditor` em isolamento), esta composição
+    // é `ArticleDetail` INTEIRO — inclui `ArticleProductsSection`
+    // ("Adicionar Produto", um `<select>` nativo cujas `<option>` TAMBÉM
+    // carregam o papel implícito `option`), montada como IRMÃ POSTERIOR de
+    // `ArticleForm` no DOM (`ArticleContextPanel` vem depois de `.content`
+    // em `article-detail.tsx`). `screen.findAllByRole('option')` sem escopo
+    // captura as duas fontes juntas, e `options[options.length - 1]` deixa
+    // de apontar para a opção do menu "/" — passa a apontar para uma opção
+    // do `<select>` "Adicionar Produto", cujo clique não aciona nenhum
+    // `onClick` do menu (nada acontece, sem erro). Corrigido usando a MESMA
+    // interação já estabelecida e comprovada em
+    // `article-body-slash-menu.spec.tsx` ("disponível... confirmável por
+    // clique"): localizar a opção pelo NOME acessível exato do item do menu
+    // (`Bloco Produto-Oferta`, inequívoco mesmo com outras opções
+    // `role="option"` alhures na página), nunca por posição.
+    act(() => {
+      insertTextAtCurrentSelection(editor, '/produto');
+    });
+    const productOption = await screen.findByRole('option', { name: 'Bloco Produto-Oferta' });
+    await user.click(productOption);
+    const productDialog = await screen.findByRole('dialog', { name: 'Inserir bloco de Produto vinculado' });
+    await user.selectOptions(screen.getByLabelText('Produto vinculado'), PRODUCT_A.id);
+    await user.click(screen.getByRole('button', { name: 'Inserir bloco' }));
+    await waitFor(() => expect(productDialog).not.toBeInTheDocument());
+    // CORREÇÃO (pós-revisão): `screen.findByText(PRODUCT_A.name)` é uma
+    // busca GLOBAL — na composição `isDraft && canEdit` real (não isolada),
+    // "Fone Bluetooth" aparece legitimamente DUAS vezes: no bloco recém-
+    // inserido dentro do editor Lexical e, separadamente, em
+    // `ArticleProductsSection` (painel "Produtos vinculados", UXE-014, já
+    // vinculado desde o mount via `productIds: [PRODUCT_A.id]`). Uma busca
+    // global passaria mesmo se a inserção no editor tivesse falhado
+    // silenciosamente. A prova correta precisa ser estrutural: escopada ao
+    // `editor` (a raiz do `contentEditable`, já obtida acima) e ancorada
+    // nos marcadores públicos do próprio nó (`data-lexical-product-block`/
+    // `data-product-id`, ver `product-block/node.ts`), nunca por texto solto.
+    await waitFor(() => {
+      const insertedBlock = editor.querySelector('[data-lexical-product-block="true"] [data-product-id]');
+      expect(insertedBlock).not.toBeNull();
+      expect(insertedBlock).toHaveAttribute('data-product-id', PRODUCT_A.id);
+      expect(insertedBlock).toHaveTextContent(PRODUCT_A.name);
+    });
+
+    // Autosave da versão COMPOSTA (texto + imagem + bloco de Produto,
+    // todos já presentes no `bodyMdx` antes de qualquer PATCH sair —
+    // nenhum dos três dispara autosave isoladamente).
+    await waitFor(() => expect(screen.getByText('Salvo')).toBeInTheDocument(), {
+      timeout: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS + 2000,
+    });
+    const patchBodies = fetchState.getPatchBodies();
+    const lastPatchBody = patchBodies[patchBodies.length - 1];
+    expect(lastPatchBody).toContain('Texto do cenário consolidado');
+    expect(lastPatchBody).toContain('![Descrição da imagem](<https://cdn.exemplo.com/uploaded.jpg>)');
+    expect(lastPatchBody).toContain(':::product');
+    expect(lastPatchBody).toContain(`productId: ${PRODUCT_A.id}`);
+
+    // Preview reflete a mesma versão composta — escopado à região "Preview"
+    // (por role/nome acessível), já que o próprio editor também contém a
+    // imagem/o texto/o nome do Produto resolvido.
+    //
+    // `compileArticleBody` é mockado nesta fronteira (ver doc comment no
+    // topo do arquivo — limitação real de Jest/ESM com `@mdx-js/mdx`,
+    // comprovada por diagnóstico isolado, não um enfraquecimento do
+    // cenário): o mock primeiro EXIGE que o `bodyMdx` recebido seja a
+    // mesma versão composta que acabou de atravessar o autosave (mesmas 4
+    // substrings já comprovadas acima) — se a composição real quebrasse,
+    // este teste falharia aqui, antes mesmo do preview — e só depois
+    // devolve segmentos coerentes com texto, imagem e bloco de Produto. O
+    // bloco de Produto continua resolvendo de verdade contra o
+    // `ProductLookupProvider`/fetch já montado por esta composição real
+    // (nenhuma resolução de Produto é mockada).
+    compileArticleBodyMock.mockImplementationOnce(async (bodyMdx) => {
+      expect(bodyMdx).toContain('Texto do cenário consolidado');
+      expect(bodyMdx).toContain('![Descrição da imagem](<https://cdn.exemplo.com/uploaded.jpg>)');
+      expect(bodyMdx).toContain(':::product');
+      expect(bodyMdx).toContain(`productId: ${PRODUCT_A.id}`);
+
+      return [
+        {
+          type: 'markdown',
+          key: 'segment-0',
+          Content: (() => (
+            <>
+              <p>Texto do cenário consolidado</p>
+              <img alt="Descrição da imagem" src="https://cdn.exemplo.com/uploaded.jpg" />
+            </>
+          )) as unknown as Extract<CompiledBodySegment, { type: 'markdown' }>['Content'],
+        },
+        { type: 'product-block', key: 'segment-1', productId: PRODUCT_A.id },
+      ] satisfies CompiledArticleBody;
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Ver preview' }));
+    const previewPanel = await screen.findByRole('region', { name: 'Preview' });
+    await waitFor(() =>
+      expect(within(previewPanel).getByText('Texto do cenário consolidado')).toBeInTheDocument(),
+    );
+    expect(within(previewPanel).getByAltText('Descrição da imagem')).toBeInTheDocument();
+    expect(within(previewPanel).getByText(PRODUCT_A.name)).toBeInTheDocument();
+
+    expect(await axe(container)).toHaveNoViolations();
+
+    // Só depois de tudo isso persistido a transição é solicitada — e
+    // ocorre normalmente (nenhum corpo pendente para bloquear).
+    await user.click(screen.getByRole('button', { name: 'Enviar para revisão' }));
+    expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
+  });
+
+  it('UXE-015: race antes do debounce — a transição só chega ao backend depois do PATCH do corpo pendente (prova o wiring onBeforeTransition → ensureBodySaved)', async () => {
+    const user = userEvent.setup();
+    const requestOrder: string[] = [];
+    let patchedBody: string | undefined;
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method;
+      if (method === 'POST' && TRANSITION_PATH_PATTERN.test(url)) {
+        requestOrder.push('transition-post');
+        return jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' });
+      }
+      if (url.endsWith('/health')) {
+        return jsonResponse(200, healthyResponse());
+      }
+      if (method === 'PATCH' && !url.includes('/products')) {
+        const parsed: { bodyMdx?: string } = init?.body ? JSON.parse(String(init.body)) : {};
+        patchedBody = parsed.bodyMdx;
+        requestOrder.push('body-patch');
+        return jsonResponse(200, { ...draftArticle, bodyMdx: parsed.bodyMdx ?? '' });
+      }
+      if (url.includes('/categories') || url.includes('/authors')) {
+        return emptyPaginated();
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [] });
+      }
+      if (url.includes('/products')) {
+        return catalogResponse([]);
+      }
+      return jsonResponse(200, draftArticle);
+    });
+
+    renderDetail();
+
+    const editor = await screen.findByLabelText('Corpo (Markdown)');
+    act(() => {
+      clearRealLexicalEditor(editor);
+    });
+    await waitFor(() => expect(editor.textContent).toBe(''));
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, 'Edição de última hora');
+    });
+    await waitFor(() => expect(editor).toHaveTextContent('Edição de última hora'));
+
+    // Solicita a transição IMEDIATAMENTE — bem antes dos 1500ms de debounce
+    // do autosave. Sem o wiring `onBeforeTransition → ensureBodySaved`
+    // (`ArticleForm` → `ArticleDetail` → `ArticleContextPanel` →
+    // `ArticleTransitionPanel`), o POST de transição sairia sozinho, sem
+    // nenhum PATCH precedente — esta é, ao mesmo tempo, a prova de que o
+    // wiring está de fato conectado (não só de que a ORDEM está correta).
+    await user.click(screen.getByRole('button', { name: 'Enviar para revisão' }));
+
+    await waitFor(() => expect(requestOrder).toContain('transition-post'));
+
+    expect(requestOrder).toEqual(['body-patch', 'transition-post']);
+    expect(patchedBody).toContain('Edição de última hora');
+  });
+
+  it('UXE-015: transição solicitada com um PATCH de autosave já em voo — o POST só ocorre depois que o PATCH resolve', async () => {
+    const user = userEvent.setup();
+    const requestOrder: string[] = [];
+    let resolvePatch!: (value: Response) => void;
+    const patchResponse = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    global.fetch = jest.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method;
+      if (method === 'POST' && TRANSITION_PATH_PATTERN.test(url)) {
+        requestOrder.push('transition-post');
+        return jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' });
+      }
+      if (url.endsWith('/health')) {
+        return jsonResponse(200, healthyResponse());
+      }
+      if (method === 'PATCH' && !url.includes('/products')) {
+        requestOrder.push('body-patch');
+        return patchResponse;
+      }
+      if (url.includes('/categories') || url.includes('/authors')) {
+        return emptyPaginated();
+      }
+      if (url.endsWith('/products')) {
+        return jsonResponse(200, { productIds: [] });
+      }
+      if (url.includes('/products')) {
+        return catalogResponse([]);
+      }
+      return jsonResponse(200, draftArticle);
+    });
+
+    renderDetail();
+
+    const editor = await screen.findByLabelText('Corpo (Markdown)');
+    act(() => {
+      clearRealLexicalEditor(editor);
+    });
+    await waitFor(() => expect(editor.textContent).toBe(''));
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, 'Edição em voo');
+    });
+    await waitFor(() => expect(editor).toHaveTextContent('Edição em voo'));
+
+    // Espera o autosave normal (debounce real, 1500ms) começar sozinho —
+    // "Salvando..." confirma que o PATCH já está em voo antes de qualquer
+    // clique.
+    await waitFor(() => expect(screen.getByText('Salvando...')).toBeInTheDocument(), {
+      timeout: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS + 1000,
+    });
+    expect(requestOrder).toEqual(['body-patch']);
+
+    await user.click(screen.getByRole('button', { name: 'Enviar para revisão' }));
+
+    // Ainda em voo: nenhum POST de transição, mesmo com o clique já feito
+    // (não é um teste de estado final — é a ORDEM das requisições que
+    // importa aqui).
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requestOrder).toEqual(['body-patch']);
+
+    await act(async () => {
+      resolvePatch(jsonResponse(200, { ...draftArticle, bodyMdx: 'Edição em voo' }));
+    });
+
+    await waitFor(() => expect(requestOrder).toEqual(['body-patch', 'transition-post']));
   });
 });

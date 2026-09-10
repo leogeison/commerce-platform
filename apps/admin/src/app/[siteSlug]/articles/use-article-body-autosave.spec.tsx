@@ -526,4 +526,418 @@ describe('useArticleBodyAutosave', () => {
     expect(calls[0]).toBe('Não persistido');
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('saved'));
   });
+
+  // --- ensureSaved (UXE-015) — coordenação com transições editoriais ---
+
+  it("ensureSaved: nada pendente resolve 'success' imediatamente, sem nenhum PATCH", async () => {
+    const calls: string[] = [];
+    mockSuccessFetch(calls);
+    let api: UseArticleBodyAutosaveResult | undefined;
+    renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: 'Já sincronizado',
+      debounceMs: 10,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    let ensureResult: 'success' | 'error' | undefined;
+    await act(async () => {
+      ensureResult = await api!.ensureSaved();
+    });
+
+    expect(ensureResult).toBe('success');
+    expect(calls).toHaveLength(0);
+  });
+
+  it("ensureSaved: debounce pendente é cancelado e forçado a salvar imediatamente; nenhum PATCH duplicado depois do debounce original", async () => {
+    const calls: string[] = [];
+    mockSuccessFetch(calls);
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'Texto',
+        debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    // Ainda bem dentro da janela de debounce real (1500ms): nenhum PATCH
+    // saiu ainda.
+    expect(calls).toHaveLength(0);
+
+    let ensureResult: 'success' | 'error' | undefined;
+    await act(async () => {
+      ensureResult = await api!.ensureSaved();
+    });
+
+    expect(ensureResult).toBe('success');
+    expect(calls).toEqual(['Texto']);
+
+    // Espera além do debounce original: se o timer não tivesse sido
+    // cancelado por `ensureSaved`, um segundo PATCH (redundante) teria sido
+    // enviado nesse meio tempo.
+    await new Promise((resolve) => setTimeout(resolve, ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS + 200));
+    expect(calls).toHaveLength(1);
+  });
+
+  it("ensureSaved: PATCH já em voo é aguardado sem PATCH concorrente, resolve conforme o desfecho desse PATCH", async () => {
+    const calls: string[] = [];
+    let resolveInFlight!: (value: Response) => void;
+    const inFlight = new Promise<Response>((resolve) => {
+      resolveInFlight = resolve;
+    });
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      const parsed: { bodyMdx?: string } = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push(parsed.bodyMdx ?? '');
+      return inFlight;
+    });
+
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: 10,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'A',
+        debounceMs: 10,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('saving'));
+
+    let resolved: 'success' | 'error' | undefined;
+    const pending = api!.ensureSaved().then((result) => {
+      resolved = result;
+    });
+
+    // Ainda em voo: `ensureSaved` não disparou nenhum segundo PATCH.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(calls).toHaveLength(1);
+    expect(resolved).toBeUndefined();
+
+    await act(async () => {
+      resolveInFlight(jsonResponse(200, articleAdminBody('A')));
+    });
+    await pending;
+
+    expect(resolved).toBe('success');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('ensureSaved: PATCH em voo + edição posterior — espera o atual e persiste a versão mais recente antes de resolver', async () => {
+    const calls: string[] = [];
+    let resolveFirst!: (value: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let callCount = 0;
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      const parsed: { bodyMdx?: string } = init?.body ? JSON.parse(String(init.body)) : {};
+      const bodyMdx = parsed.bodyMdx ?? '';
+      calls.push(bodyMdx);
+      callCount += 1;
+      if (callCount === 1) {
+        return firstResponse;
+      }
+      return jsonResponse(200, articleAdminBody(bodyMdx));
+    });
+
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: 10,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'A',
+        debounceMs: 10,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toBe('A');
+
+    let resolved: 'success' | 'error' | undefined;
+    const pending = api!.ensureSaved().then((result) => {
+      resolved = result;
+    });
+
+    // Edição chega com o primeiro PATCH ainda em voo — a MESMA espera de
+    // `ensureSaved` precisa cobrir esta versão mais nova, não a que já
+    // estava em voo quando foi chamado.
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'AB',
+        debounceMs: 10,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(resolved).toBeUndefined();
+
+    // Termina o primeiro PATCH ('A') — o valor mais recente ('AB') é salvo
+    // imediatamente em seguida, sem esperar um novo debounce.
+    await act(async () => {
+      resolveFirst(jsonResponse(200, articleAdminBody('A')));
+    });
+
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]).toBe('AB');
+
+    await pending;
+
+    expect(resolved).toBe('success');
+    expect(calls).toHaveLength(2);
+  });
+
+  it("ensureSaved: falha da versão mais recente resolve 'error', sem retry automático da mesma versão", async () => {
+    const calls: string[] = [];
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      const parsed: { bodyMdx?: string } = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push(parsed.bodyMdx ?? '');
+      return jsonResponse(500, { message: 'erro simulado' });
+    });
+
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'Texto',
+        debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    // Ainda dentro da janela de debounce real — `ensureSaved` força a
+    // tentativa imediatamente, sem esperar os 1500ms.
+    let ensureResult: 'success' | 'error' | undefined;
+    await act(async () => {
+      ensureResult = await api!.ensureSaved();
+    });
+
+    expect(ensureResult).toBe('error');
+    expect(calls).toHaveLength(1);
+
+    // Nenhuma edição nova: sem retry automático da mesma versão.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls).toHaveLength(1);
+  });
+
+  it('ensureSaved: coordenado com um submit manual em voo (beginManualSave/endManualSave) — espera sem PATCH concorrente', async () => {
+    const calls: string[] = [];
+    mockSuccessFetch(calls);
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'Conteúdo final',
+        debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    // Mesma sequência de `ArticleForm.handleSubmit`: `beginManualSave()`
+    // antes do PATCH/POST manual (aqui só simulado — este hook nunca faz o
+    // POST manual em si).
+    await api!.beginManualSave();
+
+    let resolved: 'success' | 'error' | undefined;
+    const pending = api!.ensureSaved().then((result) => {
+      resolved = result;
+    });
+
+    // Submit manual ainda em voo: `ensureSaved` não dispara PATCH
+    // concorrente.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(calls).toHaveLength(0);
+    expect(resolved).toBeUndefined();
+
+    // Submit manual teve sucesso, persistindo exatamente o valor mais
+    // recente — mesmo `act(...)` já exigido por `endManualSave` nos testes
+    // acima (setStatus('saved') síncrono).
+    act(() => {
+      api!.endManualSave('Conteúdo final');
+    });
+
+    await pending;
+
+    expect(resolved).toBe('success');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('ensureSaved: coordenado com a falha de um submit manual em voo (cancelManualSave) — dispara a persistência ainda pendente', async () => {
+    const calls: string[] = [];
+    mockSuccessFetch(calls);
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'Conteúdo final',
+        debounceMs: ARTICLE_BODY_AUTOSAVE_DEBOUNCE_MS,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    await api!.beginManualSave();
+
+    let resolved: 'success' | 'error' | undefined;
+    const pending = api!.ensureSaved().then((result) => {
+      resolved = result;
+    });
+
+    expect(calls).toHaveLength(0);
+
+    // Submit manual FALHOU — `lastSyncedRef` não avança; o conteúdo mais
+    // recente ainda diverge, então a persistência pendente é disparada
+    // agora pelo mecanismo já existente de `cancelManualSave`, não por uma
+    // segunda lógica introduzida por `ensureSaved`.
+    await act(async () => {
+      api!.cancelManualSave();
+      await pending;
+    });
+
+    expect(resolved).toBe('success');
+    expect(calls).toEqual(['Conteúdo final']);
+  });
+
+  it("ensureSaved: desmontagem com waiter pendente resolve 'error' imediatamente, sem Promise pendurada", async () => {
+    const calls: string[] = [];
+    let resolveInFlight!: (value: Response) => void;
+    const inFlight = new Promise<Response>((resolve) => {
+      resolveInFlight = resolve;
+    });
+    global.fetch = jest.fn<typeof fetch>(async (_input, init) => {
+      const parsed: { bodyMdx?: string } = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push(parsed.bodyMdx ?? '');
+      return inFlight;
+    });
+
+    let api: UseArticleBodyAutosaveResult | undefined;
+    const { rerender, unmount } = renderHarness({
+      siteSlug: 'fastcompre',
+      articleId: ARTICLE_ID,
+      bodyMdx: '',
+      debounceMs: 10,
+      onReady: (readyApi) => {
+        api = readyApi;
+      },
+    });
+
+    rerender(
+      tree({
+        siteSlug: 'fastcompre',
+        articleId: ARTICLE_ID,
+        bodyMdx: 'A',
+        debounceMs: 10,
+        onReady: (readyApi) => {
+          api = readyApi;
+        },
+      }),
+    );
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('saving'));
+
+    let resolved: 'success' | 'error' | undefined;
+    const pending = api!.ensureSaved().then((result) => {
+      resolved = result;
+    });
+
+    unmount();
+
+    await pending;
+    expect(resolved).toBe('error');
+
+    // A resolução tardia do PATCH (já sem componente montado) não muda
+    // nada: o waiter já foi liquidado como 'error' no desmonte, nunca fica
+    // pendurado.
+    resolveInFlight(jsonResponse(200, articleAdminBody('A')));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(resolved).toBe('error');
+  });
 });

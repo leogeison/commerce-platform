@@ -80,6 +80,31 @@ export interface UseArticleBodyAutosaveResult {
    * `disabled` voltar a `false`, sobre o conteúdo ainda não salvo.
    */
   cancelManualSave: () => void;
+  /**
+   * UXE-015 — garante que a versão mais recente conhecida por este hook
+   * (`latestBodyRef`, sempre o `bodyMdx` atual) está confirmadamente
+   * persistida antes de resolver `'success'`; resolve `'error'` se a
+   * tentativa referente a essa versão falhar e nenhuma edição mais nova
+   * surgir para tentar de novo. Único uso hoje: `ArticleForm` expõe isso
+   * via `ensureBodySaved()` (`useImperativeHandle`) para `ArticleDetail`
+   * checar, antes de disparar uma transição editorial, que não existe
+   * corpo pendente de salvar — nunca chamado por `ArticleTransitionPanel`
+   * diretamente, que não conhece `bodyMdx`/autosave (ver doc comment de
+   * `article-transition-panel.tsx`).
+   *
+   * Nenhuma máquina de estados nova: reaproveita inteiramente os mesmos
+   * refs que já coordenam debounce (`timeoutRef`), concorrência
+   * (`inFlightPromiseRef`) e suspensão por submit manual
+   * (`manualSaveInProgressRef`) — só adiciona uma fila de "waiters"
+   * liquidada nos pontos onde `runSave`/`endManualSave`/`cancelManualSave`
+   * já decidem que não há mais nada a encadear (ver os comentários nesses
+   * três pontos, abaixo). Nunca dispara um PATCH concorrente ao que já
+   * estiver em voo ou ao submit manual em andamento — só aguarda.
+   *
+   * Sem `articleId` (`/articles/new`), não há nada para persistir —
+   * resolve `'success'` de imediato, mesmo critério de `beginManualSave`.
+   */
+  ensureSaved: () => Promise<'success' | 'error'>;
 }
 
 /**
@@ -188,6 +213,30 @@ function articlePath(siteSlug: string, id: string): string {
  * do backend/contracts: a coordenação inteira é local, por sequenciamento
  * (nunca duas requisições ao mesmo recurso em voo ao mesmo tempo), não
  * por cancelamento nem por comparação de versões.
+ *
+ * --- UXE-015 — `ensureSaved()`, coordenação com transições editoriais ---
+ *
+ * Investigação da UXE-015 encontrou um caminho real de perda de conteúdo:
+ * `ArticleTransitionPanel` disparava uma transição (ex.: "Enviar para
+ * revisão") sem checar se havia uma edição de `bodyMdx` ainda pendente de
+ * salvar — a transição podia chegar ao backend com um `bodyMdx` mais
+ * antigo do que o que o usuário via na tela, e a edição real ficava
+ * perdida quando a árvore DRAFT desmontava logo em seguida (ver
+ * `endManualSave`/`cancelManualSave`/`ensureSaved`, abaixo, e o doc
+ * comment de `article-transition-panel.tsx`).
+ *
+ * `ensureSaved()` fecha essa lacuna sem introduzir uma segunda máquina de
+ * estados: reaproveita inteiramente `timeoutRef`/`inFlightPromiseRef`/
+ * `manualSaveInProgressRef`/`lastSyncedRef`/`latestBodyRef` já existentes,
+ * só somando uma fila de "waiters" (`flushWaitersRef`) liquidada nos
+ * pontos onde a persistência (autosave OU submit manual) já decidia,
+ * antes desta tarefa, que não havia mais nada a encadear. Não é
+ * `confirmLeave()`: nunca oferece "prosseguir descartando" — só resolve
+ * depois que a versão mais recente está confirmadamente persistida, ou
+ * `'error'` se essa tentativa falhar sem nenhuma edição nova para tentar
+ * de novo (nunca retry automático da mesma versão). Único chamador
+ * previsto: `ArticleForm`, via `ensureBodySaved()` exposto por
+ * `useImperativeHandle` — nunca `ArticleTransitionPanel` diretamente.
  */
 export function useArticleBodyAutosave({
   siteSlug,
@@ -203,11 +252,34 @@ export function useArticleBodyAutosave({
   const manualSaveInProgressRef = useRef(false);
   const unmountedRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // UXE-015 — resolvers de chamadas pendentes de `ensureSaved()`, liquidados
+  // sempre que a cadeia de persistência (autosave OU submit manual) chega a
+  // um estado terminal para a versão mais recente conhecida. Nunca contém
+  // nada relacionado a debounce/concorrência em si — só espectadores que
+  // aguardam um desfecho já determinado pelos mecanismos existentes.
+  const flushWaitersRef = useRef<Array<(result: 'success' | 'error') => void>>([]);
 
   const isPendingSave = articleId !== null && bodyMdx !== lastSyncedRef.current;
   useSyncPendingSave(isPendingSave);
 
   latestBodyRef.current = bodyMdx;
+
+  /**
+   * UXE-015 — único ponto que liquida `flushWaitersRef`. Chamado (nunca
+   * diretamente por quem usa o hook) nos três lugares onde a cadeia de
+   * persistência decide que não há mais nada a encadear: o `.then()`/
+   * `.catch()` terminais de `runSave`, e `endManualSave`/`cancelManualSave`
+   * quando não restam waiters para os quais valha a pena disparar mais
+   * nada. Vazio (nenhum `ensureSaved()` pendente) é sempre um no-op barato.
+   */
+  const settleFlushWaiters = useCallback((result: 'success' | 'error'): void => {
+    if (flushWaitersRef.current.length === 0) {
+      return;
+    }
+    const waiters = flushWaitersRef.current;
+    flushWaitersRef.current = [];
+    waiters.forEach((resolve) => resolve(result));
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -215,8 +287,15 @@ export function useArticleBodyAutosave({
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      // UXE-015 — nunca deixa quem chamou `ensureSaved()` esperando para
+      // sempre: uma desmontagem (ex.: a própria transição que o
+      // `ensureSaved()` em voo estava bloqueando já foi liberada e trocou
+      // de composição) liquida qualquer waiter remanescente como `'error'`
+      // — mesmo critério já usado por `UnsavedChangesProvider` para uma
+      // confirmação pendente sobrevivendo ao desmonte do Provider.
+      settleFlushWaiters('error');
     };
-  }, []);
+  }, [settleFlushWaiters]);
 
   const runSave = useCallback(
     (id: string) => {
@@ -240,6 +319,10 @@ export function useArticleBodyAutosave({
           setStatus('saved');
           if (!manualSaveInProgressRef.current && latestBodyRef.current !== valueToSave) {
             runSave(id);
+          } else if (!manualSaveInProgressRef.current) {
+            // UXE-015 — quieto: nada mais para encadear. Se havia
+            // `ensureSaved()` esperando por esta versão, liquida agora.
+            settleFlushWaiters('success');
           }
         })
         .catch(() => {
@@ -250,12 +333,18 @@ export function useArticleBodyAutosave({
           setStatus('error');
           if (!manualSaveInProgressRef.current && latestBodyRef.current !== valueToSave) {
             runSave(id);
+          } else if (!manualSaveInProgressRef.current) {
+            // UXE-015 — a versão que falhou ainda é a mais recente (nenhuma
+            // edição nova chegou): nada mais será tentado automaticamente
+            // (sem retry da mesma versão) — qualquer `ensureSaved()`
+            // esperando por ela é liquidado como `'error'`.
+            settleFlushWaiters('error');
           }
         });
 
       inFlightPromiseRef.current = promise;
     },
-    [siteSlug],
+    [siteSlug, settleFlushWaiters],
   );
 
   useEffect(() => {
@@ -300,17 +389,96 @@ export function useArticleBodyAutosave({
     return inFlight.catch(() => undefined);
   }, []);
 
-  const endManualSave = useCallback((syncedBodyMdx: string): void => {
-    manualSaveInProgressRef.current = false;
-    lastSyncedRef.current = syncedBodyMdx;
-    if (!unmountedRef.current) {
-      setStatus('saved');
-    }
-  }, []);
+  const endManualSave = useCallback(
+    (syncedBodyMdx: string): void => {
+      manualSaveInProgressRef.current = false;
+      lastSyncedRef.current = syncedBodyMdx;
+      if (!unmountedRef.current) {
+        setStatus('saved');
+      }
+      // UXE-015 — coordenação com `ensureSaved()`: se ninguém está
+      // esperando, nada a fazer (comportamento idêntico a antes desta
+      // tarefa). Havendo waiters, o submit manual acabou de persistir
+      // `syncedBodyMdx` — se essa já é a versão mais recente, está tudo
+      // resolvido; se uma edição nova chegou ENQUANTO o submit manual
+      // estava em voo, dispara agora (sem esperar debounce) a persistência
+      // dessa versão mais nova — os mesmos ramos terminais de `runSave`
+      // acima liquidam os waiters quando ela se resolver.
+      if (flushWaitersRef.current.length === 0) {
+        return;
+      }
+      if (latestBodyRef.current === syncedBodyMdx) {
+        settleFlushWaiters('success');
+        return;
+      }
+      if (articleId !== null && !inFlightPromiseRef.current) {
+        runSave(articleId);
+      }
+    },
+    [articleId, runSave, settleFlushWaiters],
+  );
 
   const cancelManualSave = useCallback((): void => {
     manualSaveInProgressRef.current = false;
-  }, []);
+    // UXE-015 — mesmo racional de `endManualSave`: sem waiters, nenhuma
+    // mudança de comportamento. Havendo waiters, o submit manual FALHOU —
+    // `lastSyncedRef` não avançou, então o conteúdo mais recente
+    // (quase certamente) ainda diverge; dispara agora, sem esperar
+    // debounce, uma tentativa de autosave para essa versão ainda não
+    // sincronizada. O `else` é só defensivo (nunca esperado em uso normal:
+    // `cancelManualSave` não deveria ser chamado com `articleId` nulo
+    // numa instância que já tinha `ensureSaved()` pendente, já que
+    // `ensureSaved()` resolve de imediato quando `articleId` é nulo).
+    if (flushWaitersRef.current.length === 0) {
+      return;
+    }
+    if (articleId !== null && !inFlightPromiseRef.current && latestBodyRef.current !== lastSyncedRef.current) {
+      runSave(articleId);
+    } else if (articleId === null || latestBodyRef.current === lastSyncedRef.current) {
+      settleFlushWaiters('error');
+    }
+  }, [articleId, runSave, settleFlushWaiters]);
 
-  return { status, beginManualSave, endManualSave, cancelManualSave };
+  const ensureSaved = useCallback((): Promise<'success' | 'error'> => {
+    if (articleId === null) {
+      // Nunca há nada para persistir sem um Artigo real — mesmo estado
+      // "indisponível" que `isPendingSave` já trata como não-pendente.
+      return Promise.resolve('success');
+    }
+
+    // Mesma primeira ação de `beginManualSave`: cancela qualquer debounce
+    // ainda não disparado — essa edição será persistida agora, de forma
+    // imediata, não pelo debounce normal.
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (
+      !inFlightPromiseRef.current &&
+      !manualSaveInProgressRef.current &&
+      latestBodyRef.current === lastSyncedRef.current
+    ) {
+      // Nada em voo, nenhum submit manual em andamento, e a versão mais
+      // recente já está persistida — nenhuma requisição nova é necessária.
+      return Promise.resolve('success');
+    }
+
+    const waiterPromise = new Promise<'success' | 'error'>((resolve) => {
+      flushWaitersRef.current.push(resolve);
+    });
+
+    // Só dispara uma tentativa agora se não houver nada em voo e nenhum
+    // submit manual suspendendo o autosave — nos dois casos, o waiter
+    // acima já será liquidado pelo mecanismo existente (`runSave`/
+    // `endManualSave`/`cancelManualSave`) quando o que já está em
+    // andamento terminar, sem nenhum PATCH concorrente.
+    if (!inFlightPromiseRef.current && !manualSaveInProgressRef.current) {
+      runSave(articleId);
+    }
+
+    return waiterPromise;
+  }, [articleId, runSave]);
+
+  return { status, beginManualSave, endManualSave, cancelManualSave, ensureSaved };
 }

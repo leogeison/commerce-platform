@@ -6,7 +6,7 @@ import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
 import { roleMeetsMinimum } from '../../../../lib/role-hierarchy';
 import { useSiteRole } from '../../site-role-context';
-import { ArticleForm, type ArticleFormValues } from '../article-form';
+import { ArticleForm, type ArticleFormHandle, type ArticleFormValues } from '../article-form';
 import { ProductLookupProvider } from '../product-lookup-context';
 import { ArticleContextPanel } from './article-context-panel';
 import { ArticleProductsReadOnly } from './article-products-read-only';
@@ -133,12 +133,28 @@ function articlePath(siteSlug: string, id: string): string {
  * `contentRef` serve às duas composições porque só uma delas está
  * montada por vez (o `if (!isDraft || !canEdit)` abaixo é um retorno
  * antecipado, nunca as duas árvores coexistindo).
+ *
+ * UXE-015 — articleFormRef (useRef<ArticleFormHandle>(null)) e attached
+ * apenas na composicao isDraft && canEdit (a unica em que ArticleForm
+ * existe) e usado por handleBeforeTransition, passado a
+ * ArticleContextPanel.onBeforeTransition — encaminhado dali, sem alteracao,
+ * ate ArticleTransitionPanel (ver doc comments de ambos). E o unico ponto
+ * de composicao entre o autosave de bodyMdx (UXE-008, dono do estado) e
+ * uma transicao editorial (dona da maquina de estados): garante, via
+ * ensureBodySaved(), que a versao mais recente do corpo esteja persistida
+ * antes que o POST de transicao sequer seja tentado — corrige uma race
+ * condition real revelada pelo cenario integrado desta tarefa (edicao
+ * pendente + transicao solicitada antes do autosave concluir podia perder
+ * a ultima edicao). Na composicao read-only (sem ArticleForm),
+ * onBeforeTransition nunca e passado — comportamento identico ao anterior
+ * a esta tarefa.
  */
 export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   const role = useSiteRole();
   const [state, setState] = useState<DetailState>({ status: 'loading' });
   const [healthRevision, setHealthRevision] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
+  const articleFormRef = useRef<ArticleFormHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +202,19 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
 
   function handleProductsChanged() {
     setHealthRevision((revision) => revision + 1);
+  }
+
+  // UXE-015 — ver doc comment do componente. `articleFormRef.current` só é
+  // `null` quando `ArticleForm` não está montado (composição read-only, que
+  // nunca passa este callback adiante) ou numa janela ínfima antes do
+  // primeiro commit do ref — `false` defensivo em ambos os casos nunca
+  // permite uma transição prosseguir sem confirmação explícita de sucesso.
+  async function handleBeforeTransition(): Promise<boolean> {
+    if (!articleFormRef.current) {
+      return false;
+    }
+    const result = await articleFormRef.current.ensureBodySaved();
+    return result === 'success';
   }
 
   if (state.status === 'loading') {
@@ -246,6 +275,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
       <ProductLookupProvider siteSlug={siteSlug} articleId={id}>
         <div ref={contentRef} className={styles.content}>
           <ArticleForm
+            ref={articleFormRef}
             siteSlug={siteSlug}
             articleId={id}
             initialValues={{
@@ -272,6 +302,7 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
           backgroundContentRef={contentRef}
           canManageProducts
           onProductsChanged={handleProductsChanged}
+          onBeforeTransition={handleBeforeTransition}
         />
       </ProductLookupProvider>
     </div>

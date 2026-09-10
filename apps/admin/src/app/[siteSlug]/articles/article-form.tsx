@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useState, type ChangeEvent, type FormEvent } from 'react';
 import { z } from 'zod';
 import { CircleAlert, CircleCheckBig, Loader2 } from 'lucide-react';
 import {
@@ -44,6 +44,18 @@ interface ArticleFormProps {
   initialValues: ArticleFormValues;
   submitLabel: string;
   onSubmit: (values: ArticleFormValues) => Promise<void>;
+}
+
+/**
+ * UXE-015 — contrato imperativo mínimo exposto por `ArticleForm` a
+ * `ArticleDetail` via `forwardRef`/`useImperativeHandle`, exclusivamente
+ * para permitir que uma transição editorial garanta a persistência do
+ * `bodyMdx` mais recente antes de prosseguir. `ArticleForm` continua sem
+ * nenhum conhecimento de transições: só delega para
+ * `useArticleBodyAutosave().ensureSaved()`, já existente.
+ */
+export interface ArticleFormHandle {
+  ensureBodySaved: () => Promise<'success' | 'error'>;
 }
 
 type TextFieldErrors = Partial<Record<'type' | 'title' | 'slug' | 'categoryId' | 'authorId', string>>;
@@ -111,8 +123,19 @@ function resolveErrorMessage(error: unknown, generic: string, businessStatusCode
  * URL já enviada em vez de reenviar o arquivo. `useEffect` de cleanup
  * dedicado a `previewUrl`, só na função de limpeza (sem `setState` no
  * corpo do efeito).
+ *
+ * UXE-015 — `forwardRef`/`useImperativeHandle` (mesmo padrão já usado por
+ * `ArticleBodyImageFlowHandle`/`ArticleBodyProductFlowHandle`) expõe
+ * `ensureBodySaved()` a `ArticleDetail`, que o encaminha a uma transição
+ * editorial via `ArticleContextPanel`/`ArticleTransitionPanel`. `ArticleForm`
+ * não conhece transições: apenas delega para `ensureSaved()` do autosave.
+ * `ref` é opcional e não usado pelos demais call sites (`/articles/new`,
+ * testes existentes) — compatível com o comportamento atual.
  */
-export function ArticleForm({ siteSlug, articleId, initialValues, submitLabel, onSubmit }: ArticleFormProps) {
+export const ArticleForm = forwardRef<ArticleFormHandle, ArticleFormProps>(function ArticleForm(
+  { siteSlug, articleId, initialValues, submitLabel, onSubmit },
+  ref,
+) {
   const [type, setType] = useState<ArticleType>(initialValues.type);
   const [title, setTitle] = useState(initialValues.title);
   const [slug, setSlug] = useState(initialValues.slug);
@@ -141,12 +164,18 @@ export function ArticleForm({ siteSlug, articleId, initialValues, submitLabel, o
     beginManualSave,
     endManualSave,
     cancelManualSave,
+    ensureSaved,
   } = useArticleBodyAutosave({
     siteSlug,
     articleId: articleId ?? null,
     bodyMdx,
     disabled: isSubmitting,
   });
+
+  // UXE-015 — único ponto de exposição imperativa deste formulário: delega
+  // diretamente para `ensureSaved()` do autosave, sem introduzir nenhum
+  // estado ou lógica própria.
+  useImperativeHandle(ref, () => ({ ensureBodySaved: () => ensureSaved() }), [ensureSaved]);
 
   useEffect(() => {
     let cancelled = false;
@@ -500,4 +529,4 @@ export function ArticleForm({ siteSlug, articleId, initialValues, submitLabel, o
       </button>
     </form>
   );
-}
+});

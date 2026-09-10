@@ -66,6 +66,13 @@ interface ArticleContextPanelProps {
    * no-op, nunca um erro.
    */
   backgroundContentRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * UXE-015 — repassado direto para `ArticleTransitionPanel.onBeforeTransition`,
+   * mesmo critério de encaminhamento puro já usado para `onProductsChanged`
+   * acima: este componente nunca sabe o que o callback faz (bodyMdx,
+   * autosave) nem o constrói — só o recebe de `ArticleDetail` e o repassa.
+   */
+  onBeforeTransition?: () => Promise<boolean>;
 }
 
 const PANEL_HEADING_ID = 'article-context-panel-heading';
@@ -238,6 +245,7 @@ export function ArticleContextPanel({
   canManageProducts = false,
   onProductsChanged,
   backgroundContentRef,
+  onBeforeTransition,
 }: ArticleContextPanelProps) {
   const setPageModalOpen = usePageModal();
   const wrapperId = useId();
@@ -427,7 +435,13 @@ export function ArticleContextPanel({
         {canManageProducts && (
           <ArticleProductsSection siteSlug={siteSlug} articleId={articleId} onProductsChanged={onProductsChanged} />
         )}
-        <ArticleTransitionPanel siteSlug={siteSlug} articleId={articleId} status={status} onTransition={onTransition} />
+        <ArticleTransitionPanel
+          siteSlug={siteSlug}
+          articleId={articleId}
+          status={status}
+          onTransition={onTransition}
+          onBeforeTransition={onBeforeTransition}
+        />
       </aside>
     </div>
   );
