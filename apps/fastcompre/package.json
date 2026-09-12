@@ -4,22 +4,24 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build",
+    "prebuild": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build && pnpm --filter @commerce-platform/editorial build",
     "build": "next build",
     "start": "next start",
-    "pretypecheck": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build",
+    "pretypecheck": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build && pnpm --filter @commerce-platform/editorial build",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch"
   },
   "dependencies": {
     "@commerce-platform/contracts": "workspace:*",
+    "@commerce-platform/editorial": "workspace:*",
     "@commerce-platform/ui": "workspace:*",
     "@mdx-js/mdx": "^3.1.1",
     "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1",
+    "unist-util-visit": "5.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

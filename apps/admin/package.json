@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build",
+    "prebuild": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build && pnpm --filter @commerce-platform/editorial build",
     "build": "next build",
     "start": "next start",
-    "pretypecheck": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build",
+    "pretypecheck": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build && pnpm --filter @commerce-platform/editorial build",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@commerce-platform/contracts": "workspace:*",
+    "@commerce-platform/editorial": "workspace:*",
     "@commerce-platform/ui": "workspace:*",
     "@hookform/resolvers": "^5.4.0",
     "@lexical/link": "0.49.0",

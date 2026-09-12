@@ -1,20 +1,35 @@
 /**
- * apps/admin/src/app/[siteSlug]/articles/product-block/grammar.ts
+ * packages/editorial/src/product-block/grammar.ts
  *
- * UXE-006 — Integração base do Lexical no Admin.
+ * UXE-017 — Plugin/transform do pipeline MDX do FastCompre.
  *
- * Porte para TypeScript da gramática normativa `:::product` v1, validada
- * pelo Editorial Serialization Contract (`docs/editorial/editorial-serialization-contract.md`,
- * §3) e implementada originalmente em
- * `spikes/lexical-editorial/product-block-grammar.mjs` (UXE-004).
+ * Fonte física única (Editorial Serialization Contract §8) da gramática
+ * normativa `:::product` v1, originalmente provada em
+ * `spikes/lexical-editorial/product-block-grammar.mjs` (UXE-004) e portada
+ * para produção pela primeira vez em `apps/admin` (UXE-006), como
+ * `apps/admin/src/app/[siteSlug]/articles/product-block/grammar.ts`.
+ *
+ * Migrada para este package nesta tarefa (UXE-017) — o Contract §8 já
+ * antecipava esse momento explicitamente: "localização física... decisão
+ * fica para quando UXE-006 e UXE-017 estiverem prontas para consumir a
+ * gramática de verdade". Com o transformer Lexical do Admin (UXE-006) e o
+ * plugin remark do FastCompre (UXE-017) agora precisando da MESMA
+ * validação, a cópia local do Admin foi removida e seus consumidores
+ * (`./transformer.ts`, `./node.ts`, dentro de `apps/admin`) passaram a
+ * importar diretamente deste package — nunca duas definições que possam
+ * divergir silenciosamente.
  *
  * Nenhuma regra de validação, mensagem de erro ou ordem de checagem foi
- * alterada nesta porta — só a sintaxe (JS → TS com tipos). Por decisão do
- * Contract §8 (nenhum `packages/editorial-syntax` nesta tarefa — UXE-006 é
- * o primeiro consumidor de produção), esta cópia vive localmente em
- * `apps/admin`; sua aderência à especificação normativa é comprovada pela
- * suíte `product-block.spec.ts`, que reproduz os 11 cenários de
- * `product-block-round-trip.mjs`.
+ * alterada nesta migração — só a origem do arquivo. A suíte normativa que
+ * comprova a conformidade com a gramática v1 do Contract §3 vive em
+ * `./grammar.spec.ts`, neste mesmo package.
+ *
+ * Este módulo é deliberadamente framework-agnostic: nenhum import de
+ * React, Lexical, `@mdx-js/mdx`/unified, ou qualquer mecanismo de acesso a
+ * dado — só validação/serialização pura de texto, para poder ser
+ * consumido igualmente por `apps/admin` (transformer Lexical) e
+ * `apps/fastcompre` (plugin remark), sem que nenhum dos dois arraste a
+ * dependência de runtime do outro.
  */
 
 export class ProductBlockSyntaxError extends Error {
@@ -35,7 +50,8 @@ export const PRODUCT_ID_LINE_REGEXP = /^productId:\s*(.*?)\s*$/;
 export const UUID_REGEXP = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Versão da gramática Markdown suportada por este módulo — não é estado de
-// nenhum node/AST; ver nota de payload em `node.ts`.
+// nenhum node/AST; ver nota de payload em `node.ts` (apps/admin) e no
+// plugin remark (apps/fastcompre).
 export const PRODUCT_BLOCK_SYNTAX_VERSION = '1';
 
 export interface ParsedProductBlockBody {

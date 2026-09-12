@@ -32,6 +32,9 @@ importers:
       '@commerce-platform/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@commerce-platform/editorial':
+        specifier: workspace:*
+        version: link:../../packages/editorial
       '@commerce-platform/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -244,6 +247,9 @@ importers:
       '@commerce-platform/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@commerce-platform/editorial':
+        specifier: workspace:*
+        version: link:../../packages/editorial
       '@commerce-platform/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -262,6 +268,9 @@ importers:
       server-only:
         specifier: ^0.0.1
         version: 0.0.1
+      unist-util-visit:
+        specifier: 5.1.0
+        version: 5.1.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -315,6 +324,24 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/editorial:
+    devDependencies:
+      '@jest/globals':
+        specifier: ^30.0.0
+        version: 30.4.1(supports-color@8.1.1)
+      '@types/jest':
+        specifier: ^30.0.0
+        version: 30.0.0
+      jest:
+        specifier: ^30.0.0
+        version: 30.4.2(@types/node@24.13.3)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@5.9.3))
+      ts-jest:
+        specifier: ^29.2.5
+        version: 29.4.12(@babel/core@7.29.7(supports-color@8.1.1))(@jest/transform@30.4.1(supports-color@8.1.1))(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(jest-util@30.4.1)(jest@30.4.2(@types/node@24.13.3)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.13.3)(typescript@5.9.3)))(typescript@5.9.3)
       typescript:
         specifier: ^5
         version: 5.9.3

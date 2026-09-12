@@ -18,7 +18,7 @@ import {
   ProductBlockSyntaxError,
   parseProductBlockBody,
   serializeProductBlock,
-} from './grammar';
+} from '@commerce-platform/editorial';
 
 export const PRODUCT_BLOCK: MultilineElementTransformer = {
   dependencies: [ProductBlockNode],

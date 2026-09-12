@@ -75,7 +75,7 @@ import {
   getComposedEventTarget,
   type NodeKey,
 } from 'lexical';
-import { ProductBlockSyntaxError, parseProductBlockBody, serializeProductBlock } from './grammar';
+import { ProductBlockSyntaxError, parseProductBlockBody, serializeProductBlock } from '@commerce-platform/editorial';
 import { OPEN_PRODUCT_BLOCK_EDIT_COMMAND } from './edit-command';
 import { useProductLookup, type ProductResolution } from '../product-lookup-context';
 import styles from '../article-form.module.css';

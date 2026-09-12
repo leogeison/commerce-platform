@@ -18,8 +18,10 @@
  * (comportamento de segurança inalterado) e renderizar o segmento de
  * bloco de Produto diretamente via React, nunca através da string MDX.
  *
- * Usa SOMENTE `OPENER_REGEXP`/`CLOSER_REGEXP` (`./product-block/grammar`)
- * para detectar as fronteiras do bloco e delega 100% da validação do
+ * Usa SOMENTE `OPENER_REGEXP`/`CLOSER_REGEXP` (`@commerce-platform/editorial`
+ * — migrado de `./product-block/grammar` na UXE-017, mesma gramática, sem
+ * nenhuma mudança de comportamento) para detectar as fronteiras do bloco
+ * e delega 100% da validação do
  * corpo a `parseProductBlockBody` — nenhum parser concorrente. O
  * comportamento fail-closed (bloco sem fechamento, corpo inválido) é
  * equivalente ao do transformer Lexical (`./product-block/transformer.ts`,
@@ -39,7 +41,7 @@
  * é um dado novo obtido em outro lugar.
  */
 
-import { CLOSER_REGEXP, OPENER_REGEXP, ProductBlockSyntaxError, parseProductBlockBody } from './product-block/grammar';
+import { CLOSER_REGEXP, OPENER_REGEXP, ProductBlockSyntaxError, parseProductBlockBody } from '@commerce-platform/editorial';
 
 export type BodySegment =
   | { type: 'markdown'; markdown: string }

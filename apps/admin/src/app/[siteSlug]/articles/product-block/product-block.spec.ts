@@ -5,11 +5,12 @@
  *
  * Reprodução dos 11 cenários normativos de
  * `spikes/lexical-editorial/product-block-round-trip.mjs` (UXE-003) contra
- * a cópia local (`./grammar`, `./node`, `./transformer`) — comprova a
- * aderência exigida pelo Editorial Serialization Contract §8 mesmo sem
- * `packages/editorial-syntax` compartilhado ("qualquer implementação de
- * produção... comprovadamente equivalente... verificada pela mesma suíte
- * normativa de testes").
+ * `./node`/`./transformer` — que, a partir da UXE-017, consomem a gramática
+ * de `@commerce-platform/editorial` (fonte física única exigida pelo
+ * Editorial Serialization Contract §8), não mais uma cópia local. Esta
+ * suíte permanece como prova de integração real com Lexical (import/export
+ * via `createEditor`/transformers) — a suíte normativa da gramática em si
+ * (sem Lexical) vive em `packages/editorial/src/product-block/grammar.spec.ts`.
  *
  * Diferença deliberada em relação ao spike: em vez de `createHeadlessEditor`
  * (`@lexical/headless`, dependência que não faz parte do desenho aprovado
