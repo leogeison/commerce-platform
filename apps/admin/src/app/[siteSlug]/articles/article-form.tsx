@@ -110,9 +110,9 @@ function resolveErrorMessage(error: unknown, generic: string, businessStatusCode
  * exceto a já vinculada (rotulada "(arquivada)"). Autor não tem ciclo de
  * arquivamento, então todos aparecem sem distinção.
  *
- * `bodyMdx` é um `<textarea>` simples — tratado como Markdown textual puro,
- * sem preview, sem editor dedicado, sem nenhuma dependência nova (decisão
- * fechada no desenho técnico da ADM-009).
+ * `bodyMdx` é editado via `ArticleBodyEditor` (Lexical), com preview sob
+ * demanda (`ArticlePreview`) — editor dedicado introduzido na UXE-006,
+ * substituindo o `<textarea>` simples do desenho original da ADM-009.
  *
  * Upload de capa: mesmo fluxo corrigido do ADM-006/007 — seleção local
  * (`selectedFile`/`previewUrl` via `URL.createObjectURL`, sem rede no
@@ -452,7 +452,7 @@ export const ArticleForm = forwardRef<ArticleFormHandle, ArticleFormProps>(funct
         />
       </div>
 
-      <div className={styles.field}>
+      <div className={styles.field} data-testid="article-body-field">
         <label id="article-body-label" htmlFor="article-body">
           Corpo (Markdown)
         </label>
