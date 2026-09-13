@@ -813,7 +813,7 @@ Bloco comum: nenhuma tarefa desta seção altera a coluna `Article.bodyMdx` (per
 ### UXE-021 — Gate de fechamento UX-M03 (lado público)
 **Objetivo:** marco de fechamento da plataforma editorial — Artigo publicado com bloco novo funcionando ponta a ponta (Admin → API → FastCompre).
 **Contexto/decisão relacionada:** fecha E8 e, junto de UXE-016, fecha UX-M03 por inteiro.
-**Pré-requisitos:** UXE-019, UXE-020, UXE-016.
+**Pré-requisitos:** UXE-019, UXE-020, UXE-016, UXW-011.
 **Escopo incluído:** teste de ponta a ponta real: criar Artigo no Admin com bloco Produto/Oferta, publicar, conferir renderização no FastCompre.
 **Fora de escopo:** nenhum.
 **Arquivos/áreas:** nenhum novo — verificação.
@@ -977,7 +977,7 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 **Acessibilidade/responsividade:** bloco renderizado como estrutura semântica própria (não texto solto), navegável e com CTA próprio seguindo o mesmo critério de UXW-009.
 **Performance:** bloco não deve degradar LCP/CLS da página de Artigo — medir junto de UXW-009.
 **Riscos:** nenhum além do já mapeado em UXE.
-**Dependências posteriores:** UXW-016.
+**Dependências posteriores:** UXW-016, UXE-021.
 
 ### UXW-012 — Paginação consistente
 **Objetivo:** paginação nas listagens (Home e Categoria), usando o envelope já existente (`page`/`pageSize`/`total`/`totalPages`).
@@ -1269,7 +1269,7 @@ UXE (Editorial)
   UXE-005 → UXE-017                            (paralelo a todo o ramo UXE-006…016, mesmo gate de origem)
   UXE-017 → UXE-018 ∥ UXE-019                  (ambas dependem só de UXE-017)
   {UXE-017, UXE-018} → UXE-020
-  {UXE-019, UXE-020, UXE-016} → UXE-021 (gate, lado público — fecha UX-M03 junto de UXE-016)
+  {UXE-019, UXE-020, UXE-016, UXW-011} → UXE-021 (gate, lado público — fecha UX-M03 junto de UXE-016)
 
 UXW (FastCompre)
   UXF-009 → UXW-001 ∥ UXW-002                  (ambas dependem só de UXF-009)
@@ -1313,9 +1313,9 @@ UXQ (Quality)
 
 **Caminho A — Admin:** `UXF-009 → {UXA-001∥UXA-002} → {UXA-003∥UXA-004} → UXA-005 (gate) → UXA-006 → UXA-007 → UXA-008 → UXA-011 → UXA-012 (gate) → {UXA-013→UXA-014 ∥ UXA-015} → UXA-016`, com o ramo `UXA-012 → UXA-017→018→019→019B→{(019A→019D)∥019C}→020` correndo em paralelo a `UXA-013…016` a partir do mesmo gate, e com `UXA-005A` correndo em paralelo a `UXA-006` em diante desde o mesmo gate `UXA-005` — `UXA-013`/`UXA-015` agora dependem de `UXA-005A` (não mais diretamente de `UXA-005`), mas isso não alonga o caminho crítico: `UXA-012` continua sendo o gate mais longo dos dois que precisam terminar antes de `UXA-013`/`UXA-015` começarem. A cadeia mais longa desse caminho tem 8 passos sequenciais entre `UXF-009` e `UXA-012` (contando o gate), não os "quase 20 tarefas em linha" que uma leitura superficial da lista sugeriria — grande parte do bloco corre em paralelo. `UXA-006` entrega a sidebar só com os 4 itens cuja rota já existe (Artigos, Produtos, Categorias, Autores); `UXA-009` entrega a Command Palette com a mesma restrição, consumindo a mesma fonte compartilhada; `UXA-017`, no ramo Dashboard, adiciona o 5º item (Dashboard) a ambos quando sua própria rota nascer — sem alongar este caminho crítico, já que `UXA-017` já dependia de `UXA-012`.
 
-**Caminho B — Editorial:** `UXE-001 → {UXE-002∥UXE-003} → UXE-004 → UXE-005 (GATE)`, e daí em diante **dois ramos paralelos a partir do mesmo gate**: o ramo do editor (`UXE-006 → {UXE-007∥UXE-008∥UXE-009∥UXE-010} → ... → UXE-015 → UXE-016`, cuja cadeia mais longa é `006→008→012→013(ou 014)→015→016`, 6 passos após o gate) e o ramo do pipeline público (`UXE-017 → {UXE-018∥UXE-019} → UXE-020 → UXE-021`, 4 passos após o gate). `UXE-021` também precisa de `UXE-016`.
+**Caminho B — Editorial:** `UXE-001 → {UXE-002∥UXE-003} → UXE-004 → UXE-005 (GATE)`, e daí em diante **dois ramos paralelos a partir do mesmo gate**: o ramo do editor (`UXE-006 → {UXE-007∥UXE-008∥UXE-009∥UXE-010} → ... → UXE-015 → UXE-016`, cuja cadeia mais longa é `006→008→012→013(ou 014)→015→016`, 6 passos após o gate) e o ramo do pipeline público (`UXE-017 → {UXE-018∥UXE-019} → UXE-020 → UXE-021`, 4 passos após o gate). `UXE-021` também precisa de `UXE-016` e, por correção de dependência, de `UXW-011` (Caminho C) — o ramo do pipeline público deixa de fechar isoladamente dentro deste Caminho B.
 
-**Caminho C — FastCompre:** `UXF-009 + UXF-010 → UXW-001 → UXW-003 → UXW-004 → UXW-005 → UXW-006 (gate) → {UXW-007∥UXW-008∥UXW-009} → ... → UXW-016`, com `UXW-014` disponível cedo (logo após `UXW-007/008/009`, sem esperar `UXW-010…013`) e `UXW-011` bloqueada especificamente por `UXE-018` — ou seja, o Caminho C só fecha de fato depois que o ramo público de `UXE` (não o ramo do editor) estiver pronto.
+**Caminho C — FastCompre:** `UXF-009 + UXF-010 → UXW-001 → UXW-003 → UXW-004 → UXW-005 → UXW-006 (gate) → {UXW-007∥UXW-008∥UXW-009} → ... → UXW-016`, com `UXW-014` disponível cedo (logo após `UXW-007/008/009`, sem esperar `UXW-010…013`) e `UXW-011` bloqueada especificamente por `UXE-018` — ou seja, o Caminho C só fecha de fato depois que o ramo público de `UXE` (não o ramo do editor) estiver pronto. Por correção de dependência, `UXW-011` também é pré-requisito de `UXE-021` (Caminho B) — o acoplamento entre os dois caminhos passa a ser nos dois sentidos, não só de C para B.
 
 **Qual caminho é o mais longo** depende de esforço por tarefa, não só contagem — o Caminho B tem o maior número de passos estritamente sequenciais concentrados num único ramo (`UXE-006→008→012→01x→015→016`), mas os Caminhos A e C têm mais tarefas no total. Não presumir qual fecha por último sem estimar esforço na implementação real.
 
@@ -1331,7 +1331,7 @@ UXQ (Quality)
 
 **Dentro de UXW:** `UXW-001` ∥ `UXW-002`; depois de `UXW-006`, `UXW-007` ∥ `UXW-008` ∥ `UXW-009`; depois de `UXW-009`, `UXW-010` ∥ `UXW-011`; `UXW-012` não depende de `UXW-009/010/011` e pode rodar assim que `UXW-007`+`UXW-008` estiverem prontos; **`UXW-014` não depende de `UXW-010/011/012/013`** e fica disponível assim que `UXW-007/008/009` terminarem — pode ser implementada bem antes de `UXW-013`, mesmo estando listada depois na numeração.
 
-**Entre trilhas:** a trilha Admin (`UXA-*`), a trilha Editorial (`UXE-006…016` e `UXE-017…021` entre si), e a trilha FastCompre (`UXW-*`, que só encosta em `UXE-018` na própria `UXW-011`) correm inteiramente em paralelo depois de `UX-M01`.
+**Entre trilhas:** a trilha Admin (`UXA-*`) corre inteiramente em paralelo às demais depois de `UX-M01`. A trilha Editorial (`UXE-006…016` e `UXE-017…021` entre si) e a trilha FastCompre (`UXW-*`) já não são inteiramente paralelas: `UXW-011` encosta em `UXE-018` para nascer e, por correção de dependência, `UXE-021` encosta em `UXW-011` para fechar — dois pontos de acoplamento, um em cada sentido.
 
 **Dentro de UXQ:** `UXQ-004` ∥ `UXQ-005` não dependem de `UXQ-001`; `UXQ-002`/`UXQ-003` dependem de `UXQ-001` mas podem rodar em paralelo entre si; `UXQ-007` (performance) corre em paralelo ao bloco `UXQ-002…006` (a11y) inteiro, ambos dependendo só de `UXW-016`/`UXA-016`/`UXE-016`.
 
