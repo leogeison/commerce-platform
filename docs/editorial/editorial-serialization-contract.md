@@ -76,6 +76,15 @@ Regras vinculantes: opener `:::product` sem indentação, início de linha; corp
 
 **Fechado quanto à semântica normativa; estratégia de transição é responsabilidade explícita de `UXE-017`/`UXE-018`.**
 
+**ADENDO (UXE-018) — decisão registrada da estratégia de transição da seção estática:** em cumprimento à "RESPONSABILIDADE FUTURA" acima, a `UXE-018` registra explicitamente a seguinte política de composição entre o bloco `:::product` inline e a seção estática de Produtos existente em `apps/fastcompre` (`article.products.map(...)`, renderizada ao final do artigo):
+
+- Artigo sem nenhum bloco `:::product` no corpo preserva a seção estática atual, sem alteração de comportamento.
+- Um Produto referenciado inline por um bloco `:::product` não deve ser repetido na seção estática do mesmo Artigo — evita exatamente a duplicação que este gate já proibia como estado final (ver "RESPONSABILIDADE FUTURA" acima).
+- Um Produto vinculado ao Artigo via `ArticleProduct`, mas não referenciado por nenhum bloco inline, continua elegível para aparecer na seção estática — a existência de um bloco inline em algum lugar do corpo não remove a seção estática inteira.
+- A implementação física desta composição (o código em `apps/fastcompre/.../page.tsx` que efetivamente filtra a seção estática pelos Produtos já referenciados inline) é responsabilidade da `UXW-011` — nem a `UXE-017` nem a `UXE-018` alteram `page.tsx` para isso.
+
+**Fechado quanto à política de composição acima; implementação física em `page.tsx` permanece responsabilidade explícita de `UXW-011`.**
+
 ## 7. Ponto 6 — Segurança/regressão
 
 **GARANTIA NORMATIVA (MUST):** nenhuma superfície de injeção nova foi identificada através da sintaxe `:::product`/`mdxJsxFlowElement` sob o pipeline real (`format: 'md'`, mesma flag de `compile-article-body.ts`). Comprovado especificamente contra: expressão JS (`{alert(1)}`), `import`/`export` como statement, HTML bruto (`<script>`, atributos `onerror`) — todos permanecem inertes, com ou sem o plugin de bloco presente. Tentativa de contrabando de atributo extra na AST (`mdxJsxFlowElement.attributes`) é rejeitada pela gramática (§3) antes de a AST sequer existir — comprovado que, no caminho de sucesso, `attributes` tem exatamente 1 entrada (`productId`).
