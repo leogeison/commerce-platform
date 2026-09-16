@@ -73,6 +73,18 @@ jobs:
       - name: UI package tests
         run: pnpm --filter @commerce-platform/ui test
 
+      # @commerce-platform/editorial exporta de `dist` (main/types/exports
+      # do seu package.json), mesma razão dos passos "Build contracts"/
+      # "Build UI package" acima. Sem este passo explícito, "Admin tests"
+      # abaixo falha com "Cannot find module '@commerce-platform/editorial'"
+      # num checkout limpo — reproduzido: funciona localmente só porque
+      # `apps/admin`'s `prebuild`/`pretypecheck` já buildaram este pacote
+      # como efeito colateral em algum momento anterior da sessão de
+      # desenvolvimento, deixando um `dist/` residual (não versionado,
+      # `.gitignore`) que não existe num checkout novo.
+      - name: Build editorial package
+        run: pnpm --filter @commerce-platform/editorial build
+
       # `test:coverage:domain` (QA-001) já roda a suíte unitária completa
       # da API e aplica o coverageThreshold (80/80/80/70) definido ali —
       # usado no lugar de `pnpm --filter api test` para que a QA-001 seja
