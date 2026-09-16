@@ -125,14 +125,9 @@ Grid de 4px, primitivos únicos e compartilhados: `space-0`(0) `space-1`(4px) `s
 
 `--font-family-sans` (Geist Sans, interface, ambos os apps) e `--font-family-serif` (Source Serif 4, só conteúdo editorial do FastCompre) + escala de tamanho/line-height (`xs` a `4xl`) + peso (`regular`/`medium`/`semibold`/`bold`).
 
-### Carregamento de fontes (lacuna identificada, fora do escopo desta tarefa)
+### Carregamento de fontes
 
-`typography.css` só declara os **nomes** das famílias — nenhum `next/font`, `@font-face` ou carregamento real de arquivo de fonte acontece aqui. Revisão do `UX-Implementation-Backlog.md` não encontrou nenhuma tarefa que nomeie explicitamente "carregar fontes via `next/font`". Os dois candidatos mais próximos, sem que nenhum assuma isso por nome:
-
-- **UXF-005** (Primitives mínimos de prova) — primeiro lugar onde texto real é renderizado com o design system; candidato natural para Geist Sans.
-- **UXW-009** (Página de Artigo: estrutura base) — seu critério de aceite já exige "tipografia editorial (Source Serif 4) aplicada ao corpo renderizado", o que na prática exige a fonte carregada, ainda que não nomeie o mecanismo.
-
-Fica para decisão do usuário onde essa implementação pertence formalmente.
+`typography.css` só declara os **nomes** das famílias — nenhum `next/font`, `@font-face` ou carregamento real de arquivo de fonte acontece aqui, e não é isso que este arquivo deve fazer (`packages/ui` não tem e não deve ganhar conhecimento de `next/font`: não é um app Next.js). O carregamento real é responsabilidade de cada app consumidor (`apps/admin`/`apps/fastcompre`, em `layout.tsx`/`globals.css`), implementado pela **UXF-001A** — Geist Sans nos dois apps, Source Serif 4 só no FastCompre, compondo o mesmo nome de token público declarado aqui com a pilha de fallback já definida nesta tarefa.
 
 ## Dark mode: só preparação arquitetural
 

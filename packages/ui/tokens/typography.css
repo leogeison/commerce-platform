@@ -3,10 +3,11 @@
  *
  * Tokens tipográficos — UXF-001 (Fundação de tokens de design).
  *
- * Declara apenas os tokens (nome de família, escala, peso). NENHUM
- * carregamento real de fonte (`next/font`, `@font-face`, Google Fonts etc.)
- * acontece nesta tarefa — ver README.md, seção "Carregamento de fontes
- * (lacuna identificada)".
+ * Declara apenas os tokens (nome de família, escala, peso). O carregamento
+ * real das fontes (`next/font/google`) é responsabilidade de cada app
+ * consumidor (`apps/admin`/`apps/fastcompre`), implementado pela UXF-001A —
+ * ver README.md, seção "Carregamento de fontes". Nenhum nome, valor ou
+ * estrutura de token muda por causa disso.
  */
 
 :root {

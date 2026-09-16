@@ -168,17 +168,17 @@ não se aplica ainda, pois o arquivo temporário nunca chegou a ser criado
 neste ambiente. Esta seção deve ser atualizada com o resultado real depois
 da execução local.
 
-## Pendência: carregamento real de fontes
+## Carregamento real de fontes: responsabilidade dos apps (UXF-001A)
 
 `Text`/`Button` usam `font-ui` → `var(--font-family-sans)` ("Geist
-Sans"), mas nenhum carregamento real de fonte (`next/font`, `@font-face`)
-acontece — nem nesta tarefa nem em nenhuma anterior. `packages/ui` não
-tem e não deve ganhar conhecimento de `next/font` (fronteira normativa:
-não é um app Next.js). O fallback declarado no próprio token
-(`ui-sans-serif, -apple-system, ...`) cobre a ausência de carregamento
-sem quebrar. Essa pendência normativa **continua em aberto** após a
-UXF-005, sem tarefa dona ainda no backlog atual — mesma lacuna já
-registrada por `packages/ui/tokens/README.md`.
+Sans"). O carregamento real de fonte (`next/font/google`) é
+responsabilidade de cada app consumidor (`apps/admin`/`apps/fastcompre`,
+em `layout.tsx`/`globals.css`), implementado pela **UXF-001A** —
+`packages/ui` não tem e não deve ganhar conhecimento de `next/font`
+(fronteira normativa: não é um app Next.js). O fallback declarado no
+próprio token (`ui-sans-serif, -apple-system, ...`) continua presente na
+composição feita por cada app, cobrindo qualquer cenário de falha de
+carregamento sem quebrar.
 
 ## Testes — `jest-axe` deferido para a UXF-007
 

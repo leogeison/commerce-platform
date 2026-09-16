@@ -3,6 +3,21 @@
 @import "../../../../packages/ui/tokens/tailwind-theme.css";
 @source "../../../../packages/ui/src";
 
+/*
+ * UXF-001A — carregamento real de Geist Sans via `next/font/google`
+ * (apps/admin/src/app/layout.tsx). `next/font` gera sua própria custom
+ * property privada do app (`--font-geist-sans`, aplicada em `<html>`),
+ * nunca o nome do token público. Este bloco compõe o token público já
+ * existente (`packages/ui/tokens/typography.css`, intocado) com a fonte
+ * real na frente da mesma pilha de fallback já aprovada — nunca a
+ * substitui. `packages/ui` continua sem nenhum conhecimento de
+ * `next/font`.
+ */
+:root {
+  --font-family-sans: var(--font-geist-sans), 'Geist Sans', ui-sans-serif,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
 html,
 body {
   height: 100%;
