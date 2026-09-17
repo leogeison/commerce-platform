@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+import { SiteHeader } from "./site-header";
 
 // UXF-001A — carregamento real de Geist Sans (interface) e Source Serif 4
 // (conteúdo editorial, exclusivo do FastCompre — nunca aplicada no
@@ -36,7 +37,10 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${sourceSerif4.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <SiteHeader />
+        {children}
+      </body>
     </html>
   );
 }
