@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { listPublicArticles, getPublicArticle, getPublicCategory } from './client';
+import {
+  listPublicArticles,
+  getPublicArticle,
+  getPublicCategory,
+  listPublicCategories,
+} from './client';
 import { PublicApiError } from './errors';
 
 /**
@@ -199,5 +204,105 @@ describe('getPublicCategory', () => {
     });
 
     await expect(getPublicCategory('inexistente')).resolves.toBeNull();
+  });
+});
+
+/**
+ * UXW-003 — `listPublicCategories` (consumida por `SiteHeader`).
+ */
+describe('listPublicCategories', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  function mockFetchSequence(responses: Array<{ status: number; body: unknown }>) {
+    const fetchMock = jest.fn<typeof fetch>();
+    for (const { status, body } of responses) {
+      fetchMock.mockResolvedValueOnce({
+        ok: status >= 200 && status < 300,
+        status,
+        json: () => Promise.resolve(body),
+      } as Response);
+    }
+    global.fetch = fetchMock;
+    return fetchMock;
+  }
+
+  it('busca com pageSize: 100 e cache: "force-cache", e para após uma única página quando totalPages: 1', async () => {
+    const fetchMock = mockFetchSequence([
+      {
+        status: 200,
+        body: { items: [validCategory], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+    ]);
+
+    await expect(listPublicCategories()).resolves.toEqual([validCategory]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/public/sites/test-site/categories?page=1&pageSize=100',
+      { cache: 'force-cache' },
+    );
+  });
+
+  it('respeita a paginação real: continua buscando páginas até consumir totalPages, acumulando os itens', async () => {
+    const categoryB = { name: 'Cafeteiras', slug: 'cafeteiras' };
+    const fetchMock = mockFetchSequence([
+      {
+        status: 200,
+        body: { items: [validCategory], page: 1, pageSize: 100, total: 2, totalPages: 2 },
+      },
+      {
+        status: 200,
+        body: { items: [categoryB], page: 2, pageSize: 100, total: 2, totalPages: 2 },
+      },
+    ]);
+
+    await expect(listPublicCategories()).resolves.toEqual([validCategory, categoryB]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3000/public/sites/test-site/categories?page=1&pageSize=100',
+      { cache: 'force-cache' },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:3000/public/sites/test-site/categories?page=2&pageSize=100',
+      { cache: 'force-cache' },
+    );
+  });
+
+  it('com total: 0 (totalPages: 0), busca uma única vez e retorna lista vazia — nunca assume página única sem checar totalPages', async () => {
+    const fetchMock = mockFetchSequence([
+      { status: 200, body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 } },
+    ]);
+
+    await expect(listPublicCategories()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('lança PublicApiError em erro HTTP (nunca captura para lista vazia/degradação — isso é responsabilidade de quem chama)', async () => {
+    mockFetchOnce(500, {
+      statusCode: 500,
+      code: 'INTERNAL_ERROR',
+      error: 'Internal Server Error',
+      message: 'Ocorreu um erro inesperado.',
+    });
+
+    await expect(listPublicCategories()).rejects.toThrow(PublicApiError);
+  });
+
+  it('lança PublicApiError (INVALID_RESPONSE_SHAPE) quando a resposta 200 não bate com o contrato paginado', async () => {
+    mockFetchOnce(200, { items: 'not-an-array' });
+
+    await expect(listPublicCategories()).rejects.toMatchObject({ code: 'INVALID_RESPONSE_SHAPE' });
+  });
+
+  it('propaga falha de rede sem capturar nem converter', async () => {
+    const networkError = new TypeError('fetch failed');
+    global.fetch = jest.fn<typeof fetch>().mockRejectedValue(networkError);
+
+    await expect(listPublicCategories()).rejects.toBe(networkError);
   });
 });

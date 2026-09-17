@@ -4,6 +4,7 @@ import {
   apiErrorSchema,
   listPublicArticlesQuerySchema,
   listPublicArticlesResponseSchema,
+  listPublicCategoriesResponseSchema,
   publicArticleSchema,
   publicCategorySchema,
   type ListPublicArticlesResponse,
@@ -20,11 +21,15 @@ import { PublicApiError } from './errors';
  * deployment de `apps/fastcompre` representa um único Site; resolução por
  * hostname/domínio está fora do escopo desta fase.
  *
- * NOTA SOBRE CACHE: nenhuma destas chamadas `fetch()` define política
- * explícita de cache/revalidação. A estratégia concreta necessária para
- * cumprir a intenção arquitetural de geração estática + cache + revalidação
+ * NOTA SOBRE CACHE: `listPublicArticles`, `getPublicArticle` e
+ * `getPublicCategory` não definem política explícita de cache/revalidação
+ * nestas chamadas `fetch()`. A estratégia concreta necessária para cumprir
+ * a intenção arquitetural de geração estática + cache + revalidação
  * (Architecture.md §13) será decidida nas tarefas que efetivamente
- * consomem este cliente, sem antecipar aqui a Fase 14 (Revalidação).
+ * consomem essas funções, sem antecipar aqui a Fase 14 (Revalidação).
+ * Exceção já fechada: `listPublicCategories` (UXW-003) define
+ * `cache: 'force-cache'` de forma localizada só naquela chamada — ver seu
+ * próprio doc comment para o porquê.
  */
 
 type ListPublicArticlesInput = z.input<typeof listPublicArticlesQuerySchema>;
@@ -33,9 +38,23 @@ function publicSiteUrl(path: string): string {
   return `${env.API_URL}/public/sites/${env.SITE_SLUG}${path}`;
 }
 
-async function requestJson(url: string): Promise<{ ok: boolean; status: number; body: unknown }> {
+/**
+ * `init` opcional — aditivo. Só invoca `fetch(url, init)` (2 argumentos)
+ * quando `init` é de fato informado; caso contrário chama `fetch(url)` (1
+ * argumento), exatamente como antes — as três chamadas existentes não
+ * informam `init`, então nem seu comportamento real (idêntico de qualquer
+ * forma no Fetch API) nem a assinatura exata da chamada capturada pelos
+ * mocks de teste existentes (`toHaveBeenCalledWith(url)`, um só argumento)
+ * mudam. Único motivo de `init` existir: `listPublicCategories` (UXW-003)
+ * precisa de `{ cache: 'force-cache' }` localizado nesta única chamada —
+ * ver doc comment daquela função para o porquê.
+ */
+async function requestJson(
+  url: string,
+  init?: RequestInit,
+): Promise<{ ok: boolean; status: number; body: unknown }> {
   // Falha de rede (fetch rejeitando) propaga sem conversão para PublicApiError.
-  const response = await fetch(url);
+  const response = init ? await fetch(url, init) : await fetch(url);
   const body = await response.json().catch(() => undefined);
   return { ok: response.ok, status: response.status, body };
 }
@@ -137,4 +156,65 @@ export async function getPublicCategory(slug: string): Promise<PublicCategory | 
   }
 
   return parseOrThrow(publicCategorySchema, body, status);
+}
+
+/**
+ * `GET /public/sites/:siteSlug/categories` (UXF-010), consumida pelo
+ * `SiteHeader` (UXW-003) para montar o menu global de Categorias.
+ *
+ * Paginação real, não assumida: pede sempre `pageSize: 100` (o máximo do
+ * contrato), mas nunca presume que uma única página basta — acumula
+ * `items` e só para quando `page` alcança o `totalPages` devolvido pela
+ * própria resposta (`total`/`totalPages` são a fonte de verdade, não o
+ * tamanho do array recebido). Com `total: 0`, `totalPages` é `0` e o loop
+ * termina após a primeira volta, com lista vazia.
+ *
+ * Sem reordenar/refiltrar no cliente — a API já ordena por `name asc` e já
+ * filtra `archivedAt: null` estruturalmente (`findManyUnarchivedBySite`);
+ * duplicar isso aqui seria uma segunda fonte de verdade para uma regra que
+ * já pertence à API.
+ *
+ * `cache: 'force-cache'` informado diretamente nesta chamada (via `init`
+ * de `requestJson`), não via `fetchCache` de segmento: quem consome esta
+ * função é o `SiteHeader`, renderizado pelo layout raiz, e a decisão
+ * fechada da UXW-003 proíbe alterar o `fetchCache` do root layout. Isso
+ * funciona porque o endpoint interno de revalidação
+ * (`api/internal/revalidate/route.ts`) já chama incondicionalmente
+ * `revalidatePath('/', 'layout')` a cada gatilho — inclusive nos quatro
+ * caminhos de mutação de Categoria, via UXF-010A — invalidando exatamente
+ * o segmento onde este fetch roda. Nenhum TTL arbitrário, nenhuma cache
+ * tag nova.
+ *
+ * Erro de rede/HTTP propaga (não retorna `null`/lista vazia silenciosa) —
+ * a degradação graciosa (Header funcional, `<nav>` de Categorias omitido)
+ * é responsabilidade de quem chama esta função (`SiteHeader`), não dela.
+ */
+export async function listPublicCategories(): Promise<PublicCategory[]> {
+  const pageSize = 100;
+  const items: PublicCategory[] = [];
+  let page = 1;
+  // Placeholder só para satisfazer a condição da primeira volta do loop —
+  // sobrescrito pelo `totalPages` real devolvido já na primeira resposta,
+  // antes de qualquer decisão de continuar ou parar.
+  let totalPages = 1;
+
+  do {
+    const searchParams = new URLSearchParams();
+    searchParams.set('page', String(page));
+    searchParams.set('pageSize', String(pageSize));
+
+    const url = `${publicSiteUrl('/categories')}?${searchParams.toString()}`;
+    const { ok, status, body } = await requestJson(url, { cache: 'force-cache' });
+
+    if (!ok) {
+      throwApiError(status, body);
+    }
+
+    const parsed = parseOrThrow(listPublicCategoriesResponseSchema, body, status);
+    items.push(...parsed.items);
+    totalPages = parsed.totalPages;
+    page += 1;
+  } while (page <= totalPages);
+
+  return items;
 }

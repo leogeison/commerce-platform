@@ -1,6 +1,5 @@
-import { describe, expect, it } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
-import RootLayout from './layout';
 import { SiteFooter } from './site-footer';
 
 /**
@@ -17,6 +16,18 @@ import { SiteFooter } from './site-footer';
  * padrão do teste de integração já existente para `<SiteHeader />`. Não
  * duplica um teste por rota: a herança pelo root layout já comprova a
  * presença do footer nas 3 rotas públicas.
+ *
+ * UXW-003 (ajuste mínimo, consequência direta e necessária de
+ * `SiteHeader` ter passado a ser `async`): `layout.tsx` continua
+ * compondo `<SiteHeader />` antes de `<SiteFooter />`/`{children}` — um
+ * componente de servidor assíncrono passado como filho de outro elemento
+ * não é suportado por `renderToStaticMarkup` (só pela árvore RSC real do
+ * Next.js em runtime), então este `describe` mocka `./site-header` por um
+ * stub síncrono mínimo antes de importar `layout.tsx` dinamicamente —
+ * mesmo tratamento já aplicado ao teste equivalente em
+ * `site-header.spec.tsx`. Isso não testa `SiteHeader` (isso é
+ * `site-header.spec.tsx` + `category-nav.spec.tsx`); só isola a ordem de
+ * composição do próprio `layout.tsx`, que continua síncrono.
  */
 describe('SiteFooter', () => {
   it('renderiza um landmark <footer> com o texto de divulgação de afiliação aprovado', () => {
@@ -30,7 +41,16 @@ describe('SiteFooter', () => {
 });
 
 describe('RootLayout — composição do footer', () => {
-  it('compõe <SiteFooter /> depois do conteúdo da página em <body>', () => {
+  afterEach(() => {
+    jest.resetModules();
+  });
+
+  it('compõe <SiteFooter /> depois do conteúdo da página em <body>', async () => {
+    jest.doMock('./site-header', () => ({
+      SiteHeader: () => <header data-testid="mock-header" />,
+    }));
+
+    const { default: RootLayout } = await import('./layout');
     const html = renderToStaticMarkup(
       <RootLayout>
         <div data-testid="page-content">conteúdo da página</div>
