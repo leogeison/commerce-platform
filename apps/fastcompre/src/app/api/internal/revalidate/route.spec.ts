@@ -69,10 +69,23 @@ describe('POST /api/internal/revalidate', () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
-  it('responde 400 e não revalida nada quando o payload não corresponde ao contrato', async () => {
-    const { status, revalidatePathMock } = await callRouteWith({
+  it('aceita payload sitewide (sem articleSlug, opcional desde a UXF-010A): revalida a árvore de rotas e o sitemap, respondendo 200', async () => {
+    const { status, json, revalidatePathMock } = await callRouteWith({
       headers: VALID_HEADERS,
       body: { siteSlug: 'test-site' },
+    });
+
+    expect(status).toBe(200);
+    expect(json).toEqual({ revalidated: true });
+    expect(revalidatePathMock).toHaveBeenCalledTimes(2);
+    expect(revalidatePathMock).toHaveBeenNthCalledWith(1, '/', 'layout');
+    expect(revalidatePathMock).toHaveBeenNthCalledWith(2, '/sitemap.xml');
+  });
+
+  it('responde 400 e não revalida nada quando o payload não corresponde ao contrato (siteSlug ausente, obrigatório)', async () => {
+    const { status, revalidatePathMock } = await callRouteWith({
+      headers: VALID_HEADERS,
+      body: {},
     });
 
     expect(status).toBe(400);

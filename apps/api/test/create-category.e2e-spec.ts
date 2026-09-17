@@ -4,7 +4,8 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { categoryAdminSchema } from '@commerce-platform/contracts';
-import { CatalogModule } from '../src/modules/catalog/catalog.module';
+import { ApplicationModule } from '../src/modules/application/application.module';
+import { REVALIDATION_PORT, type RevalidationPort } from '../src/modules/revalidation/domain/revalidation.port';
 import { ADMIN_SESSION_COOKIE_NAME } from '../src/modules/identity/session.constants';
 import {
   generateSessionToken,
@@ -22,10 +23,16 @@ const SESSION_SECRET = process.env.SESSION_SECRET!;
 const USER_EMAIL = 'cat001-user@test.com';
 
 /**
- * `POST /admin/sites/:siteSlug/categories` (e2e, CAT-001). Exige Postgres
- * real (mesmo requisito de `database.e2e-spec.ts`) — monta `CatalogModule`
- * real (não um controller de teste), já que `CategoriesController` é
- * produção.
+ * `POST /admin/sites/:siteSlug/categories` (e2e, CAT-001; UXF-010A). Exige
+ * Postgres real (mesmo requisito de `database.e2e-spec.ts`) — monta
+ * `ApplicationModule` real (não um controller de teste), já que a rota
+ * passou a viver em `CreateCategoryController` desde a UXF-010A (antes,
+ * `CategoriesController`/`CatalogModule`).
+ *
+ * `RevalidationPort` é sobrescrita por um fake — mesmo padrão de
+ * `update-category.e2e-spec.ts` — para provar a orquestração (criar +
+ * tentar revalidar por `siteSlug`), não a chamada HTTP real de
+ * `HttpRevalidationAdapter`.
  */
 describe('POST /admin/sites/:siteSlug/categories (e2e)', () => {
   let app: INestApplication<App> | undefined;
@@ -34,11 +41,17 @@ describe('POST /admin/sites/:siteSlug/categories (e2e)', () => {
   let siteA: Site;
   let siteB: Site;
   let token: string;
+  let revalidationPort: jest.Mocked<RevalidationPort>;
 
   beforeEach(async () => {
+    revalidationPort = { revalidate: jest.fn().mockResolvedValue(undefined) };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [CatalogModule],
-    }).compile();
+      imports: [ApplicationModule],
+    })
+      .overrideProvider(REVALIDATION_PORT)
+      .useValue(revalidationPort)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
@@ -130,6 +143,9 @@ describe('POST /admin/sites/:siteSlug/categories (e2e)', () => {
     expect(response.body.name).toBe('Eletrônicos');
     expect(response.body.slug).toBe('eletronicos');
     expect(response.body.archivedAt).toBeNull();
+
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidationPort.revalidate).toHaveBeenCalledWith({ siteSlug: siteA.slug });
   });
 
   it('OWNER também cria Categoria: 201', async () => {
@@ -166,6 +182,10 @@ describe('POST /admin/sites/:siteSlug/categories (e2e)', () => {
     });
     expect(persisted).toHaveLength(1);
     expect(persisted[0]?.name).toBe('Moda');
+
+    // Só a primeira criação (bem-sucedida) aciona a revalidação — o
+    // conflito de slug na segunda tentativa não.
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
   });
 
   it('mesmo slug em dois Sites diferentes: os dois criam com sucesso (201)', async () => {

@@ -16,6 +16,9 @@ import { RemoveCategoryUseCase } from './application/remove-category.use-case';
 import { RemoveOfferUseCase } from './application/remove-offer.use-case';
 import { RemoveProductUseCase } from './application/remove-product.use-case';
 import { RevalidateAffectedArticlesUseCase } from './application/revalidate-affected-articles.use-case';
+import { RevalidateCategoryUseCase } from './application/revalidate-category.use-case';
+import { CreateCategoryAndRevalidateUseCase } from './application/create-category-and-revalidate.use-case';
+import { CategoryArchiveAndRevalidateUseCase } from './application/category-archive-and-revalidate.use-case';
 import { UpdateCategoryAndRevalidateUseCase } from './application/update-category-and-revalidate.use-case';
 import { UpdateProductAndRevalidateUseCase } from './application/update-product-and-revalidate.use-case';
 import { ProductArchiveAndRevalidateUseCase } from './application/product-archive-and-revalidate.use-case';
@@ -28,6 +31,8 @@ import { ArticleHealthController } from './presentation/article-health.controlle
 import { PublishArticleController } from './presentation/publish-article.controller';
 import { ProductArchiveController } from './presentation/product-archive.controller';
 import { OfferArchiveController } from './presentation/offer-archive.controller';
+import { CreateCategoryController } from './presentation/create-category.controller';
+import { CategoryArchiveController } from './presentation/category-archive.controller';
 import { RemoveCategoryController } from './presentation/remove-category.controller';
 import { RemoveOfferController } from './presentation/remove-offer.controller';
 import { RemoveProductController } from './presentation/remove-product.controller';
@@ -102,19 +107,58 @@ import { UpdateAuthorController } from './presentation/update-author.controller'
  * propaga; tudo é capturado e logado. Nenhum `exports` ainda: nenhum
  * consumidor fora deste módulo.
  *
- * `UpdateCategoryAndRevalidateUseCase` (REV-009) é o único caminho HTTP que
+ * `RevalidateCategoryUseCase` (UXF-010A) é a coordenação de revalidação
+ * específica de Categoria: um único `REVALIDATION_PORT.revalidate({ siteSlug })`
+ * best-effort (sem `articleSlug`, agora opcional em
+ * `revalidateRequestSchema`), sem descobrir Artigos afetados — a UXW-001
+ * tornou a página de Categoria do FastCompre uma leitura ao vivo do
+ * catálogo. Sem controller, sem contrato próprio. Substitui
+ * `RevalidateAffectedArticlesUseCase.revalidateForCategory` como
+ * dependência dos orquestradores de Categoria (`UpdateCategoryAndRevalidateUseCase`,
+ * `CreateCategoryAndRevalidateUseCase`, `CategoryArchiveAndRevalidateUseCase`)
+ * — `revalidateForCategory`/`findByCategory` continuam existindo,
+ * intocados, sem consumidor depois desta tarefa.
+ *
+ * `UpdateCategoryAndRevalidateUseCase` (REV-009; passou a usar
+ * `RevalidateCategoryUseCase` na UXF-010A) é o único caminho HTTP que
  * persiste alterações de `Category`: atualiza via `UpdateCategoryUseCase`
  * (exportado por `CatalogModule`) e, em caso de sucesso, aciona
- * `RevalidateAffectedArticlesUseCase.revalidateForCategory` (já provider
- * deste módulo). `UpdateCategoryController`
- * (`PATCH .../categories/:id`) é seu único consumidor HTTP —
- * `UpdateCategoryUseCase` nunca é injetado diretamente por nenhum
- * controller. Diferente de `PublishArticleAndRevalidateUseCase`/
+ * `RevalidateCategoryUseCase.execute` (já provider deste módulo).
+ * `UpdateCategoryController` (`PATCH .../categories/:id`) é seu único
+ * consumidor HTTP — `UpdateCategoryUseCase` nunca é injetado diretamente
+ * por nenhum controller. Diferente de `PublishArticleAndRevalidateUseCase`/
  * `ArchiveArticleAndRevalidateUseCase` (que chamam `RevalidationPort`
  * diretamente e por isso têm `try/catch`/`Logger` próprios),
  * `UpdateCategoryAndRevalidateUseCase` não precisa de nenhum dos dois —
- * `RevalidateAffectedArticlesUseCase` já garante que nunca propaga e já
- * loga internamente.
+ * `RevalidateCategoryUseCase` já garante que nunca propaga e já loga
+ * internamente.
+ *
+ * `CreateCategoryAndRevalidateUseCase` (UXF-010A) é, pelo mesmo critério, o
+ * único caminho HTTP que persiste a criação de `Category`: cria via
+ * `CreateCategoryUseCase` (Catalog, agora exportado) e, em caso de sucesso,
+ * aciona `RevalidateCategoryUseCase.execute`. `CreateCategoryController`
+ * (`POST .../categories`) é seu único consumidor HTTP —
+ * `CreateCategoryUseCase` nunca é injetado diretamente por nenhum
+ * controller depois desta tarefa (`CategoriesController` perdeu `create()`).
+ *
+ * `CategoryArchiveAndRevalidateUseCase` (UXF-010A) é, pelo mesmo critério
+ * de `ProductArchiveAndRevalidateUseCase`/`OfferArchiveAndRevalidateUseCase`,
+ * o único caminho HTTP que persiste `archivedAt` de `Category`, nos dois
+ * sentidos: `archive()` chama `ArchiveCategoryUseCase` (CAT-005),
+ * `unarchive()` chama `UnarchiveCategoryUseCase` (CAT-006) — ambos
+ * exportados por `CatalogModule` desde UXF-010A — e, em caso de sucesso
+ * (`Category` não nula, incluindo o sucesso idempotente de arquivar uma já
+ * arquivada ou desarquivar uma já ativa, decisão explícita espelhando o
+ * precedente de `ProductArchiveAndRevalidateUseCase`), aciona
+ * `RevalidateCategoryUseCase.execute`. `CategoryArchiveController`
+ * (`POST .../categories/:id/archive` e `/unarchive`) é seu único
+ * consumidor HTTP — nem `ArchiveCategoryUseCase` nem
+ * `UnarchiveCategoryUseCase` são injetados diretamente por nenhum
+ * controller depois desta tarefa (`CategoriesController` perdeu
+ * `archive()`/`unarchive()`). Uma única classe cobre os dois endpoints, mas
+ * os dois métodos permanecem explícitos, sem despacho genérico entre eles.
+ * Sem `try/catch`/`Logger` própria, pela mesma razão dos demais
+ * orquestradores baseados em `RevalidateCategoryUseCase`.
  *
  * `RemoveCategoryUseCase` (APP-006) reaproveita `PrismaArticleRepository`
  * (Editorial, já exportado desde APP-001) e `DeleteCategoryUseCase`
@@ -248,6 +292,8 @@ import { UpdateAuthorController } from './presentation/update-author.controller'
     PublishArticleController,
     ArchiveArticleController,
     UpdateCategoryController,
+    CreateCategoryController,
+    CategoryArchiveController,
     UpdateProductController,
     ProductArchiveController,
     UpdateOfferController,
@@ -265,7 +311,10 @@ import { UpdateAuthorController } from './presentation/update-author.controller'
     PublishArticleAndRevalidateUseCase,
     ArchiveArticleAndRevalidateUseCase,
     RevalidateAffectedArticlesUseCase,
+    RevalidateCategoryUseCase,
     UpdateCategoryAndRevalidateUseCase,
+    CreateCategoryAndRevalidateUseCase,
+    CategoryArchiveAndRevalidateUseCase,
     UpdateProductAndRevalidateUseCase,
     ProductArchiveAndRevalidateUseCase,
     UpdateOfferAndRevalidateUseCase,

@@ -76,6 +76,14 @@ import { PublicCategoryController } from './presentation/public-category.control
  * (CAT-019/020) agora também exportados, pelo mesmo critério: sem
  * controller próprio, chamados exclusivamente por
  * `OfferArchiveAndRevalidateUseCase` em `ApplicationModule` (REV-013).
+ * `CreateCategoryUseCase`/`ArchiveCategoryUseCase`/`UnarchiveCategoryUseCase`
+ * (CAT-001/005/006) agora também exportados (UXF-010A), mesmo critério dos
+ * demais: sem controller próprio em `catalog` depois desta tarefa — só
+ * chamados por `CreateCategoryAndRevalidateUseCase`/
+ * `CategoryArchiveAndRevalidateUseCase` em `ApplicationModule`.
+ * `CategoriesController` perdeu `create()`/`archive()`/`unarchive()` nesta
+ * mesma tarefa; mantém só `list()`/`detail()`, que nunca precisaram desses
+ * três casos de uso.
  *
  * `PublicCategoryController`/`GetPublicCategoryUseCase` (PUB-004): leitura
  * pública de Categoria entra no mesmo módulo, não um módulo "public"
@@ -134,6 +142,9 @@ import { PublicCategoryController } from './presentation/public-category.control
     UpdateOfferUseCase,
     ArchiveOfferUseCase,
     UnarchiveOfferUseCase,
+    CreateCategoryUseCase,
+    ArchiveCategoryUseCase,
+    UnarchiveCategoryUseCase,
   ],
 })
 export class CatalogModule {}

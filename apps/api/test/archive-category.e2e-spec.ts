@@ -4,7 +4,8 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { apiErrorSchema, categoryAdminSchema } from '@commerce-platform/contracts';
-import { CatalogModule } from '../src/modules/catalog/catalog.module';
+import { ApplicationModule } from '../src/modules/application/application.module';
+import { REVALIDATION_PORT, type RevalidationPort } from '../src/modules/revalidation/domain/revalidation.port';
 import { ADMIN_SESSION_COOKIE_NAME } from '../src/modules/identity/session.constants';
 import {
   generateSessionToken,
@@ -22,8 +23,14 @@ const SESSION_SECRET = process.env.SESSION_SECRET!;
 const USER_EMAIL = 'cat005-user@test.com';
 
 /**
- * `POST /admin/sites/:siteSlug/categories/:id/archive` (e2e, CAT-005).
- * Exige Postgres real (mesmo requisito de `database.e2e-spec.ts`).
+ * `POST /admin/sites/:siteSlug/categories/:id/archive` (e2e, CAT-005;
+ * UXF-010A). Exige Postgres real (mesmo requisito de
+ * `database.e2e-spec.ts`) — monta `ApplicationModule` real, já que a rota
+ * passou a viver em `CategoryArchiveController` desde a UXF-010A (antes,
+ * `CategoriesController`/`CatalogModule`).
+ *
+ * `RevalidationPort` é sobrescrita por um fake — mesmo padrão de
+ * `update-category.e2e-spec.ts`/`create-category.e2e-spec.ts`.
  */
 describe('POST /admin/sites/:siteSlug/categories/:id/archive (e2e)', () => {
   let app: INestApplication<App> | undefined;
@@ -32,11 +39,17 @@ describe('POST /admin/sites/:siteSlug/categories/:id/archive (e2e)', () => {
   let siteA: Site;
   let siteB: Site;
   let token: string;
+  let revalidationPort: jest.Mocked<RevalidationPort>;
 
   beforeEach(async () => {
+    revalidationPort = { revalidate: jest.fn().mockResolvedValue(undefined) };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [CatalogModule],
-    }).compile();
+      imports: [ApplicationModule],
+    })
+      .overrideProvider(REVALIDATION_PORT)
+      .useValue(revalidationPort)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
@@ -143,9 +156,12 @@ describe('POST /admin/sites/:siteSlug/categories/:id/archive (e2e)', () => {
     expect(categoryAdminSchema.safeParse(response.body).success).toBe(true);
     expect(response.body.id).toBe(category.id);
     expect(response.body.archivedAt).not.toBeNull();
+
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidationPort.revalidate).toHaveBeenCalledWith({ siteSlug: siteA.slug });
   });
 
-  it('idempotente: arquivar duas vezes mantém o mesmo archivedAt', async () => {
+  it('idempotente: arquivar duas vezes mantém o mesmo archivedAt, e cada chamada ainda aciona a revalidação (UXF-010A)', async () => {
     await setRole(siteA, Role.OWNER);
     const category = await createCategory(siteA, 'Casa', 'casa');
 
@@ -162,6 +178,11 @@ describe('POST /admin/sites/:siteSlug/categories/:id/archive (e2e)', () => {
       .set('Origin', ADMIN_ORIGIN);
     expect(second.status).toBe(200);
     expect(second.body.archivedAt).toBe(firstArchivedAt);
+
+    // Sucesso idempotente (segunda chamada, já arquivada) ainda aciona a
+    // revalidação, mesmo sem transição real de estado — decisão explícita
+    // espelhando `ProductArchiveAndRevalidateUseCase`.
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(2);
   });
 
   it('id inexistente no próprio Site: 404, corpo válido contra apiErrorSchema', async () => {

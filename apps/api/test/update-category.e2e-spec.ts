@@ -146,7 +146,7 @@ describe('PATCH /admin/sites/:siteSlug/categories/:id (e2e)', () => {
     });
   }
 
-  it('EDITOR atualiza Categoria sem Artigo afetado: 200, persistido, revalidação nunca chamada', async () => {
+  it('EDITOR atualiza Categoria sem Artigo afetado: 200, persistido, revalidação por siteSlug ainda é acionada (UXF-010A)', async () => {
     await setRole(siteA, Role.EDITOR);
     const category = await createCategory(siteA, 'Eletrônicos', 'eletronicos');
 
@@ -165,10 +165,50 @@ describe('PATCH /admin/sites/:siteSlug/categories/:id (e2e)', () => {
     expect(persisted?.name).toBe('Eletrônicos e Acessórios');
     expect(persisted?.slug).toBe('eletronicos-e-acessorios');
 
-    expect(revalidationPort.revalidate).not.toHaveBeenCalled();
+    // Desde a UXF-010A, atualizar Categoria sempre aciona uma tentativa de
+    // revalidação por `siteSlug` (RevalidateCategoryUseCase), independente
+    // de haver Artigo publicado afetado — a revalidação não descobre mais
+    // Artigos individualmente.
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidationPort.revalidate).toHaveBeenCalledWith({ siteSlug: siteA.slug });
   });
 
-  it('Artigo PUBLISHED referencia a Categoria: PATCH altera name/slug da Categoria, persiste, e REV-005/APP-005 encontra o Artigo por categoryId — revalidate recebe siteSlug do Site e articleSlug do Artigo', async () => {
+  it('N Artigos PUBLISHED referenciam a Categoria: revalidate ainda é chamado exatamente uma vez (UXF-010A não escala por Artigo)', async () => {
+    await setRole(siteA, Role.EDITOR);
+    const category = await createCategory(siteA, 'Cozinha', 'cozinha');
+    await prisma.article.create({
+      data: {
+        siteId: siteA.id,
+        categoryId: category.id,
+        title: 'Melhor panela de pressão',
+        slug: 'melhor-panela-de-pressao',
+        type: ArticleType.REVIEW,
+        status: ArticleStatus.PUBLISHED,
+      },
+    });
+    await prisma.article.create({
+      data: {
+        siteId: siteA.id,
+        categoryId: category.id,
+        title: 'Melhor liquidificador',
+        slug: 'melhor-liquidificador',
+        type: ArticleType.REVIEW,
+        status: ArticleStatus.PUBLISHED,
+      },
+    });
+
+    const response = await request(app!.getHttpServer())
+      .patch(patchUrl(siteA, category.id))
+      .set('Cookie', cookieHeader())
+      .set('Origin', ADMIN_ORIGIN)
+      .send({ name: 'Cozinha e Utensílios' });
+
+    expect(response.status).toBe(200);
+    expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
+    expect(revalidationPort.revalidate).toHaveBeenCalledWith({ siteSlug: siteA.slug });
+  });
+
+  it('Artigo PUBLISHED referencia a Categoria: PATCH altera name/slug da Categoria, persiste, e revalidate recebe só siteSlug do Site (sem descoberta de Artigo desde a UXF-010A)', async () => {
     await setRole(siteA, Role.EDITOR);
     const category = await createCategory(siteA, 'Fones', 'fones');
     const article = await prisma.article.create({
@@ -201,10 +241,7 @@ describe('PATCH /admin/sites/:siteSlug/categories/:id (e2e)', () => {
     expect(persistedArticle?.categoryId).toBe(category.id);
 
     expect(revalidationPort.revalidate).toHaveBeenCalledTimes(1);
-    expect(revalidationPort.revalidate).toHaveBeenCalledWith({
-      siteSlug: siteA.slug,
-      articleSlug: article.slug,
-    });
+    expect(revalidationPort.revalidate).toHaveBeenCalledWith({ siteSlug: siteA.slug });
   });
 
   it('id inexistente no próprio Site: 404, revalidação nunca chamada', async () => {

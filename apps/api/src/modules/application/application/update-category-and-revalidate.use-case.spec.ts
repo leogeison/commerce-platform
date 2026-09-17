@@ -3,7 +3,7 @@ import type {
   UpdateCategoryUseCase,
   UpdateCategoryResult,
 } from '../../catalog/application/update-category.use-case';
-import type { RevalidateAffectedArticlesUseCase } from './revalidate-affected-articles.use-case';
+import type { RevalidateCategoryUseCase } from './revalidate-category.use-case';
 import type { Category } from '../../../generated/prisma/client';
 
 describe('UpdateCategoryAndRevalidateUseCase', () => {
@@ -12,16 +12,16 @@ describe('UpdateCategoryAndRevalidateUseCase', () => {
       execute: jest.fn().mockResolvedValue(updateResult),
     } as unknown as jest.Mocked<UpdateCategoryUseCase>;
 
-    const revalidateAffectedArticlesUseCase = {
-      revalidateForCategory: jest.fn().mockResolvedValue(undefined),
-    } as unknown as jest.Mocked<RevalidateAffectedArticlesUseCase>;
+    const revalidateCategoryUseCase = {
+      execute: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<RevalidateCategoryUseCase>;
 
     const useCase = new UpdateCategoryAndRevalidateUseCase(
       updateCategoryUseCase,
-      revalidateAffectedArticlesUseCase,
+      revalidateCategoryUseCase,
     );
 
-    return { useCase, updateCategoryUseCase, revalidateAffectedArticlesUseCase };
+    return { useCase, updateCategoryUseCase, revalidateCategoryUseCase };
   }
 
   const input = {
@@ -32,8 +32,8 @@ describe('UpdateCategoryAndRevalidateUseCase', () => {
     slug: 'nova-categoria',
   };
 
-  it('categoria não encontrada: não chama REV-005, devolve o resultado como veio', async () => {
-    const { useCase, updateCategoryUseCase, revalidateAffectedArticlesUseCase } = build({
+  it('categoria não encontrada: não chama a revalidação, devolve o resultado como veio', async () => {
+    const { useCase, updateCategoryUseCase, revalidateCategoryUseCase } = build({
       ok: false,
       reason: 'NOT_FOUND',
     });
@@ -47,11 +47,11 @@ describe('UpdateCategoryAndRevalidateUseCase', () => {
       slug: 'nova-categoria',
     });
     expect(result).toEqual({ ok: false, reason: 'NOT_FOUND' });
-    expect(revalidateAffectedArticlesUseCase.revalidateForCategory).not.toHaveBeenCalled();
+    expect(revalidateCategoryUseCase.execute).not.toHaveBeenCalled();
   });
 
-  it('slug conflitante: não chama REV-005, devolve o resultado como veio', async () => {
-    const { useCase, revalidateAffectedArticlesUseCase } = build({
+  it('slug conflitante: não chama a revalidação, devolve o resultado como veio', async () => {
+    const { useCase, revalidateCategoryUseCase } = build({
       ok: false,
       reason: 'SLUG_CONFLICT',
     });
@@ -59,18 +59,18 @@ describe('UpdateCategoryAndRevalidateUseCase', () => {
     const result = await useCase.execute(input);
 
     expect(result).toEqual({ ok: false, reason: 'SLUG_CONFLICT' });
-    expect(revalidateAffectedArticlesUseCase.revalidateForCategory).not.toHaveBeenCalled();
+    expect(revalidateCategoryUseCase.execute).not.toHaveBeenCalled();
   });
 
-  it('atualização bem-sucedida: aciona REV-005 com siteId/siteSlug/categoryId corretos e devolve a Categoria atualizada', async () => {
+  it('atualização bem-sucedida: aciona a revalidação com siteId/siteSlug/categoryId corretos e devolve a Categoria atualizada', async () => {
     const category = { id: 'category-1', name: 'Nova Categoria', slug: 'nova-categoria' } as Category;
-    const { useCase, revalidateAffectedArticlesUseCase } = build({ ok: true, category });
+    const { useCase, revalidateCategoryUseCase } = build({ ok: true, category });
 
     const result = await useCase.execute(input);
 
     expect(result).toEqual({ ok: true, category });
-    expect(revalidateAffectedArticlesUseCase.revalidateForCategory).toHaveBeenCalledTimes(1);
-    expect(revalidateAffectedArticlesUseCase.revalidateForCategory).toHaveBeenCalledWith({
+    expect(revalidateCategoryUseCase.execute).toHaveBeenCalledTimes(1);
+    expect(revalidateCategoryUseCase.execute).toHaveBeenCalledWith({
       siteId: 'site-1',
       siteSlug: 'fastcompre',
       categoryId: 'category-1',

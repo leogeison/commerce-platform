@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { CatalogModule } from '../src/modules/catalog/catalog.module';
+import { ApplicationModule } from '../src/modules/application/application.module';
 import { ADMIN_SESSION_COOKIE_NAME } from '../src/modules/identity/session.constants';
 import {
   generateSessionToken,
@@ -56,7 +56,7 @@ describe('Bloqueio de acesso cruzado no Catalog (e2e, dedicado — CAT-022)', ()
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [CatalogModule],
+      imports: [ApplicationModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
