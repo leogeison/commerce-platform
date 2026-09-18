@@ -1,0 +1,59 @@
+/*
+ * apps/fastcompre/src/app/category-nav.module.css
+ *
+ * UXW-004 — drawer mobile de Categorias como gaveta lateral. Mesmo
+ * padrão/estrutura de `apps/admin/src/app/[siteSlug]/sidebar-nav.module.css`
+ * (UXA-019B): primeiro CSS Module deste componente, cobrindo só o que
+ * Tailwind não expressa diretamente — `[open]`/`::backdrop` e um `width`
+ * em `min()` combinando `vw` com um teto fixo.
+ *
+ * `.drawer[open]` estiliza a MESMA instância de `<dialog>`/`showModal()`
+ * já existente em `category-nav.tsx` — nenhum mecanismo/elemento novo.
+ * `showModal()` promove o `<dialog>` ao top-layer; `margin: 0` +
+ * `top`/`left: 0` sobrescrevem a centralização automática da UA
+ * stylesheet, fixando-o à borda esquerda.
+ *
+ * O seletor precisa ser `.drawer[open]`, nunca `.drawer` puro — `[open]`
+ * é o atributo nativo que `showModal()`/`close()` já alternam sozinhos,
+ * sem nenhum JS adicional. Sem esse escopo, uma regra de autor sem
+ * `[open]` (ex.: `display: flex`) derruba a regra nativa
+ * `dialog:not([open]) { display: none }` da UA stylesheet — autor sempre
+ * vence UA na mesma importância, independente de especificidade — e o
+ * `<dialog>` passaria a ser renderizado mesmo fechado.
+ *
+ * Nenhuma transição/animação (decisão fechada no desenho técnico da
+ * UXW-004, mesma decisão já tomada pelo Admin na UXA-019B) — abrir/fechar
+ * é estático.
+ */
+.drawer[open] {
+  margin: 0;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  /* Navegadores sem suporte a `dvh` ignoram esta declaração inválida e
+     mantêm o `100vh` acima — fallback padrão, sem feature query. */
+  height: 100dvh;
+  width: min(85vw, 320px);
+  max-width: min(85vw, 320px);
+  border: none;
+  border-right: 1px solid var(--color-border-default);
+  border-radius: 0;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+}
+
+/*
+ * Nenhum token semântico de scrim/overlay existe hoje em
+ * `packages/ui/tokens/semantic-colors.css` (mesma constatação já
+ * registrada em `sidebar-nav.module.css`). Uso direto do primitivo
+ * `--color-neutral-900` (o mais escuro da rampa neutra do projeto) com
+ * alpha via `color-mix()`, escopado só a este componente — mesmo
+ * tratamento do Admin, sem token novo.
+ */
+.drawer[open]::backdrop {
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
