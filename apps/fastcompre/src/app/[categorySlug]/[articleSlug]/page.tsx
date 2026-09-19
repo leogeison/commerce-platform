@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { getPublicArticle } from '@/lib/public-api/client';
-import { env } from '@/lib/env';
 import { compileArticleBody } from './compile-article-body';
+import { affiliateRedirectHref } from './affiliate-redirect-href';
+import { ArticleJsonLd } from './article-json-ld';
 
 /**
  * Sem `generateStaticParams`, esta rota dinâmica já não tenta buscar dados
@@ -14,28 +15,6 @@ export const fetchCache = 'force-cache';
 
 interface ArticlePageProps {
   params: Promise<{ categorySlug: string; articleSlug: string }>;
-}
-
-/**
- * Monta o `href` de `GET /r/:siteSlug/:offerId` (WEB-009; Architecture.md
- * §20 — Fluxo de Tracking). `env.AFFILIATE_REDIRECT_URL` é a origem
- * browser-facing do endpoint de redirect — nunca `env.API_URL`, que é
- * server-only e não tem garantia de ser publicamente acessível
- * (Architecture/Backlog não fecham essa suposição de deploy).
- *
- * `articleId` sempre incluído: a Arquitetura já prevê esse parâmetro para
- * atribuição do clique por Artigo de origem, e esta página sempre conhece o
- * Artigo. Sem UTM — não há fonte/campanha concreta que os justifique nesta
- * tarefa.
- *
- * Nunca recebe/constrói a partir de `affiliateUrl` — esse campo não existe
- * no contrato público (`PublicOffer`); só `offerId`/`articleId`, ambos IDs
- * opacos que a API pública já expõe.
- */
-function affiliateRedirectHref(offerId: string, articleId: string): string {
-  const url = new URL(`/r/${env.SITE_SLUG}/${offerId}`, env.AFFILIATE_REDIRECT_URL);
-  url.searchParams.set('articleId', articleId);
-  return url.toString();
 }
 
 /**
@@ -88,6 +67,11 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
+      {/* JSON-LD estrutural (Architecture.md §29/§33; UXW-005A) — derivado
+          inteiramente de `article`, nunca persistido. Ver
+          `article-json-ld.ts` para o racional completo. */}
+      <ArticleJsonLd article={article} />
+
       <h1 className="text-2xl font-semibold">{article.title}</h1>
 
       <p className="mt-2 text-sm text-neutral-500">
