@@ -80,4 +80,103 @@ describe('CategoryPage', () => {
       renderCategoryWith(null, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }),
     ).rejects.toThrow('NEXT_NOT_FOUND');
   });
+
+  /**
+   * Correção de LCP (UXW-006) — mesma regra e mesmos casos de
+   * `apps/fastcompre/src/app/page.spec.tsx`, aplicados a esta rota (o
+   * bloco de listagem é duplicado entre as duas, não compartilhado).
+   */
+  describe('prioridade de carregamento da imagem LCP', () => {
+    function article(overrides: {
+      id: string;
+      title: string;
+      coverImageUrl: string | null;
+    }) {
+      return {
+        id: overrides.id,
+        categorySlug: 'fones-bluetooth',
+        type: 'COMPARISON' as const,
+        title: overrides.title,
+        slug: overrides.title.toLowerCase().replace(/\s+/g, '-'),
+        metaDescription: null,
+        coverImageUrl: overrides.coverImageUrl,
+        publishedAt: '2026-01-01T00:00:00.000Z',
+      };
+    }
+
+    function extractImgTags(html: string): string[] {
+      return html.match(/<img[^>]*>/g) ?? [];
+    }
+
+    it('aplica loading="eager" e fetchpriority="high" somente na primeira imagem, mantendo as demais lazy e sem prioridade', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        {
+          items: [
+            article({ id: '1', title: 'Primeiro artigo', coverImageUrl: 'https://example.com/1.jpg' }),
+            article({ id: '2', title: 'Segundo artigo', coverImageUrl: 'https://example.com/2.jpg' }),
+            article({ id: '3', title: 'Terceiro artigo', coverImageUrl: 'https://example.com/3.jpg' }),
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 3,
+          totalPages: 1,
+        },
+      );
+
+      const imgTags = extractImgTags(html);
+      expect(imgTags).toHaveLength(3);
+
+      expect(imgTags[0]).toContain('src="https://example.com/1.jpg"');
+      expect(imgTags[0]).toContain('loading="eager"');
+      expect(imgTags[0]).toContain('fetchPriority="high"');
+
+      for (const tag of imgTags.slice(1)) {
+        expect(tag).toContain('loading="lazy"');
+        expect(tag).not.toContain('fetchPriority');
+      }
+    });
+
+    it('aplica a prioridade na primeira imagem REAL quando o primeiro artigo da lista não tem coverImageUrl', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        {
+          items: [
+            article({ id: '1', title: 'Sem imagem', coverImageUrl: null }),
+            article({ id: '2', title: 'Com imagem', coverImageUrl: 'https://example.com/2.jpg' }),
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          totalPages: 1,
+        },
+      );
+
+      const imgTags = extractImgTags(html);
+      expect(imgTags).toHaveLength(1);
+      expect(imgTags[0]).toContain('src="https://example.com/2.jpg"');
+      expect(imgTags[0]).toContain('loading="eager"');
+      expect(imgTags[0]).toContain('fetchPriority="high"');
+    });
+
+    it('preserva o comportamento atual quando nenhum artigo tem coverImageUrl (nenhuma imagem, nenhum crash)', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        {
+          items: [
+            article({ id: '1', title: 'Sem imagem 1', coverImageUrl: null }),
+            article({ id: '2', title: 'Sem imagem 2', coverImageUrl: null }),
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          totalPages: 1,
+        },
+      );
+
+      expect(extractImgTags(html)).toHaveLength(0);
+      expect(html).toContain('Sem imagem 1');
+      expect(html).toContain('Sem imagem 2');
+    });
+  });
 });

@@ -21,6 +21,7 @@ const sourceSerif4 = Source_Serif_4({
   subsets: ["latin"],
   variable: "--font-source-serif-4",
   display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
