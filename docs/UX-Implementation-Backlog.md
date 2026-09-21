@@ -962,13 +962,13 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 
 ### UXW-008 — Página de Categoria redesenhada
 **Objetivo:** listagem filtrada por Categoria no novo padrão visual.
-**Contexto/decisão relacionada:** mesma disciplina de UXW-007, aplicada à rota `/[categorySlug]`.
+**Contexto/decisão relacionada:** mesma disciplina de UXW-007, aplicada à rota `/[categorySlug]`. Correção normativa (achado da investigação desta tarefa): o texto original desta seção atribuía à Página de Categoria um "redirect 301 canônico já existente" — isso está incorreto. `apps/fastcompre/src/app/[categorySlug]/page.tsx` nunca teve nenhum mecanismo de redirect canônico. O mecanismo real (Architecture.md §33) pertence exclusivamente à rota de Artigo (`apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.tsx`), que compara o `categorySlug` da URL contra o `categorySlug` real do Artigo e, se divergente, chama `permanentRedirect()` (App Router) — que emite `308`, não `301`. UXW-008 não implementa nem modifica nenhum redirect na Página de Categoria; ela preserva o mecanismo existente unicamente por não tocar em `[categorySlug]/[articleSlug]/page.tsx`, arquivo fora de `Arquivos/áreas` desta tarefa.
 **Pré-requisitos:** UXW-006.
-**Escopo incluído:** listagem filtrada, título/heading refletindo a Categoria, preservação do redirect 301 canônico já existente (não alterado).
-**Fora de escopo:** nenhum.
+**Escopo incluído:** listagem filtrada, título/heading refletindo a Categoria.
+**Fora de escopo:** qualquer redirect ou alteração ao mecanismo de URL canônica (pertence à rota de Artigo, já implementado e testado; ver Contexto/decisão relacionada).
 **Arquivos/áreas:** `apps/fastcompre/src/app/[categorySlug]/page.tsx`.
-**Critérios de aceite:** mesmo critério de UXW-007; comportamento de canônico/301 preservado exatamente como hoje.
-**Testes esperados:** `renderToStaticMarkup` + teste de regressão do redirect canônico.
+**Critérios de aceite:** mesmo critério de UXW-007.
+**Testes esperados:** `renderToStaticMarkup` para a Página de Categoria. O teste de regressão já existente do redirect canônico (`apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.spec.tsx` — "chama permanentRedirect() para a URL canônica quando o categorySlug da URL diverge do real") deve continuar verde por não ser tocado; nenhum novo teste de redirect é criado no spec da Categoria.
 **Acessibilidade/responsividade:** mesmo critério de UXW-007.
 **Performance:** mesmo critério de UXW-007, medido para esta rota.
 **Riscos:** nenhum.
