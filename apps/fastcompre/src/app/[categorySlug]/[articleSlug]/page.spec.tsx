@@ -1,13 +1,20 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import type { ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { PublicArticle } from '@commerce-platform/contracts';
 
 /**
  * Mesma disciplina de mock das outras páginas: `jest.doMock()` + `import()`
- * dinâmico. `compile-article-body` é mockado aqui de propósito — o teste da
- * página verifica que ela passa `components={{ h1: 'h2' }}` e usa o
- * resultado corretamente, não a fidelidade real do `@mdx-js/mdx` (isso é
- * responsabilidade de `compile-article-body.spec.tsx`).
+ * dinâmico. `compile-article-body` é mockado aqui de propósito — a
+ * fidelidade real do `@mdx-js/mdx` é responsabilidade de
+ * `compile-article-body.spec.ts`, não deste arquivo.
+ *
+ * UXW-009: o mock passou a EXERCITAR de verdade os renderers recebidos em
+ * `components` (`h1`/`h2`) em vez de só inspecionar a prop — isso é o que
+ * permite verificar o resultado semântico real (quantos `<h1>`/`<h2>` saem
+ * no HTML final), sem transformar este arquivo num teste do compilador
+ * MDX inteiro: o "corpo" continua sendo dado fixo (duas strings), só os
+ * componentes de heading passados pela página são reais.
  */
 describe('ArticlePage', () => {
   afterEach(() => {
@@ -32,9 +39,20 @@ describe('ArticlePage', () => {
     jest.doMock('./compile-article-body', () => ({
       compileArticleBody: jest.fn(() =>
         Promise.resolve(
-          ({ components }: { components?: { h1?: string } }) => (
-            <div data-testid="mdx-body">corpo-compilado h1={components?.h1}</div>
-          ),
+          ({ components }: { components?: Record<string, ComponentType<{ children?: unknown }> | string> }) => {
+            const H1 = components?.h1 ?? 'h1';
+            const H2 = components?.h2 ?? 'h2';
+            return (
+              <div data-testid="mdx-body">
+                {/* Simula um `# Título interno` do bodyMdx (remapeado para
+                    `h1` no mapa `components`, ver page.tsx) ao lado de um
+                    `## Subtítulo` nativo (`h2`) — os dois exercitados de
+                    verdade contra o componente real recebido da página. */}
+                <H1>Título interno do corpo</H1>
+                <H2>Subtítulo do corpo</H2>
+              </div>
+            );
+          },
         ),
       ),
     }));
@@ -113,8 +131,11 @@ describe('ArticlePage', () => {
 
     expect(html).toContain('Melhor fone bluetooth 2026');
     expect(html).toContain('links de afiliados');
-    expect(html).toContain('corpo-compilado');
-    expect(html).toContain('h1=h2');
+    // O H1 do bodyMdx (remapeado) e o H2 nativo do corpo renderizam, os
+    // dois, como <h2> real no HTML (não como string solta) — resultado
+    // semântico, não a implementação interna do mapa `components`.
+    expect(html).toContain('Título interno do corpo');
+    expect(html).toContain('Subtítulo do corpo');
 
     // Fone A: pelo menos uma oferta em estoque — lista normalmente, sem
     // "Temporariamente indisponível", mantendo "(indisponível)" na que
@@ -148,6 +169,10 @@ describe('ArticlePage', () => {
     );
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="sponsored nofollow noopener noreferrer"');
+    // UXW-009: nome acessível do CTA passa a incluir a indicação de nova
+    // aba (texto visualmente oculto, concatenado ao texto visível do link,
+    // nunca só um ícone) — critério de aceite explícito desta tarefa.
+    expect(html).toContain('<span class="sr-only"> (abre em nova aba)</span>');
 
     // Ofertas fora de estoque (Fone A, offerId 444...4; Fone B, offerId
     // 666...6) permanecem visíveis, mas nunca viram link.
@@ -206,6 +231,46 @@ describe('ArticlePage', () => {
     // critério do teste acima, aqui confirmando que vale para as duas.
     expect(html.match(/target="_blank"/g)).toHaveLength(2);
     expect(html.match(/rel="sponsored nofollow noopener noreferrer"/g)).toHaveLength(2);
+    expect(html.match(/\(abre em nova aba\)/g)).toHaveLength(2);
+  });
+
+  /**
+   * UXW-009, ajuste 2 explícito: verifica o resultado semântico do
+   * remapeamento `h1` (bodyMdx) → `<h2>`, não a implementação interna
+   * (`components={{ h1: H2 }}`). `products: []` isola o teste do `<h2>`
+   * próprio da seção "Produtos" (elemento diferente, sempre presente
+   * quando há Produtos — não faz parte deste invariante).
+   */
+  it('remapeia o H1 do bodyMdx para <h2> com o mesmo estilo visual do H2 nativo, mantendo um único <h1> na página', async () => {
+    const html = await renderArticleWith({
+      id: '11111111-1111-4111-8111-111111111111',
+      categorySlug: 'fones-bluetooth',
+      type: 'COMPARISON',
+      title: 'Melhor fone bluetooth 2026',
+      slug: 'melhor-fone',
+      metaDescription: null,
+      coverImageUrl: null,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+      bodyMdx: '# Título interno\n\n## Subtítulo',
+      products: [],
+      author: null,
+    });
+
+    // Um único <h1> na página inteira — o título do Artigo, nunca um
+    // segundo H1 vindo do corpo (Architecture.md §33).
+    const h1Tags = html.match(/<h1[^>]*>/g) ?? [];
+    expect(h1Tags).toHaveLength(1);
+    expect(html).toContain('<h1 class="font-editorial text-4xl font-semibold text-fg">Melhor fone bluetooth 2026</h1>');
+
+    // O H1 remapeado do bodyMdx ("Título interno do corpo", via mock) e o
+    // H2 nativo ("Subtítulo do corpo", via mock) resolvem para <h2> com a
+    // MESMA tag de abertura (mesma classe) — prova de que os dois usam o
+    // mesmo componente `H2`, não duas implementações que podem divergir.
+    const h2Tags = html.match(/<h2[^>]*>/g) ?? [];
+    expect(h2Tags).toHaveLength(2);
+    expect(h2Tags[0]).toBe(h2Tags[1]);
+    expect(html).toContain('Título interno do corpo');
+    expect(html).toContain('Subtítulo do corpo');
   });
 
   it('chama notFound() quando o artigo não existe', async () => {

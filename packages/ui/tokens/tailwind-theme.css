@@ -74,6 +74,11 @@
 
   /* fonte */
   --font-ui: var(--font-family-sans);
+  /* UXW-009 — primeiro consumidor real: --font-family-serif já carregado de
+     verdade (UXF-001A), sem utility Tailwind até aqui. `--font-editorial`
+     é o papel semântico de consumo (região de conteúdo editorial), nunca
+     o token físico/canônico (--font-family-serif, inalterado). */
+  --font-editorial: var(--font-family-serif);
 
   /* tamanho + altura de linha */
   --text-body: var(--font-size-base);

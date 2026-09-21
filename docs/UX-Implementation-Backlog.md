@@ -976,11 +976,11 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 
 ### UXW-009 — Página de Artigo: estrutura base + CTA de afiliado
 **Objetivo:** estrutura da página de Artigo com tipografia editorial (Source Serif 4) e o CTA de afiliado com peso visual real.
-**Contexto/decisão relacionada:** Etapa B — Source Serif 4 para título/corpo de Artigo; Etapa C, refinamento aprovado — CTA como botão com peso visual, nome acessível comunicando "abre em nova aba" (não só ícone).
+**Contexto/decisão relacionada:** Etapa B — Source Serif 4 para título/corpo de Artigo; Etapa C, refinamento aprovado — CTA como botão com peso visual, nome acessível comunicando "abre em nova aba" (não só ícone). Achado da investigação desta tarefa: `packages/ui/tokens/tailwind-theme.css` já expunha `--font-ui` (interface, Geist Sans) mas nenhum alias Tailwind para `--font-family-serif` — a fonte já estava carregada de verdade (UXF-001A) mas sem nenhuma utility funcional para consumi-la. UXW-009 estende minimamente esse arquivo com o alias semântico `--font-editorial: var(--font-family-serif)` (gera a utility `font-editorial`) e é o primeiro consumidor real desse bridge — `--font-family-serif` continua sendo o token físico/canônico; `font-editorial` é o papel semântico de consumo, mesma nomenclatura já aprovada para `packages/ui`.
 **Pré-requisitos:** UXW-006.
 **Escopo incluído:** estrutura da página, tipografia editorial aplicada ao corpo renderizado, CTA de afiliado apontando para `GET /r/:siteSlug/:offerId` (endpoint já existente, comportamento não alterado).
 **Fora de escopo:** byline (UXW-010), blocos Produto/Oferta novos (UXW-011).
-**Arquivos/áreas:** `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.tsx`.
+**Arquivos/áreas:** `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.tsx`, `packages/ui/tokens/tailwind-theme.css` (extensão mínima — um alias novo, `--font-editorial`; nenhum token físico/valor alterado).
 **Critérios de aceite:** nome acessível do CTA inclui indicação de nova aba (texto visualmente oculto concatenado, conforme já congelado); redirecionamento 302/410 do endpoint de tracking preservado sem alteração.
 **Testes esperados:** `renderToStaticMarkup` verificando nome acessível do link; regressão do fluxo de clique/tracking existente.
 **Acessibilidade/responsividade:** este é o próprio critério de aceite do CTA.
