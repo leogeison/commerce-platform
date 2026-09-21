@@ -948,15 +948,15 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 
 ### UXW-007 — Home pública redesenhada
 **Objetivo:** listagem paginada de Artigos publicados no novo padrão visual.
-**Contexto/decisão relacionada:** Etapa A/C — jornada do Comparador racional/Caçador de oferta como personas primárias.
+**Contexto/decisão relacionada:** Etapa A/C — jornada do Comparador racional/Caçador de oferta como personas primárias. A Home foi movida para o Route Group `apps/fastcompre/src/app/(home)/` especificamente para isolar `loading.tsx`/`error.tsx` da Home sem que esses estados atinjam Categoria/Artigo (no App Router, `loading`/`error` de um segmento se aplicam também aos descendentes daquele segmento; sem o Route Group, um `loading.tsx`/`error.tsx` na raiz de `app/` cascatearia para `[categorySlug]`/`[articleSlug]`).
 **Pré-requisitos:** UXW-006.
 **Escopo incluído:** listagem, estados de loading/erro/vazio, responsividade.
 **Fora de escopo:** paginação em si (UXW-012, compartilhada com Categoria).
-**Arquivos/áreas:** `apps/fastcompre/src/app/page.tsx`.
+**Arquivos/áreas:** `apps/fastcompre/src/app/(home)/page.tsx` (movido de `apps/fastcompre/src/app/page.tsx`), `apps/fastcompre/src/app/(home)/page.spec.tsx` (movido), `apps/fastcompre/src/app/(home)/loading.tsx` (novo), `apps/fastcompre/src/app/(home)/loading.spec.tsx` (novo), `apps/fastcompre/src/app/(home)/error.tsx` (novo), `apps/fastcompre/src/app/(home)/error.spec.tsx` (novo).
 **Critérios de aceite:** conteúdo idêntico em SSR (sem JS) e após hidratação; ordenação `publishedAt desc` preservada (já era regra existente, não alterada).
 **Testes esperados:** `renderToStaticMarkup` + Testing Library para partes interativas.
 **Acessibilidade/responsividade:** heading único (H1), estrutura de heading correta para os cards de listagem.
-**Performance:** medir contra o budget de UXF-014 para a rota Home nesta própria tarefa, não adiar para UXQ-007.
+**Performance:** medir contra o budget de UXF-014 para a rota Home nesta própria tarefa, não adiar para UXQ-007. **Medição normativa final: LCP 2308,65 ms (teto efetivo 2384 ms); CLS 0; TTFB 9 ms — resultado PASS.**
 **Riscos:** nenhum.
 **Dependências posteriores:** UXW-012, UXW-013, UXW-014.
 

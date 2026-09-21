@@ -27,8 +27,10 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   }
 
   // Correção de LCP (UXW-006 — regressão encontrada no gate contra o budget
-  // da UXF-014): mesmo racional de `apps/fastcompre/src/app/page.tsx` (ver
-  // comentário lá) — a primeira imagem da listagem com `coverImageUrl` é o
+  // da UXF-014): mesmo racional de
+  // `apps/fastcompre/src/app/(home)/page.tsx` (ver comentário lá; caminho
+  // atualizado pela UXW-007, que moveu a Home para o Route Group `(home)`)
+  // — a primeira imagem da listagem com `coverImageUrl` é o
   // elemento LCP real desta rota. Só essa imagem sai de lazy/prioridade
   // padrão; todas as demais continuam exatamente como antes. Duplicado
   // aqui em vez de extraído para um componente compartilhado — esta rota

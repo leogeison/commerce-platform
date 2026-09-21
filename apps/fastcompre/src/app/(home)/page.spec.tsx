@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { render } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import type { ListPublicArticlesResponse } from '@commerce-platform/contracts';
 
 /**
@@ -14,18 +16,29 @@ import type { ListPublicArticlesResponse } from '@commerce-platform/contracts';
  * `connection()` depende de contexto interno de requisição do Next.js, que
  * não existe rodando via Jest puro — mocado para não testar o Next em si,
  * só o comportamento desta página.
+ *
+ * UXW-007 — `page.tsx` moveu de `apps/fastcompre/src/app/page.tsx` para
+ * `apps/fastcompre/src/app/(home)/page.tsx` (Route Group `(home)`, para
+ * isolar `loading.tsx`/`error.tsx` da Home sem afetar Categoria/Artigo —
+ * ver aqueles arquivos). `(home)` não aparece na URL (é convenção de
+ * organização, não de rota) — `/` continua resolvendo para este arquivo.
+ * O import relativo do client da API pública mudou de `../lib/...` para
+ * `../../lib/...` por causa do nível extra de pasta.
  */
 describe('Home', () => {
   afterEach(() => {
     jest.resetModules();
   });
 
-  async function renderHomeWith(result: ListPublicArticlesResponse): Promise<string> {
+  function mockHomeDependencies(result: ListPublicArticlesResponse) {
     jest.doMock('next/server', () => ({ connection: jest.fn(() => Promise.resolve()) }));
-    jest.doMock('../lib/public-api/client', () => ({
+    jest.doMock('../../lib/public-api/client', () => ({
       listPublicArticles: jest.fn(() => Promise.resolve(result)),
     }));
+  }
 
+  async function renderHomeWith(result: ListPublicArticlesResponse): Promise<string> {
+    mockHomeDependencies(result);
     const { default: Home } = await import('./page');
     return renderToStaticMarkup(await Home());
   }
@@ -67,7 +80,8 @@ describe('Home', () => {
   /**
    * Correção de LCP (UXW-006): só a primeira imagem da listagem com
    * `coverImageUrl` pode sair de `loading="lazy"`/prioridade padrão — nunca
-   * `index === 0` cru, porque `coverImageUrl` é opcional.
+   * `index === 0` cru, porque `coverImageUrl` é opcional. Preservado pela
+   * UXW-007 sem alteração de lógica, só o markup ao redor do `<img>` mudou.
    */
   describe('prioridade de carregamento da imagem LCP', () => {
     function article(overrides: {
@@ -151,6 +165,60 @@ describe('Home', () => {
       expect(extractImgTags(html)).toHaveLength(0);
       expect(html).toContain('Sem imagem 1');
       expect(html).toContain('Sem imagem 2');
+    });
+  });
+
+  /**
+   * UXW-007, ajuste solicitado nesta implementação: `shell.integration
+   * .spec.tsx` só roda `jest-axe` com a Home vazia (`ARTICLES: total 0`) —
+   * nunca com cards populados/imagem real. Este bloco fecha essa lacuna
+   * especificamente para a Home, montando a árvore real (não HTML
+   * estático, por isso `render()`/Testing Library aqui em vez de
+   * `renderToStaticMarkup`) com um artigo com e um artigo sem imagem, para
+   * cobrir os dois formatos de card num único gate de acessibilidade.
+   */
+  describe('acessibilidade (jest-axe) — Home populada', () => {
+    it('não tem violação de acessibilidade com cards com e sem imagem', async () => {
+      mockHomeDependencies({
+        items: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            categorySlug: 'comparativos',
+            type: 'COMPARISON',
+            title: 'Melhor fone bluetooth 2026',
+            slug: 'melhor-fone-bluetooth',
+            metaDescription: 'Comparativo dos melhores fones bluetooth.',
+            coverImageUrl: 'https://example.com/cover.jpg',
+            publishedAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            categorySlug: 'cafeteiras',
+            type: 'COMPARISON',
+            title: 'Melhor cafeteira 2026',
+            slug: 'melhor-cafeteira',
+            metaDescription: null,
+            coverImageUrl: null,
+            publishedAt: '2026-01-02T00:00:00.000Z',
+          },
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+      });
+
+      const { default: Home } = await import('./page');
+      // Mesma técnica de `shell.integration.spec.tsx`: chamar o Server
+      // Component `async` diretamente (`await Home()`) devolve um elemento
+      // React de verdade, montável via `render()` — diferente de
+      // `renderToStaticMarkup`, que só serve para comparação de HTML
+      // estático, não para rodar `jest-axe` (que precisa de um container
+      // DOM real).
+      const home = await Home();
+      const { container } = render(home);
+
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });
