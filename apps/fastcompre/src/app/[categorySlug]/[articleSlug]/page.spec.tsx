@@ -80,7 +80,7 @@ describe('ArticlePage', () => {
     return html;
   }
 
-  it('renderiza título, aviso de afiliação, corpo compilado e produtos', async () => {
+  it('renderiza título, corpo compilado e produtos', async () => {
     const html = await renderArticleWith({
       id: '11111111-1111-4111-8111-111111111111',
       categorySlug: 'fones-bluetooth',
@@ -144,7 +144,6 @@ describe('ArticlePage', () => {
     });
 
     expect(html).toContain('Melhor fone bluetooth 2026');
-    expect(html).toContain('links de afiliados');
     // O H1 do bodyMdx (remapeado) e o H2 nativo do corpo renderizam, os
     // dois, como <h2> real no HTML (não como string solta) — resultado
     // semântico, não a implementação interna do mapa `components`.

@@ -11,15 +11,19 @@
  * JavaScript client-side: a divulgação é texto estático, sempre presente,
  * sem exigir interação para aparecer (critério de aceite da UXW-002).
  *
- * Texto aprovado explicitamente pelo Product Owner nesta tarefa — divulga a
- * mesma informação já presente no parágrafo específico da página de Artigo
- * (`[categorySlug]/[articleSlug]/page.tsx`), reescrita no nível do site em
- * vez do artigo, para fazer sentido nas 3 rotas (Home/Categoria não têm um
- * artigo em foco). O parágrafo do Artigo permanece inalterado por decisão
- * explícita do Product Owner — a duplicidade de divulgação na página de
- * Artigo (footer global + parágrafo específico do artigo) é aceita
- * conscientemente nesta etapa, não é um efeito colateral não avaliado desta
- * implementação.
+ * Texto aprovado explicitamente pelo Product Owner na UXW-002 — divulga a
+ * mesma informação que, até a UXW-010A, também aparecia num parágrafo
+ * específico da página de Artigo (`[categorySlug]/[articleSlug]/page.tsx`),
+ * reescrita no nível do site em vez do artigo, para fazer sentido nas 3
+ * rotas (Home/Categoria não têm um artigo em foco).
+ *
+ * UXW-010A — nova decisão do Product Owner substitui a de UXW-002: a
+ * duplicidade de divulgação na página de Artigo (footer global + parágrafo
+ * específico do artigo), antes aceita conscientemente, deixa de existir —
+ * este `SiteFooter` passa a ser a única fonte canônica de disclosure
+ * sitewide, e o parágrafo específico do Artigo foi removido. Nenhuma
+ * mudança de conteúdo/comportamento deste componente — só a documentação
+ * histórica é atualizada.
  *
  * Cor do texto: `text-fg-muted` (→ `--color-text-muted` →
  * `--color-neutral-600`), nunca `neutral-500` — `semantic-colors.css`

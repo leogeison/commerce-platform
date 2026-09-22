@@ -219,15 +219,15 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       {/* UXW-009 — Source Serif 4 (`font-editorial`, alias novo de
           `packages/ui/tokens/tailwind-theme.css` para o token já existente
           `--font-family-serif`, já carregado de verdade desde UXF-001A) no
-          H1 e em toda a região editorial abaixo. Disclosure/data/CTA/seção
+          H1 e em toda a região editorial abaixo. Data/byline/CTA/seção
           comercial permanecem em Geist Sans (`font-ui`/padrão herdado). */}
       <h1 className="font-editorial text-4xl font-semibold text-fg">{article.title}</h1>
 
-      <p className="mt-4 font-ui text-body text-fg-muted">
-        Este artigo contém links de afiliados. Podemos ganhar uma comissão sobre compras
-        qualificadas, sem custo adicional para você.
-      </p>
-
+      {/* UXW-010A — o parágrafo de divulgação de afiliação específico desta
+          página foi removido: o `SiteFooter` (UXW-002), sempre visível em
+          toda página pública, passa a ser a única fonte canônica de
+          disclosure sitewide. Ver `site-footer.tsx` para o racional
+          completo da decisão. */}
       <time dateTime={article.publishedAt} className="mt-1 block font-ui text-body-sm text-fg-muted">
         {new Date(article.publishedAt).toLocaleDateString('pt-BR', {
           day: '2-digit',
