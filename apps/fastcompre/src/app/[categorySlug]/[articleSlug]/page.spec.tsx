@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import type { ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { render } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import type { PublicArticle } from '@commerce-platform/contracts';
 
 /**
@@ -21,10 +23,15 @@ describe('ArticlePage', () => {
     jest.resetModules();
   });
 
-  async function renderArticleWith(
-    article: PublicArticle | null,
-    requestedCategorySlug = 'fones-bluetooth',
-  ): Promise<string> {
+  /**
+   * UXW-010 — extraído de dentro de `renderArticleWith` (mesmo padrão já
+   * usado em `page.spec.tsx` da Categoria, `mockCategoryDependencies`) só
+   * para ser reaproveitado também pelo teste de `jest-axe` abaixo, que
+   * precisa de um elemento React montável (`render()`), não de uma string
+   * HTML (`renderToStaticMarkup`). Nenhuma mudança de comportamento nos
+   * testes já existentes — mesmos três `jest.doMock`, na mesma ordem.
+   */
+  function mockArticleDependencies(article: PublicArticle | null) {
     jest.doMock('next/navigation', () => ({
       notFound: jest.fn(() => {
         throw new Error('NEXT_NOT_FOUND');
@@ -56,6 +63,13 @@ describe('ArticlePage', () => {
         ),
       ),
     }));
+  }
+
+  async function renderArticleWith(
+    article: PublicArticle | null,
+    requestedCategorySlug = 'fones-bluetooth',
+  ): Promise<string> {
+    mockArticleDependencies(article);
 
     const { default: ArticlePage } = await import('./page');
     const html = renderToStaticMarkup(
@@ -271,6 +285,102 @@ describe('ArticlePage', () => {
     expect(h2Tags[0]).toBe(h2Tags[1]);
     expect(html).toContain('Título interno do corpo');
     expect(html).toContain('Subtítulo do corpo');
+  });
+
+  /**
+   * UXW-010 — byline. `products: []`/`coverImageUrl: null` isolam os
+   * testes de qualquer outro `<img>`/`rounded-pill` que não seja o do
+   * avatar/fallback em si (a página não renderiza `coverImageUrl` em
+   * nenhum lugar hoje; a seção de Produtos só aparece com `products.length
+   * > 0`). `rounded-pill` é usado nesta página exclusivamente pelo
+   * avatar/fallback — a imagem de Produto usa `rounded` (não `rounded-
+   * pill`) — por isso serve como marcador seguro de presença/ausência da
+   * byline.
+   */
+  describe('byline (UXW-010)', () => {
+    function articleWithAuthor(author: PublicArticle['author']): PublicArticle {
+      return {
+        id: '11111111-1111-4111-8111-111111111111',
+        categorySlug: 'fones-bluetooth',
+        type: 'COMPARISON',
+        title: 'Melhor fone bluetooth 2026',
+        slug: 'melhor-fone',
+        metaDescription: null,
+        coverImageUrl: null,
+        publishedAt: '2026-01-01T00:00:00.000Z',
+        bodyMdx: '# Introdução',
+        products: [],
+        author,
+      };
+    }
+
+    it('não renderiza byline quando o Artigo não tem Autor vinculado', async () => {
+      const html = await renderArticleWith(articleWithAuthor(null));
+
+      expect(html.match(/rounded-pill/g)).toBeNull();
+    });
+
+    it('Autor sem avatar exibe o fallback de iniciais, nunca um <img>, com o nome sempre visível', async () => {
+      const html = await renderArticleWith(articleWithAuthor({ name: 'Ana Beatriz Costa', avatarUrl: null }));
+
+      expect(html).not.toContain('<img');
+      expect(html).toContain('aria-hidden="true"');
+      expect(html).toContain('bg-outline-subtle');
+      expect(html).toContain('>AC<');
+      expect(html).toContain('Ana Beatriz Costa');
+    });
+
+    it('deriva as iniciais como a primeira letra quando o nome do Autor tem uma única palavra', async () => {
+      const html = await renderArticleWith(articleWithAuthor({ name: 'Madonna', avatarUrl: null }));
+
+      expect(html).toContain('>M<');
+    });
+
+    it('deriva as iniciais como a primeira letra da primeira palavra + a primeira letra da última quando o nome tem duas ou mais palavras', async () => {
+      const html = await renderArticleWith(
+        articleWithAuthor({ name: 'Maria Eduarda Souza Lima', avatarUrl: null }),
+      );
+
+      // primeira ("Maria") + última ("Lima") — nunca uma palavra do meio.
+      expect(html).toContain('>ML<');
+    });
+
+    it('Autor com avatar renderiza <img> real com alt vazio, nunca o fallback de iniciais', async () => {
+      const html = await renderArticleWith(
+        articleWithAuthor({ name: 'Carlos Silva', avatarUrl: 'https://example.com/avatar.jpg' }),
+      );
+
+      expect(html).toContain('src="https://example.com/avatar.jpg"');
+      expect(html).toContain('alt=""');
+      expect(html).not.toContain('>CS<');
+      expect(html).toContain('Carlos Silva');
+    });
+
+    it('não tem violação de acessibilidade com Autor sem avatar', async () => {
+      mockArticleDependencies(articleWithAuthor({ name: 'Ana Beatriz Costa', avatarUrl: null }));
+      const { default: ArticlePage } = await import('./page');
+      const { container } = render(
+        await ArticlePage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        }),
+      );
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('não tem violação de acessibilidade com Autor e avatar', async () => {
+      mockArticleDependencies(
+        articleWithAuthor({ name: 'Carlos Silva', avatarUrl: 'https://example.com/avatar.jpg' }),
+      );
+      const { default: ArticlePage } = await import('./page');
+      const { container } = render(
+        await ArticlePage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        }),
+      );
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 
   it('chama notFound() quando o artigo não existe', async () => {

@@ -997,10 +997,10 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 **Arquivos/áreas:** mesmo arquivo de UXW-009.
 **Critérios de aceite:** Artigo sem Autor vinculado não quebra a página (byline simplesmente não aparece); Artigo com Autor sem avatar mostra o fallback, nunca espaço vazio ou ícone quebrado.
 **Testes esperados:** `renderToStaticMarkup` cobrindo os três casos (sem Autor, com Autor sem avatar, com Autor e avatar).
-**Acessibilidade/responsividade:** avatar com alt text (nome do Autor) ou `alt=""` quando o fallback for puramente decorativo com nome já visível ao lado.
+**Acessibilidade/responsividade:** como o nome do Autor está sempre visível ao lado, o avatar real é decorativo (`alt=""`) e o fallback de iniciais é ocultado da árvore de acessibilidade (`aria-hidden="true"`); a byline deve manter reflow adequado em telas estreitas e zoom.
 **Performance:** imagem de avatar (quando existir) servida via `next/image` (UXW-013).
 **Riscos:** nenhum.
-**Dependências posteriores:** nenhuma direta.
+**Dependências posteriores:** UXW-013.
 
 ### UXW-011 — Renderização de blocos Produto/Oferta na página de Artigo
 **Objetivo:** integrar o componente público de bloco (UXE-018) à página de Artigo, incluindo o caso de artigos antigos sem blocos.

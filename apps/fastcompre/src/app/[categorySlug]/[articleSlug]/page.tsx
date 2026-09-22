@@ -165,6 +165,22 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
   };
 }
 
+/**
+ * UXW-010 — helper local, sem abstração compartilhada (só um consumidor
+ * real hoje: a byline desta página). Regra determinística fechada no
+ * desenho: nome com uma palavra → primeira letra; nome com duas ou mais
+ * palavras → primeira letra da primeira + primeira letra da última
+ * (nunca a segunda palavra em nomes com 3+ partes); sempre uppercase.
+ * `author.name` já é `z.string().min(1)` no contrato público — nunca
+ * string vazia — então `words[0]` sempre existe.
+ */
+function getAuthorInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  const first = words[0]?.[0] ?? '';
+  const last = words.length > 1 ? words[words.length - 1][0] : '';
+  return (first + last).toUpperCase();
+}
+
 export default async function ArticlePage({ params }: ArticlePageProps) {
   const { categorySlug, articleSlug } = await params;
 
@@ -220,6 +236,42 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           timeZone: 'UTC',
         })}
       </time>
+
+      {/* UXW-010 — byline: ausente por inteiro quando o Artigo não tem
+          Autor vinculado (nunca avatar/nome vazio). `font-ui`, mesma
+          família da disclosure/data acima — nunca `font-editorial`.
+          Avatar real (`avatarUrl` presente) e fallback de iniciais
+          (`avatarUrl` null) são ambos decorativos em relação ao nome, que
+          está sempre visível ao lado: `alt=""` no primeiro,
+          `aria-hidden="true"` no segundo. Fallback usa `bg-outline-subtle`
+          + `text-fg-secondary` — mesmo par já usado como pílula neutra
+          permanente em apps/admin (dashboard.tsx), nunca `bg-skeleton`
+          (papel semântico de loading, não de estado permanente). `<img>`
+          cru nesta tarefa — `next/image` fica para a UXW-013. `min-w-0`
+          no nome garante reflow natural em vez de o flex item impedir a
+          quebra de linha em telas estreitas/zoom alto; nunca truncamento. */}
+      {article.author && (
+        <div className="mt-4 flex items-center gap-3 font-ui">
+          {article.author.avatarUrl ? (
+            <img
+              src={article.author.avatarUrl}
+              alt=""
+              width={40}
+              height={40}
+              loading="lazy"
+              className="h-10 w-10 shrink-0 rounded-pill object-cover"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-pill bg-outline-subtle text-body-sm font-semibold text-fg-secondary"
+            >
+              {getAuthorInitials(article.author.name)}
+            </span>
+          )}
+          <span className="min-w-0 text-body-sm text-fg-muted">{article.author.name}</span>
+        </div>
+      )}
 
       {/* `font-editorial` aplicado uma única vez aqui — herdado por todo
           filho (h2–h6, p, ul/ol/li, blockquote, a inclusive) via cascata
