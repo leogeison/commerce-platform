@@ -30,8 +30,27 @@ describe('ArticlePage', () => {
    * precisa de um elemento React montável (`render()`), não de uma string
    * HTML (`renderToStaticMarkup`). Nenhuma mudança de comportamento nos
    * testes já existentes — mesmos três `jest.doMock`, na mesma ordem.
+   *
+   * UXW-011 — `compileArticleBody` passa a devolver `{ MDXContent,
+   * referencedProductIds }` (não mais um componente solto) — o mock segue
+   * essa mesma forma. `productBlockIds`/`referencedProductIds` (novos,
+   * opcionais, mantendo o comportamento default idêntico ao anterior — Set
+   * vazio, nenhum bloco `:::product` no corpo) permitem simular, sem
+   * `evaluate()` real (limitação de ambiente já documentada em
+   * `compile-article-body.spec.ts`: `@mdx-js/mdx` é ESM puro e não roda de
+   * verdade dentro do Jest), o efeito de um `bodyMdx` que referencia blocos
+   * `:::product` inline: o `MDXContent` fake invoca o `ProductBlock` REAL
+   * recebido via `components` (o mesmo `createProductBlockComponent` de
+   * produção, fechado sobre `article.products`/`article.id` por `page.tsx`)
+   * — exercitando a composição real de página + bloco, não uma simulação
+   * do próprio `ProductBlock`.
    */
-  function mockArticleDependencies(article: PublicArticle | null) {
+  function mockArticleDependencies(
+    article: PublicArticle | null,
+    options: { productBlockIds?: string[]; referencedProductIds?: Set<string> } = {},
+  ) {
+    const { productBlockIds = [], referencedProductIds = new Set<string>() } = options;
+
     jest.doMock('next/navigation', () => ({
       notFound: jest.fn(() => {
         throw new Error('NEXT_NOT_FOUND');
@@ -45,10 +64,17 @@ describe('ArticlePage', () => {
     }));
     jest.doMock('./compile-article-body', () => ({
       compileArticleBody: jest.fn(() =>
-        Promise.resolve(
-          ({ components }: { components?: Record<string, ComponentType<{ children?: unknown }> | string> }) => {
+        Promise.resolve({
+          MDXContent: ({
+            components,
+          }: {
+            components?: Record<string, ComponentType<{ children?: unknown; productId?: string }> | string>;
+          }) => {
             const H1 = components?.h1 ?? 'h1';
             const H2 = components?.h2 ?? 'h2';
+            const ProductBlock = components?.ProductBlock as
+              | ComponentType<{ productId: string }>
+              | undefined;
             return (
               <div data-testid="mdx-body">
                 {/* Simula um `# Título interno` do bodyMdx (remapeado para
@@ -57,10 +83,20 @@ describe('ArticlePage', () => {
                     verdade contra o componente real recebido da página. */}
                 <H1>Título interno do corpo</H1>
                 <H2>Subtítulo do corpo</H2>
+                {/* UXW-011 — um `<ProductBlock productId={id} />` por
+                    entrada de `productBlockIds`, na ordem dada — simula
+                    N ocorrências de `:::product` no corpo, incluindo o
+                    mesmo `productId` repetido (mesmo mecanismo real: cada
+                    ocorrência é uma instância independente do componente). */}
+                {ProductBlock &&
+                  productBlockIds.map((productId, index) => (
+                    <ProductBlock key={`${productId}-${index}`} productId={productId} />
+                  ))}
               </div>
             );
           },
-        ),
+          referencedProductIds,
+        }),
       ),
     }));
   }
@@ -380,6 +416,201 @@ describe('ArticlePage', () => {
 
       expect(await axe(container)).toHaveNoViolations();
     });
+  });
+
+  /**
+   * UXW-011 — composição real de página + bloco inline (`ProductBlock`) +
+   * seção estática de Produtos, incluindo a política de exclusão do ADENDO
+   * (UXE-018) do Editorial Serialization Contract §6: Produto referenciado
+   * por ao menos um bloco `:::product` inline não repete na seção estática;
+   * Produto vinculado via `ArticleProduct` mas nunca referenciado inline
+   * continua elegível lá. `mockArticleDependencies` (acima) simula a
+   * presença de blocos no corpo sem depender de `evaluate()` real — mas o
+   * `ProductBlock` que renderiza é o componente de produção de verdade,
+   * fechado por `page.tsx` sobre `article.products`/`article.id` reais.
+   */
+  describe('bloco Produto inline e seção estática (UXW-011)', () => {
+    function articleWithProducts(): PublicArticle {
+      return {
+        id: '11111111-1111-4111-8111-111111111111',
+        categorySlug: 'fones-bluetooth',
+        type: 'COMPARISON',
+        title: 'Melhor fone bluetooth 2026',
+        slug: 'melhor-fone',
+        metaDescription: null,
+        coverImageUrl: null,
+        publishedAt: '2026-01-01T00:00:00.000Z',
+        bodyMdx: '# Introdução',
+        products: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            name: 'Fone A (referenciado inline)',
+            description: 'Descrição do fone A.',
+            imageUrl: null,
+            position: 0,
+            offers: [
+              {
+                id: '33333333-3333-4333-8333-333333333333',
+                marketplace: 'AMAZON_BR',
+                price: '199.90',
+                currency: 'BRL',
+                inStock: true,
+              },
+              {
+                id: '44444444-4444-4444-8444-444444444444',
+                marketplace: 'MERCADO_LIVRE',
+                price: '209.90',
+                currency: 'BRL',
+                inStock: false,
+              },
+            ],
+          },
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            name: 'Fone B (só vinculado, nunca referenciado inline)',
+            description: null,
+            imageUrl: null,
+            position: 1,
+            offers: [
+              {
+                id: '66666666-6666-4666-8666-666666666666',
+                marketplace: 'AMAZON_BR',
+                price: '149.90',
+                currency: 'BRL',
+                inStock: true,
+              },
+            ],
+          },
+        ],
+        author: null,
+      };
+    }
+
+    const PRODUCT_A_ID = '22222222-2222-4222-8222-222222222222';
+
+    it('artigo antigo sem bloco Produto: seção estática mostra todos os Produtos vinculados, sem nenhum ProductBlock inline', async () => {
+      const html = await renderArticleWith(articleWithProducts());
+
+      // Nenhum bloco inline — ambos os Produtos aparecem na seção estática
+      // (marcador: o `<h3>` que só a seção estática usa — `product-block.tsx`
+      // nunca usa heading), comportamento idêntico ao já validado antes da
+      // UXW-011. `article-json-ld.ts` também serializa o nome de todo
+      // `article.products[]` independente de referência inline — por isso a
+      // asserção é sobre o `<h3>` visível, não sobre a contagem total de
+      // ocorrências de texto no HTML inteiro (que inclui o JSON-LD).
+      expect(html).toContain('<h3 class="font-medium">Fone A (referenciado inline)</h3>');
+      expect(html).toContain('<h3 class="font-medium">Fone B (só vinculado, nunca referenciado inline)</h3>');
+      // Nenhum cartão inline de `ProductBlock` (`product-block.tsx`) foi
+      // renderizado — reconhecível pelo wrapper `rounded-control border`.
+      expect(html).not.toContain('rounded-control border border-outline bg-surface');
+    });
+
+    it('bloco inline referencia um Produto de article.products[] e resolve com os dados reais dele', async () => {
+      mockArticleDependencies(articleWithProducts(), { productBlockIds: [PRODUCT_A_ID] });
+
+      const { default: ArticlePage } = await import('./page');
+      const html = renderToStaticMarkup(
+        await ArticlePage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        }),
+      );
+
+      // Nome/preço reais do Fone A (article.products[0]) aparecem — a
+      // fábrica `createProductBlockComponent(article.products, article.id)`
+      // de produção resolveu o `productId` contra o array real.
+      expect(html).toContain('Fone A (referenciado inline)');
+      expect(html).toContain('199.90');
+    });
+
+    it('Produto referenciado por um bloco inline não se repete na seção estática; Produto só vinculado (nunca referenciado inline) continua na seção estática', async () => {
+      const html = await renderArticleWith2(articleWithProducts(), {
+        productBlockIds: [PRODUCT_A_ID],
+        referencedProductIds: new Set([PRODUCT_A_ID]),
+      });
+
+      // Fone A aparece como cartão inline (`product-block.tsx`, `<p
+      // class="font-medium text-fg">`) — nunca também como `<h3>` da seção
+      // estática (`article-json-ld.ts` também serializa o nome de todo
+      // `article.products[]` independente de referência inline, por isso a
+      // asserção é sobre marcadores visíveis específicos, não sobre a
+      // contagem total de ocorrências de texto no HTML inteiro).
+      expect(html).toContain('<p class="font-medium text-fg">Fone A (referenciado inline)</p>');
+      expect(html).not.toContain('<h3 class="font-medium">Fone A');
+
+      // "Fone B" nunca foi referenciado inline — continua elegível e
+      // presente na seção estática, exatamente como antes da UXW-011.
+      expect(html).toContain('Fone B (só vinculado, nunca referenciado inline)');
+      expect(html).toContain('<h3 class="font-medium">Fone B (só vinculado, nunca referenciado inline)</h3>');
+    });
+
+    it('productId referenciado por um bloco, mas ausente de article.products[]: ProductBlock renderiza o estado not-found, sem afetar a seção estática', async () => {
+      const missingId = '99999999-9999-4999-8999-999999999999';
+      const html = await renderArticleWith2(articleWithProducts(), {
+        productBlockIds: [missingId],
+        referencedProductIds: new Set([missingId]),
+      });
+
+      expect(html).toContain('Produto não disponível.');
+      // A seção estática não é afetada: nenhum dos dois Produtos reais de
+      // `article.products[]` foi referenciado inline (o bloco referencia um
+      // terceiro id que não existe no array) — ambos continuam lá.
+      expect(html).toContain('Fone A (referenciado inline)');
+      expect(html).toContain('Fone B (só vinculado, nunca referenciado inline)');
+    });
+
+    it('o mesmo productId referenciado duas vezes no corpo gera duas ocorrências inline e nenhuma na seção estática', async () => {
+      const html = await renderArticleWith2(articleWithProducts(), {
+        productBlockIds: [PRODUCT_A_ID, PRODUCT_A_ID],
+        referencedProductIds: new Set([PRODUCT_A_ID]),
+      });
+
+      // Duas ocorrências inline do Fone A — cada uma com seu próprio CTA
+      // para a mesma Oferta em estoque (mesmo href repetido duas vezes,
+      // uma por instância do bloco).
+      const offerHrefMatches = html.match(
+        /href="http:\/\/localhost:3000\/r\/test-site\/33333333-3333-4333-8333-333333333333\?articleId=11111111-1111-4111-8111-111111111111"/g,
+      );
+      expect(offerHrefMatches).toHaveLength(2);
+
+      // Zero ocorrências na seção estática — `referencedProductIds` tem uma
+      // única entrada para o id repetido (Set), o suficiente para excluir.
+      expect(html).not.toContain('<h3 class="font-medium">Fone A');
+      // Fone B, não referenciado inline, permanece.
+      expect(html).toContain('Fone B (só vinculado, nunca referenciado inline)');
+    });
+
+    it('não tem violação de acessibilidade com um ProductBlock inline presente', async () => {
+      mockArticleDependencies(articleWithProducts(), { productBlockIds: [PRODUCT_A_ID] });
+      const { default: ArticlePage } = await import('./page');
+      const { container } = render(
+        await ArticlePage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        }),
+      );
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    /**
+     * `renderArticleWith` (acima) sempre chama `mockArticleDependencies` só
+     * com `article` — não aceita as opções novas de bloco/coletor. Em vez
+     * de alargar sua assinatura (usada por praticamente todo o resto do
+     * arquivo, sem nenhuma necessidade de bloco inline), este helper local
+     * cobre só os testes desta describe, que precisam de `productBlockIds`/
+     * `referencedProductIds`.
+     */
+    async function renderArticleWith2(
+      article: PublicArticle,
+      options: { productBlockIds?: string[]; referencedProductIds?: Set<string> },
+    ): Promise<string> {
+      mockArticleDependencies(article, options);
+      const { default: ArticlePage } = await import('./page');
+      return renderToStaticMarkup(
+        await ArticlePage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        }),
+      );
+    }
   });
 
   it('chama notFound() quando o artigo não existe', async () => {

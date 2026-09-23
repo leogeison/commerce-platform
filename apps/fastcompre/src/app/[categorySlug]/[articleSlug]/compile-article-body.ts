@@ -14,19 +14,36 @@ import { remarkProductBlock } from './product-block-remark-plugin';
  * §3/§7), por cima do mesmo `format: 'md'` inalterado; conteúdo Markdown
  * comum sem esse padrão continua compilando exatamente como antes.
  *
- * Escopo estreito desta tarefa (UXE-017): esta função só faz o `productId`
- * atravessar até um `mdxJsxFlowElement` referenciando `ProductBlock` — não
- * passa nenhum componente `ProductBlock` real em `components` (isso
- * pertence a quem chama `MDXContent`, hoje só `page.tsx`, intocado por
- * esta tarefa) e não resolve nenhum dado de Produto/Oferta. Ver
- * `product-block-remark-plugin.ts` para o racional completo.
+ * Escopo original da UXE-017: esta função só fazia o `productId` atravessar
+ * até um `mdxJsxFlowElement` referenciando `ProductBlock` — não passava
+ * nenhum componente `ProductBlock` real em `components` (isso pertence a
+ * quem chama `MDXContent`) e não resolvia nenhum dado de Produto/Oferta.
+ * Ver `product-block-remark-plugin.ts` para o racional completo da
+ * gramática/reconhecimento, que continua inalterado.
+ *
+ * UXW-011 — `referencedProductIds`: além de `MDXContent`, o retorno agora
+ * inclui o `Set<string>` de `productId`s que `remarkProductBlock`
+ * reconheceu e transformou de verdade nesta compilação (populado por
+ * referência, ver o racional completo no coletor em
+ * `product-block-remark-plugin.ts`). Não é um segundo parse de `bodyMdx` —
+ * é o mesmo reconhecimento que já gerou os `mdxJsxFlowElement`, só também
+ * relatado ao chamador. Único consumidor real hoje é `page.tsx`, para
+ * excluir da seção estática de Produtos os já exibidos inline (Editorial
+ * Serialization Contract §6, ADENDO UXE-018) — por isso `Set`, não
+ * callback: não há múltiplos eventos a tratar, só "quais IDs apareceram".
+ * Se `evaluate()` rejeitar (bloco malformado, `ProductBlockSyntaxError`),
+ * esta função também rejeita e não devolve nada — o estado do `Set` até
+ * aquele ponto é inobservável para quem chama, e por isso não é uma
+ * garantia deste contrato.
  */
 export async function compileArticleBody(bodyMdx: string) {
+  const referencedProductIds = new Set<string>();
+
   const { default: MDXContent } = await evaluate(bodyMdx, {
     ...runtime,
     format: 'md',
-    remarkPlugins: [remarkProductBlock],
+    remarkPlugins: [() => remarkProductBlock(referencedProductIds)],
   });
 
-  return MDXContent;
+  return { MDXContent, referencedProductIds };
 }

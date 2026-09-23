@@ -231,13 +231,21 @@ describe('Integração com a página real de Artigo (ArticlePage)', () => {
     jest.doMock('../../../lib/public-api/client', () => ({
       getPublicArticle: jest.fn(() => Promise.resolve(article)),
     }));
+    // UXW-011 — `compileArticleBody` passa a devolver `{ MDXContent,
+    // referencedProductIds }` (não mais um componente solto, ver
+    // `compile-article-body.ts`/`page.spec.tsx`); `page.tsx` usa
+    // `referencedProductIds.has(...)` para filtrar a seção estática de
+    // Produtos, então o mock precisa incluir um Set (vazio: nenhum bloco
+    // `:::product` no corpo simulado aqui, comportamento irrelevante para
+    // este arquivo, que testa só o JSON-LD).
     jest.doMock('./compile-article-body', () => ({
       compileArticleBody: jest.fn(() =>
-        Promise.resolve(
-          ({ components }: { components?: { h1?: string } }) => (
+        Promise.resolve({
+          MDXContent: ({ components }: { components?: { h1?: string } }) => (
             <div data-testid="mdx-body">corpo-compilado h1={components?.h1}</div>
           ),
-        ),
+          referencedProductIds: new Set<string>(),
+        }),
       ),
     }));
 

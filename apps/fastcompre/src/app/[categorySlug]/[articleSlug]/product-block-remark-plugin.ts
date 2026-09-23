@@ -68,6 +68,21 @@
  * Payload que atravessa para o `mdxJsxFlowElement`: SOMENTE `productId`,
  * como um único `mdxJsxAttribute`. Nenhum outro dado (nome, preço, link,
  * offerId) é lido ou propagado por este plugin.
+ *
+ * UXW-011 — `referencedProductIds` (parâmetro opcional, sem valor
+ * default além de nenhum efeito quando omitido): coletor mutado por
+ * referência, populado com `productId` **somente** no caminho de
+ * sucesso (depois de `parseProductBlockBody` já ter validado o bloco) —
+ * nunca antes de uma rejeição fail-closed, nunca como parte da própria
+ * gramática/Contract, que continuam exatamente como estavam. Existe para
+ * que `compileArticleBody` (único chamador real) saiba, sem um segundo
+ * parse de `bodyMdx`, quais Produtos foram referenciados inline — usado
+ * por `page.tsx` só para excluir da seção estática de Produtos os já
+ * exibidos inline (Editorial Serialization Contract §6, ADENDO UXE-018).
+ * Um `Set` (não uma lista) porque o único uso desse dado é teste de
+ * pertencimento; o mesmo `productId` aparecendo duas vezes no `bodyMdx`
+ * soma uma única entrada, sem efeito nas duas transformações
+ * `mdxJsxFlowElement` independentes que continuam acontecendo normalmente.
  */
 
 import { visit } from 'unist-util-visit';
@@ -112,7 +127,7 @@ function extractCandidateLines(paragraphNode: MdastParagraphNode): string[] | nu
   return children[0].value.split('\n');
 }
 
-export function remarkProductBlock() {
+export function remarkProductBlock(referencedProductIds?: Set<string>) {
   return (tree: unknown) => {
     visit(tree as never, 'paragraph', (node: unknown, index: number | undefined, parent: unknown) => {
       if (!parent || typeof index !== 'number') {
@@ -141,6 +156,7 @@ export function remarkProductBlock() {
 
       const bodyLines = lines.slice(1, -1);
       const { productId } = parseProductBlockBody(bodyLines);
+      referencedProductIds?.add(productId);
 
       (parent as MdastParentNode).children[index] = {
         type: 'mdxJsxFlowElement',

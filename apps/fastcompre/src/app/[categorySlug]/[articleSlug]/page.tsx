@@ -3,7 +3,8 @@ import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { getPublicArticle } from '@/lib/public-api/client';
 import { compileArticleBody } from './compile-article-body';
-import { affiliateRedirectHref } from './affiliate-redirect-href';
+import { createProductBlockComponent } from './product-block';
+import { ProductOfferList } from './product-offer-list';
 import { ArticleJsonLd } from './article-json-ld';
 
 /**
@@ -206,7 +207,29 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   // do Artigo (Architecture.md §33: um H1 por página). UXW-009: renderer
   // compartilhado com o `h2` nativo (ver `H2` acima), não uma string solta
   // nem um segundo componente paralelo.
-  const MDXContent = await compileArticleBody(article.bodyMdx);
+  //
+  // UXW-011 — `referencedProductIds`: mesmo reconhecimento que já gerou os
+  // `mdxJsxFlowElement` de bloco `:::product` (nenhum segundo parse de
+  // `bodyMdx`), usado só para excluir da seção estática de Produtos os já
+  // exibidos inline (Editorial Serialization Contract §6, ADENDO UXE-018).
+  const { MDXContent, referencedProductIds } = await compileArticleBody(article.bodyMdx);
+
+  // UXW-011 — fábrica fechada (closure) sobre `article.products`/`article.id`
+  // já carregados por esta página (UXE-018) — nunca um novo `fetch()`, nunca
+  // lookup global. Mesclado ao mapa estático `mdxComponents` só aqui,
+  // porque depende do Artigo sendo renderizado nesta requisição.
+  const ProductBlock = createProductBlockComponent(article.products, article.id);
+
+  // Produto referenciado por ao menos um bloco `:::product` inline não é
+  // repetido na seção estática abaixo — política de composição já fechada
+  // no ADENDO (UXE-018) do Editorial Serialization Contract §6. Um Produto
+  // vinculado via `ArticleProduct` mas nunca referenciado inline continua
+  // elegível aqui. `referencedProductIds` só decide exclusão — o mesmo
+  // `productId` referenciado duas vezes no corpo ainda renderiza duas
+  // ocorrências inline (`MDXContent` abaixo), sem relação com este filtro.
+  const staticSectionProducts = article.products.filter(
+    (product) => !referencedProductIds.has(product.id),
+  );
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
@@ -276,16 +299,18 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       {/* `font-editorial` aplicado uma única vez aqui — herdado por todo
           filho (h2–h6, p, ul/ol/li, blockquote, a inclusive) via cascata
           normal de `font-family`; nenhuma exceção de fonte para o link
-          inline (decisão fechada desta tarefa). */}
+          inline (decisão fechada desta tarefa). `ProductBlock` (UXW-011)
+          reverte essa herança explicitamente para `font-ui` — é um cartão
+          comercial, não conteúdo editorial (ver `product-block.tsx`). */}
       <div className="mt-10 font-editorial text-fg">
-        <MDXContent components={mdxComponents} />
+        <MDXContent components={{ ...mdxComponents, ProductBlock }} />
       </div>
 
-      {article.products.length > 0 && (
+      {staticSectionProducts.length > 0 && (
         <section className="mt-12">
           <h2 className="text-xl font-semibold">Produtos</h2>
           <ul className="mt-4 flex flex-col gap-6">
-            {article.products.map((product) => {
+            {staticSectionProducts.map((product) => {
               // Ofertas arquivadas já vêm excluídas pela API pública — o único
               // sinal que resta ao frontend é `inStock`. Nenhuma Oferta em
               // estoque cobre tanto `offers: []` quanto "todas presentes, mas
@@ -310,41 +335,19 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
                   <div>
                     <h3 className="font-medium">{product.name}</h3>
                     {product.description && (
-                      <p className="text-sm text-neutral-500">{product.description}</p>
+                      <p className="text-body-sm text-fg-muted">{product.description}</p>
                     )}
                     {isUnavailable && (
-                      <p className="mt-1 text-sm text-neutral-500">Temporariamente indisponível</p>
+                      <p className="mt-1 text-body-sm text-fg-muted">Temporariamente indisponível</p>
                     )}
-                    {hasOffers && (
-                      <ul className="mt-1 flex flex-col gap-1">
-                        {product.offers.map((offer) =>
-                          offer.inStock ? (
-                            <li key={offer.id} className="text-sm text-neutral-500">
-                              {/* UXW-009 — mesmo `href`/`affiliateRedirectHref`/
-                                  `target`/`rel` de antes (comportamento de
-                                  tracking intocado); só ganha peso visual real
-                                  (tokens do `Button` variant `primary`,
-                                  reproduzidos aqui em vez de reusar o
-                                  componente porque este é um `<a>`, não um
-                                  `<button>`) e o `sr-only` de nova aba. */}
-                              <a
-                                href={affiliateRedirectHref(offer.id, article.id)}
-                                target="_blank"
-                                rel="sponsored nofollow noopener noreferrer"
-                                className="inline-flex items-center gap-2 rounded-control bg-accent px-control-x py-control-y font-ui font-action text-body text-fg-on-accent hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 ring-focus"
-                              >
-                                {offer.marketplace} — {offer.price} {offer.currency}
-                                <span className="sr-only"> (abre em nova aba)</span>
-                              </a>
-                            </li>
-                          ) : (
-                            <li key={offer.id} className="text-sm text-neutral-500">
-                              {offer.marketplace} — {offer.price} {offer.currency} (indisponível)
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    )}
+                    {/* UXW-011 — extraído para `ProductOfferList`
+                        (`product-offer-list.tsx`), compartilhado com
+                        `ProductBlock` (bloco inline): mesmo `href`/
+                        `affiliateRedirectHref`/`target`/`rel`/`sr-only` de
+                        antes (comportamento de tracking intocado), sem
+                        duplicação entre os dois consumidores reais desta
+                        página. */}
+                    {hasOffers && <ProductOfferList offers={product.offers} articleId={article.id} />}
                   </div>
                 </li>
               );

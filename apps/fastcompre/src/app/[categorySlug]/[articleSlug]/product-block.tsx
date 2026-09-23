@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
-import { env } from '@/lib/env';
 import { resolveProductBlock } from './product-block-resolver';
+import { ProductOfferList } from './product-offer-list';
 import type { PublicArticleProduct } from '@commerce-platform/contracts';
 
 /**
@@ -9,18 +9,17 @@ import type { PublicArticleProduct } from '@commerce-platform/contracts';
  * UXE-018 — Componente de renderização pública do bloco `:::product`
  * (`ProductBlock`, `PRODUCT_BLOCK_JSX_COMPONENT_NAME` em
  * `product-block-remark-plugin.ts`), resolvido contra
- * `PublicArticle.products[]`.
+ * `PublicArticle.products[]`. Acabamento visual/estrutural e consolidação
+ * de tracking implementados na UXW-011 (ver notas específicas abaixo).
  *
  * `createProductBlockComponent(products, articleId)` — fábrica que fecha
  * (closure) sobre o array de Produtos públicos e o `id` do Artigo já
  * carregados por `page.tsx`, devolvendo um componente `ProductBlock`
  * pronto para ser passado em `components={{ ProductBlock: ... }}` para
- * `<MDXContent>`. Essa é a estratégia de resolução aprovada no desenho da
- * UXE-018: "component map/closure por Artigo" — nunca React Context
- * global, nunca estado em nível de módulo, nunca um novo `fetch()`. A
- * conexão real com `page.tsx` (chamar esta fábrica e passá-la a
- * `MDXContent`) é fora do escopo desta tarefa — aqui o componente só é
- * exercitado por testes (unitários e de integração MDX real via fixture).
+ * `<MDXContent>`. Estratégia de resolução aprovada no desenho da UXE-018:
+ * "component map/closure por Artigo" — nunca React Context global, nunca
+ * estado em nível de módulo, nunca um novo `fetch()`. Conectado a
+ * `page.tsx` pela UXW-011.
  *
  * Server Component puro — sem `'use client'`: não usa hooks, handlers de
  * evento nem nenhuma API exclusiva de navegador. O `<a>` de CTA é só um
@@ -48,42 +47,47 @@ import type { PublicArticleProduct } from '@commerce-platform/contracts';
  * Ofertas públicas já presentes em `product.offers` são consideradas, na
  * ordem em que a API pública já as retorna.
  *
- * CTA/tracking (condição de implementação da autorização desta tarefa):
- * reproduz exatamente `GET /r/:siteSlug/:offerId?articleId=...`, a mesma
- * rota/formato já usado por `page.tsx` (`affiliateRedirectHref`) — sem
- * novos parâmetros, sem alteração de encoding/semântica, e sem nunca
- * expor `affiliateUrl` (campo que nem existe em `PublicOffer`). Construído
- * localmente aqui, de propósito, para não antecipar a extração/
- * consolidação desse helper — isso fica para a UXW-011, quando ela já for
- * tocar `page.tsx`.
+ * UXW-011 — tracking consolidado: a lista de Ofertas (CTA/`rel`/
+ * `target`/`sr-only`) passou a ser `<ProductOfferList>`
+ * (`product-offer-list.tsx`), a mesma usada pela seção estática de
+ * Produtos em `page.tsx` — nenhuma réplica local de
+ * `affiliateRedirectHref` permanece aqui. `GET
+ * /r/:siteSlug/:offerId?articleId=...` continua exatamente igual; sem
+ * novos parâmetros, sem alteração de encoding/semântica, sem nunca expor
+ * `affiliateUrl` (campo que nem existe em `PublicOffer`).
  *
- * Sem heading fixo, sem `<aside>` assumido — decisão explícita do desenho:
- * o acabamento visual/estrutural (incluindo eventual heading, wrapper
- * semântico e hierarquia editorial) é responsabilidade do ciclo de UI/UX
- * (`UXW-*`), não desta tarefa.
+ * UXW-011 — acabamento visual/estrutural ("Editorial Confiável"): `<div>`
+ * nativo simples, sem `role`/`aria-label` — o conteúdo (nome visível,
+ * descrição/status em texto, `<ul>/<li>` semântico de Ofertas, `<a>`
+ * naturalmente focável) já é semanticamente correto por si só, sem exigir
+ * papel ARIA extra. Deliberadamente sem heading (`h1`–`h6`), sem
+ * `<section>`/`<aside>`/landmark: a posição do bloco no outline editorial
+ * varia (pode vir logo após um `h2`, um `h5`, ou nenhum subtítulo ainda) —
+ * um heading fixo aqui criaria saltos de nível não-monotônicos no
+ * documento. `font-ui` explícito no wrapper: o bloco renderiza dentro do
+ * `<div class="font-editorial">` do corpo MDX (`page.tsx`), e precisa
+ * reverter essa herança — mesma regra já congelada na UXW-009 ("Data/
+ * byline/CTA/seção comercial permanecem em Geist Sans"), já que este é um
+ * cartão comercial, não conteúdo editorial em si. `rounded-control
+ * border border-outline bg-surface` reaproveita o mesmo trio de tokens já
+ * usado como "cartão" em `apps/admin/.../dashboard.tsx` — nenhum token
+ * novo, e deliberadamente sem `shadow` (usado no projeto só em overlays/
+ * dropdowns) para não ler como elemento flutuante/anúncio. Imagem com
+ * `width`/`height` explícitos (mesmas dimensões já usadas na seção
+ * estática) e `loading="lazy"` — estabilidade de dimensão para não causar
+ * CLS, sem antecipar `next/image` (UXW-013). `min-w-0` no bloco de texto
+ * — mesmo padrão já usado na byline (UXW-010) — garante reflow em vez de
+ * overflow a 320px/zoom 200%, com a imagem de largura fixa ao lado.
  */
 
 export interface ProductBlockProps {
   productId: string;
 }
 
-/**
- * Réplica local e intencional de `affiliateRedirectHref` (`page.tsx`,
- * WEB-009) — mesmo path, mesma origem (`env.AFFILIATE_REDIRECT_URL`, nunca
- * `env.API_URL`), mesmo único query param (`articleId`). Ver nota de
- * escopo acima sobre por que não foi extraída para um helper compartilhado
- * nesta tarefa.
- */
-function affiliateHref(offerId: string, articleId: string): string {
-  const url = new URL(`/r/${env.SITE_SLUG}/${offerId}`, env.AFFILIATE_REDIRECT_URL);
-  url.searchParams.set('articleId', articleId);
-  return url.toString();
-}
-
 function ProductBlockNotFound() {
   return (
-    <div>
-      <p>Produto não disponível.</p>
+    <div className="mt-8 rounded-control border border-outline bg-surface p-4 font-ui">
+      <p className="text-body-sm text-fg-muted">Produto não disponível.</p>
     </div>
   );
 }
@@ -99,37 +103,29 @@ function ProductBlockFound({
   const isUnavailable = product.offers.every((offer) => !offer.inStock);
 
   return (
-    <div>
-      <p>
-        <strong>{product.name}</strong>
-      </p>
-      {product.description && <p>{product.description}</p>}
-      {product.imageUrl && (
-        <img src={product.imageUrl} alt={product.name} loading="lazy" />
-      )}
-      {isUnavailable && <p>Temporariamente indisponível</p>}
-      {hasOffers && (
-        <ul>
-          {product.offers.map((offer) => (
-            <li key={offer.id}>
-              {offer.inStock ? (
-                <a
-                  href={affiliateHref(offer.id, articleId)}
-                  target="_blank"
-                  rel="sponsored nofollow noopener noreferrer"
-                >
-                  {offer.marketplace} — {offer.price} {offer.currency}
-                  <span className="sr-only"> (abre em nova aba)</span>
-                </a>
-              ) : (
-                <span>
-                  {offer.marketplace} — {offer.price} {offer.currency} (indisponível)
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="mt-8 rounded-control border border-outline bg-surface p-4 font-ui sm:p-6">
+      <div className="flex gap-4">
+        {product.imageUrl && (
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            width={96}
+            height={96}
+            loading="lazy"
+            className="aspect-square w-24 shrink-0 rounded object-cover"
+          />
+        )}
+        <div className="min-w-0">
+          <p className="font-medium text-fg">{product.name}</p>
+          {product.description && (
+            <p className="mt-1 text-body-sm text-fg-muted">{product.description}</p>
+          )}
+          {isUnavailable && (
+            <p className="mt-1 text-body-sm text-fg-muted">Temporariamente indisponível</p>
+          )}
+          {hasOffers && <ProductOfferList offers={product.offers} articleId={articleId} />}
+        </div>
+      </div>
     </div>
   );
 }

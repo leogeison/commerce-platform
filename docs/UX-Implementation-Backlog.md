@@ -1021,7 +1021,7 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 **Pré-requisitos:** UXW-009, UXE-018.
 **Escopo incluído:** integração do componente de bloco na página real; verificação visual de Artigo antigo (sem blocos) lado a lado com Artigo novo (com blocos).
 **Fora de escopo:** qualquer alteração ao conteúdo de Artigos já publicados.
-**Arquivos/áreas:** mesmo arquivo de UXW-009.
+**Arquivos/áreas:** `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.tsx`, `compile-article-body.ts`, `product-block-remark-plugin.ts`, `product-block.tsx`, `product-offer-list.tsx` (novo — extração local reutilizada pelo bloco inline e pela seção estática de Produtos) e os respectivos arquivos `.spec`.
 **Critérios de aceite:** Artigo antigo renderiza exatamente como antes (regressão de UXE-019 validada em contexto real); Artigo novo com bloco renderiza o componente correto, com dado atual de `ArticleProduct`.
 **Testes esperados:** `renderToStaticMarkup` para os dois casos.
 **Acessibilidade/responsividade:** bloco renderizado como estrutura semântica própria (não texto solto), navegável e com CTA próprio seguindo o mesmo critério de UXW-009.

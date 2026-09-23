@@ -203,4 +203,76 @@ describe('remarkProductBlock', () => {
       expect(tree.children).toEqual([original]);
     });
   });
+
+  /**
+   * UXW-011 — `referencedProductIds`: coletor opcional mutado por
+   * referência, populado só no caminho de sucesso (depois da validação da
+   * gramática), nunca antes de uma rejeição fail-closed. Comportamento
+   * observável no nível do plugin, complementar aos testes de
+   * `compileArticleBody` (que cobrem o wiring ponta a ponta com
+   * `evaluate()`).
+   */
+  describe('referencedProductIds (coletor, UXW-011)', () => {
+    const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
+
+    it('bloco válido popula o Set com o productId reconhecido', async () => {
+      const { remarkProductBlock } = await loadPlugin();
+      const tree = { type: 'root' as const, children: [paragraphNode(`:::product\nversion: 1\nproductId: ${VALID_UUID}\n:::`)] };
+      const referencedProductIds = new Set<string>();
+
+      remarkProductBlock(referencedProductIds)(tree);
+
+      expect(referencedProductIds).toEqual(new Set([VALID_UUID]));
+    });
+
+    it('mesmo productId em dois blocos distintos gera uma única entrada no Set', async () => {
+      const { remarkProductBlock } = await loadPlugin();
+      const block = paragraphNode(`:::product\nversion: 1\nproductId: ${VALID_UUID}\n:::`);
+      const tree = { type: 'root' as const, children: [block, paragraphNode(`:::product\nversion: 1\nproductId: ${VALID_UUID}\n:::`)] };
+      const referencedProductIds = new Set<string>();
+
+      remarkProductBlock(referencedProductIds)(tree);
+
+      expect(referencedProductIds.size).toBe(1);
+      expect(referencedProductIds).toEqual(new Set([VALID_UUID]));
+      // As duas transformações inline continuam acontecendo independentemente
+      // do Set — o coletor só deduplica para decidir exclusão em outro lugar
+      // (ver page.tsx), nunca as ocorrências inline em si.
+      expect(tree.children).toHaveLength(2);
+      expect((tree.children[0] as MdastJsxFlowElement).type).toBe('mdxJsxFlowElement');
+      expect((tree.children[1] as MdastJsxFlowElement).type).toBe('mdxJsxFlowElement');
+    });
+
+    it('múltiplos productId distintos populam o Set com todos', async () => {
+      const { remarkProductBlock } = await loadPlugin();
+      const tree = {
+        type: 'root' as const,
+        children: [
+          paragraphNode(`:::product\nversion: 1\nproductId: ${VALID_UUID}\n:::`),
+          paragraphNode(`:::product\nversion: 1\nproductId: ${OTHER_UUID}\n:::`),
+        ],
+      };
+      const referencedProductIds = new Set<string>();
+
+      remarkProductBlock(referencedProductIds)(tree);
+
+      expect(referencedProductIds).toEqual(new Set([VALID_UUID, OTHER_UUID]));
+    });
+
+    it('bloco malformado continua lançando ProductBlockSyntaxError com o coletor presente (fail-closed preservado)', async () => {
+      const { remarkProductBlock, ProductBlockSyntaxError } = await loadPlugin();
+      const tree = { type: 'root' as const, children: [paragraphNode(`:::product\nversion: 1\nproductId: ${VALID_UUID}`)] };
+      const referencedProductIds = new Set<string>();
+
+      expect(() => remarkProductBlock(referencedProductIds)(tree)).toThrow(ProductBlockSyntaxError);
+    });
+
+    it('sem coletor (chamada sem argumento), comportamento de reconhecimento permanece idêntico', async () => {
+      const { PRODUCT_BLOCK_JSX_COMPONENT_NAME, remarkProductBlock } = await loadPlugin();
+      const tree = { type: 'root' as const, children: [paragraphNode(`:::product\nversion: 1\nproductId: ${VALID_UUID}\n:::`)] };
+
+      expect(() => runPlugin(remarkProductBlock, tree)).not.toThrow();
+      expect((tree.children[0] as MdastJsxFlowElement).name).toBe(PRODUCT_BLOCK_JSX_COMPONENT_NAME);
+    });
+  });
 });
