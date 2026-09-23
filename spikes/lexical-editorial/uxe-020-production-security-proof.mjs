@@ -168,7 +168,7 @@ async function runScenario(id, description, fn) {
 // --- Cenário 07 — expressão JS inerte ---------------------------------
 await runScenario('07-expressao-js-inerte', 'Expressão JS/JSX não se torna executável', async () => {
   const input = 'Texto {alert(1)} fim.';
-  const MDXContent = await compileArticleBody(input);
+  const { MDXContent } = await compileArticleBody(input);
   const html = renderProductionComposition(MDXContent);
   const ok = html.includes('{alert(1)}');
   return {
@@ -185,7 +185,7 @@ await runScenario('07-expressao-js-inerte', 'Expressão JS/JSX não se torna exe
 // --- Cenário 08 — import/export inertes --------------------------------
 await runScenario('08-import-export-inertes', 'Statement import/export não se torna executável', async () => {
   const input = "import x from 'y'\n\n# titulo";
-  const MDXContent = await compileArticleBody(input);
+  const { MDXContent } = await compileArticleBody(input);
   const html = renderProductionComposition(MDXContent);
   const ok = html.includes('import x from') && /<p>[^<]*import x from/.test(html);
   return {
@@ -205,7 +205,7 @@ await runScenario('09-html-bruto-descartado', 'HTML perigoso (<script>, onerror)
   const perCase = [];
   let anyViolation = false;
   for (const input of inputs) {
-    const MDXContent = await compileArticleBody(input);
+    const { MDXContent } = await compileArticleBody(input);
     const html = renderProductionComposition(MDXContent);
     const violated = html.includes('<script') || html.includes('onerror');
     if (violated) {
@@ -230,7 +230,8 @@ await runScenario(
   async () => {
     const input = '[clique](javascript:alert(1))';
     const semPlugin = renderProductionComposition(await compileBaselinePrePlugin(input));
-    const comPlugin = renderProductionComposition(await compileArticleBody(input));
+    const { MDXContent: comPluginMDXContent } = await compileArticleBody(input);
+    const comPlugin = renderProductionComposition(comPluginMDXContent);
     const identical = semPlugin === comPlugin;
     return {
       blocking: !identical,
@@ -286,7 +287,7 @@ await runScenario(
     // interpreta/mascara — só registra, e aqui verificamos que o que
     // chegou é exatamente { productId } e nada mais.
     capturedProductBlockProps.length = 0;
-    const MDXContent = await compileArticleBody(validBlock);
+    const { MDXContent } = await compileArticleBody(validBlock);
     renderProductionComposition(MDXContent);
     const captured = capturedProductBlockProps[0] ?? null;
     const renderOk =

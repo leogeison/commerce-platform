@@ -178,7 +178,7 @@ async function proveFile(relativePath, bodyMdx) {
     }
 
     const beforeMDXContent = await compileBaselinePrePlugin(bodyMdx);
-    const afterMDXContent = await compileArticleBody(bodyMdx);
+    const { MDXContent: afterMDXContent } = await compileArticleBody(bodyMdx);
 
     const beforeHtml = renderProductionComposition(beforeMDXContent);
     const afterHtml = renderProductionComposition(afterMDXContent);
