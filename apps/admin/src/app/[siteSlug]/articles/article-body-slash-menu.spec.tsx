@@ -133,7 +133,7 @@ function insertTextIntoEmptyLexicalEditor(editorRoot: HTMLElement, text: string)
 }
 
 describe('ArticleBodySlashMenu', () => {
-  it('digitar "/" no início de um bloco vazio abre o menu com as 7 capacidades disponíveis (Bloco Produto-Oferta sempre presente — desabilitado aqui por não haver Artigo persistido, UXE-011)', async () => {
+  it('digitar "/" no início de um bloco vazio abre o menu com as 8 capacidades disponíveis, na ordem aprovada pelo PO (Bloco Produto-Oferta sempre presente — desabilitado aqui por não haver Artigo persistido, UXE-011; Citação adicionada nesta rodada, UXE-022 Addendum 7 — capacidade já existente no editor, só agora exposta no menu `/`)', async () => {
     const user = userEvent.setup();
     await renderEditor({ initialValue: '' });
 
@@ -146,15 +146,16 @@ describe('ArticleBodySlashMenu', () => {
     const listbox = await screen.findByRole('listbox', { name: 'Inserir bloco' });
     const options = await waitFor(() => {
       const found = screen.getAllByRole('option');
-      expect(found).toHaveLength(7);
+      expect(found).toHaveLength(8);
       return found;
     });
     expect(options.map((option) => option.textContent)).toEqual([
+      'Lista',
+      'Lista numerada',
       'Título 1',
       'Título 2',
       'Título 3',
-      'Lista',
-      'Lista numerada',
+      'Citação',
       'Imagem',
       `Bloco Produto-Oferta — ${PRODUCT_DISABLED_REASON}`,
     ]);
@@ -167,7 +168,22 @@ describe('ArticleBodySlashMenu', () => {
     expect(editor).toHaveAttribute('aria-autocomplete', 'list');
     expect(editor).toHaveAttribute('aria-controls', listbox.id);
     expect(editor).toHaveAttribute('aria-activedescendant', options[0]!.id);
-    expect(screen.getByRole('status')).toHaveTextContent('Título 1 selecionado, opção 1 de 7.');
+    expect(screen.getByRole('status')).toHaveTextContent('Lista selecionado, opção 1 de 8.');
+
+    // UXE-022 (Addendum 7) — o menu passou a ser renderizado via
+    // `createPortal(..., document.body)`: confirma que o popover é filho
+    // direto de `document.body` (não mais aninhado dentro de `.editorCard`)
+    // e que isso não quebra nenhuma busca por role/nome acessível/região
+    // viva acima — todas já passaram usando só `screen`.
+    const popover = listbox.parentElement;
+    expect(popover?.parentElement).toBe(document.body);
+    // Fallback jsdom-safe (sem mock de `Range.getBoundingClientRect`):
+    // jsdom não implementa layout real, então `getCaretRect()` sempre cai
+    // no caso degenerado e o popover recebe uma posição numérica segura
+    // (nunca `NaN`/`undefined`) via `position: fixed`.
+    expect(popover).toHaveStyle({ position: 'fixed' });
+    expect(Number.isNaN(parseFloat(popover?.style.top ?? 'NaN'))).toBe(false);
+    expect(Number.isNaN(parseFloat(popover?.style.left ?? 'NaN'))).toBe(false);
   });
 
   it('filtra corretamente uma consulta sem acento contra rótulos acentuados (correção desta rodada: "/tit" para "Título")', async () => {
@@ -217,6 +233,10 @@ describe('ArticleBodySlashMenu', () => {
     });
     await screen.findByRole('listbox');
 
+    // Nova ordem (UXE-022 Addendum 7): Lista(0), Lista numerada(1),
+    // Título 1(2), Título 2(3), Título 3(4), Citação(5), Imagem(6), Bloco
+    // Produto-Oferta(7). Duas setas para baixo a partir do índice 0 chegam
+    // em "Título 1" (índice 2).
     await user.keyboard('{ArrowDown}{ArrowDown}');
 
     await waitFor(() => {
@@ -224,7 +244,22 @@ describe('ArticleBodySlashMenu', () => {
       expect(options[2]).toHaveAttribute('aria-selected', 'true');
       expect(editor).toHaveAttribute('aria-activedescendant', options[2]!.id);
     });
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Título 3 selecionado, opção 3 de 7.'));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Título 1 selecionado, opção 3 de 8.'));
+    expect(editor).toHaveFocus();
+
+    // ArrowUp: volta um índice (2 -> 1, "Lista numerada") — a versão
+    // anterior deste teste, apesar do título, nunca exercitava ArrowUp de
+    // fato; adicionado agora para provar que o comando continua
+    // funcionando (nenhuma mudança nesta rodada tocou o registro dos
+    // comandos de teclado).
+    await user.keyboard('{ArrowUp}');
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      expect(options[1]).toHaveAttribute('aria-selected', 'true');
+      expect(editor).toHaveAttribute('aria-activedescendant', options[1]!.id);
+    });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Lista numerada selecionado, opção 2 de 8.'));
     expect(editor).toHaveFocus();
   });
 
@@ -240,7 +275,9 @@ describe('ArticleBodySlashMenu', () => {
     });
     await screen.findByRole('listbox');
 
-    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    // Nova ordem (UXE-022 Addendum 7): "Título 3" agora é o índice 4
+    // (Lista, Lista numerada, Título 1, Título 2, Título 3, ...).
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
 
     expect(await screen.findByRole('heading', { level: 3 })).toBeInTheDocument();
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
@@ -438,5 +475,159 @@ describe('ArticleBodySlashMenu', () => {
     // Markdown exportado diverge do estado anterior ("/produto") para "".
     // Afirmado explicitamente, nunca escondido atrás de `not.toHaveBeenCalled()`.
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(''));
+  });
+
+  /**
+   * UXE-022 (Addendum 7) — testes novos desta rodada: "Citação" (capacidade
+   * já existente no editor via `article-body-toolbar.tsx`, agora também
+   * exposta pelo menu `/`), fechar ao clicar fora, ancoragem ao caret
+   * (mock de `Range.getBoundingClientRect`) e collision handling
+   * (clamp/flip) num limite de viewport.
+   */
+
+  it('confirmar "Citação" remove o texto "/cit" e insere um bloco de citação (mesma $createQuoteNode() já usada pela toolbar)', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, '/cit');
+    });
+    const options = await waitFor(() => {
+      const found = screen.getAllByRole('option');
+      expect(found).toHaveLength(1);
+      return found;
+    });
+    expect(options[0]).toHaveTextContent('Citação');
+
+    await user.click(options[0]!);
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(editor).not.toHaveTextContent('/cit');
+    // Transformer Markdown QUOTE (já usado pelo editor/toolbar, ver
+    // TRANSFORMERS em `article-body-editor.tsx`) serializa blockquote como
+    // prefixo "> " — mesmo padrão já comprovado pelo teste de "Lista"
+    // acima ("- ").
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('> '));
+  });
+
+  it('clicar fora do popover e do editor fecha o menu sem alterar o documento (mesmo padrão de limpeza do Escape)', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+    render(
+      <button type="button" onClick={() => {}}>
+        Fora do editor
+      </button>,
+    );
+
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, '/tit');
+    });
+    await screen.findByRole('listbox');
+
+    await user.click(screen.getByRole('button', { name: 'Fora do editor' }));
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent('/tit');
+    expect(screen.getByRole('status').textContent).toBe('');
+    expect(editor).not.toHaveAttribute('aria-autocomplete');
+    expect(editor).not.toHaveAttribute('aria-controls');
+    expect(editor).not.toHaveAttribute('aria-activedescendant');
+    expect(onChange).not.toHaveBeenCalledWith('');
+  });
+
+  it('clicar dentro do próprio popover (fora de uma opção) não fecha o menu', async () => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue: '' });
+
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editor, '/');
+    });
+    const listbox = await screen.findByRole('listbox');
+    const popover = listbox.parentElement as HTMLElement;
+
+    await user.click(popover);
+
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('ancora o popover ao caret via Range.getBoundingClientRect (mock) — posição = borda inferior do caret + gap', async () => {
+    const user = userEvent.setup();
+    const caretRect = {
+      top: 100,
+      left: 50,
+      bottom: 120,
+      right: 150,
+      width: 100,
+      height: 20,
+      x: 50,
+      y: 100,
+      toJSON() {
+        return this;
+      },
+    } as DOMRect;
+    const rectSpy = jest.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(caretRect);
+    try {
+      await renderEditor({ initialValue: '' });
+      const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+      await user.click(editor);
+      act(() => {
+        insertTextIntoEmptyLexicalEditor(editor, '/');
+      });
+      const listbox = await screen.findByRole('listbox');
+      const popover = listbox.parentElement as HTMLElement;
+
+      // menuWidth/menuHeight são 0 em jsdom (sem layout real) — o cálculo
+      // usa só a âncora do caret nesse caso: top = caretRect.bottom + GAP
+      // (4px), left = caretRect.left (sem colisão nesse retângulo).
+      expect(popover).toHaveStyle({ position: 'fixed', top: '124px', left: '50px' });
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it('collision handling: clamp horizontal perto da borda direita e flip vertical perto da borda inferior da viewport', async () => {
+    const user = userEvent.setup();
+    // jsdom: window.innerWidth/innerHeight padrão são 1024x768.
+    const caretRect = {
+      top: 740,
+      left: 1020,
+      bottom: 765,
+      right: 1120,
+      width: 100,
+      height: 25,
+      x: 1020,
+      y: 740,
+      toJSON() {
+        return this;
+      },
+    } as DOMRect;
+    const rectSpy = jest.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(caretRect);
+    try {
+      await renderEditor({ initialValue: '' });
+      const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+      await user.click(editor);
+      act(() => {
+        insertTextIntoEmptyLexicalEditor(editor, '/');
+      });
+      const listbox = await screen.findByRole('listbox');
+      const popover = listbox.parentElement as HTMLElement;
+
+      // Clamp horizontal: left (1020) + menuWidth (0) > 1024 - 8 (margem)
+      // → reancora a 8px da borda direita: 1024 - 0 - 8 = 1016.
+      // Flip vertical: top (765 + 4 de gap = 769) + menuHeight (0) > 768 - 8
+      // (sem espaço abaixo) → abre acima do caret: 740 - 0 - 4 = 736 (ainda
+      // dentro da margem mínima de 8px do topo).
+      expect(popover).toHaveStyle({ position: 'fixed', top: '736px', left: '1016px' });
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 });

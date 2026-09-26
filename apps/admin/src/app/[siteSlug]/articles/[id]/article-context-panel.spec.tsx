@@ -301,7 +301,11 @@ describe('ArticleContextPanel', () => {
       global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise(() => {}));
       renderPanel('DRAFT');
 
-      expect(screen.getByText('Rascunho')).toBeInTheDocument();
+      // UXE-022 (rodada 6): desde o `.statusPill` (rodada 5), o rótulo bruto
+      // também aparece sempre dentro do <aside> — escopado ao indicador
+      // externo (irmão do trigger) para não colidir com o pill.
+      const trigger = screen.getByRole('button', { name: 'Status e ações do Artigo' });
+      expect(trigger.nextElementSibling).toHaveTextContent('Rascunho');
     });
 
     it('error: mostra só o rótulo de status', async () => {
@@ -309,7 +313,9 @@ describe('ArticleContextPanel', () => {
       renderPanel('DRAFT');
 
       await screen.findByText('Não foi possível carregar o checklist de saúde do Artigo.');
-      expect(screen.getByText('Rascunho')).toBeInTheDocument();
+      // UXE-022 (rodada 6): ver nota equivalente no teste "loading" acima.
+      const trigger = screen.getByRole('button', { name: 'Status e ações do Artigo' });
+      expect(trigger.nextElementSibling).toHaveTextContent('Rascunho');
     });
 
     it('ready com 0 pendências: "Rascunho · Sem pendências"', async () => {

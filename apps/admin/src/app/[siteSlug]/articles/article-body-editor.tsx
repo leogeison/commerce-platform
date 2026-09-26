@@ -355,30 +355,64 @@ export function ArticleBodyEditor({ id, labelId, siteSlug, initialValue, onChang
   }));
 
   if (!isMounted) {
-    return <div id={id} className={styles.bodyField} aria-hidden="true" />;
+    return (
+      <>
+        <div className={styles.toolbarCard} aria-hidden="true" />
+        <div className={styles.editorCard}>
+          <div id={id} className={styles.bodyField} aria-hidden="true" />
+        </div>
+      </>
+    );
   }
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <ArticleBodyToolbar disabled={effectiveDisabled} onRequestImage={handleRequestImage} />
-      <RichTextPlugin
-        contentEditable={
-          <ContentEditable
-            id={id}
-            className={styles.bodyField}
-            role="textbox"
-            aria-multiline="true"
-            aria-labelledby={labelId}
-          />
-        }
-        placeholder={null}
-        ErrorBoundary={LexicalErrorBoundary}
-      />
-      <ArticleBodySlashMenu
-        disabled={effectiveDisabled}
-        onRequestImage={handleRequestImage}
-        onRequestProductBlock={handleRequestProductBlock}
-      />
+      {/*
+        UXE-022 — wrapper JSX puro (sem lógica nova) em torno de toolbar +
+        área de escrita + menu `/`, aprovado no desenho técnico. Os plugins
+        do Lexical usam `LexicalComposerContext` (contexto React), nunca
+        adjacência DOM, então dividir o wrapper em `<div>`s é seguro e não
+        afeta nenhum deles (`ArticleBodyImageFlow`/`ArticleBodyProductFlow`
+        ficam FORA de ambos os cards deliberadamente — são diálogos de
+        inserção/edição, não parte da superfície de escrita em si).
+
+        UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 1) — a
+        toolbar deixa de viver dentro do MESMO card que a área de escrita e
+        passa a ter seu próprio wrapper (`styles.toolbarCard`), visualmente
+        parte do card superior (título + metadados, em `article-form.tsx`)
+        via CSS (bordas/raio complementares, gap zero) — nunca um segundo
+        `LexicalComposer`/contexto: toolbar e conteúdo continuam filhos
+        diretos do MESMO `LexicalComposer` acima, sem nenhum comando,
+        plugin, node ou estado duplicado, e sem nenhuma mudança de
+        serialização (`TRANSFORMERS`, inalterado). `styles.editorCard`
+        continua exclusivamente a área de escrita (agora só
+        `RichTextPlugin` + `ArticleBodySlashMenu`), card visual separado
+        (Card B da V3), com seu próprio espaçamento (`margin-top`) em
+        relação ao card superior.
+      */}
+      <div className={styles.toolbarCard}>
+        <ArticleBodyToolbar disabled={effectiveDisabled} onRequestImage={handleRequestImage} />
+      </div>
+      <div className={styles.editorCard}>
+        <RichTextPlugin
+          contentEditable={
+            <ContentEditable
+              id={id}
+              className={styles.bodyField}
+              role="textbox"
+              aria-multiline="true"
+              aria-labelledby={labelId}
+            />
+          }
+          placeholder={null}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <ArticleBodySlashMenu
+          disabled={effectiveDisabled}
+          onRequestImage={handleRequestImage}
+          onRequestProductBlock={handleRequestProductBlock}
+        />
+      </div>
       <ArticleBodyImageFlow ref={imageFlowRef} siteSlug={siteSlug} onActiveChange={setIsImageFlowActive} />
       <ArticleBodyProductFlow ref={productFlowRef} onActiveChange={setIsProductFlowActive} />
       <HistoryPlugin />

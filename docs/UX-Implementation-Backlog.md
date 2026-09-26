@@ -785,7 +785,7 @@ Bloco comum: nenhuma tarefa desta seção altera a coluna `Article.bodyMdx` (per
 **Critérios de aceite:** editor completo, testado, com baseline capturado; `<textarea>` antigo removido do código.
 **Testes esperados:** suíte completa do editor (UXE-015) + captura de screenshot reproduzível.
 **Riscos:** nenhum.
-**Dependências posteriores:** UXQ-010.
+**Dependências posteriores:** UXE-021.
 
 ### UXE-017 — Plugin/transform do pipeline MDX do FastCompre
 **Objetivo:** implementação de produção do reconhecimento da sintaxe customizada no pipeline público, a partir do que foi fechado no Editorial Serialization Contract.
@@ -845,7 +845,21 @@ Bloco comum: nenhuma tarefa desta seção altera a coluna `Article.bodyMdx` (per
 **Critérios de aceite:** fluxo completo funcionando; UX-M03 Editorial Platform Ready fechado.
 **Testes esperados:** o próprio fluxo ponta a ponta, registrado como e2e se viável no CI ou como verificação manual documentada.
 **Riscos:** nenhum.
-**Dependências posteriores:** UXQ-010, UX-M06.
+**Dependências posteriores:** UXE-022, UX-M06.
+
+### UXE-022 — Remodelagem visual do Editor de Artigos (conforme V3 aprovada)
+**Objetivo:** aplicar a composição/hierarquia/densidade/acabamento aprovados na V3 ao Editor de Artigos do Admin, preservando integralmente contratos, comportamento funcional e o Editorial Serialization Contract.
+**Contexto/decisão relacionada:** V3 é referência visual de máxima fidelidade a reproduzir — decisão do Product Owner que amplia a formulação inicial (composição/hierarquia/densidade/acabamento, não pixel-perfect) — exceto onde contratos funcionais, acessibilidade, responsividade ou invariantes arquiteturais exigirem divergência, caso em que a regra funcional/normativa sempre vence e nenhuma funcionalidade nova é implementada só por aparecer no mockup; desenho técnico investigado e aprovado pelo Product Owner (working note de investigação, incorporado normativamente nesta entrada); escopo ampliado durante a implementação para incluir o resize de imagem por bordas/cantos (Editorial Serialization Contract §10), também aprovado pelo Product Owner.
+**Pré-requisitos:** UXE-021.
+**Escopo incluído:** toolbar compacta com ícones/símbolos preservando nomes acessíveis (`aria-label`/`title` equivalentes ao rótulo textual atual) e `aria-pressed`; título com estilo maior, sem borda de campo padrão; painel contextual com eliminação pontual de valores hard-coded por tokens semânticos existentes nos componentes atingidos; Capa remodelada somente na composição DRAFT/editável; superfície de escrita com `max-width: 720px` no container editorial (propriedade do container/pai), painel até ~320px, gap 24px, breakpoint 1024px preservado; regeneração deliberada dos 3 baselines Playwright existentes do corpo do editor (UXE-016), após aprovação visual; criação de ao menos 1 baseline novo cobrindo a composição completa do Editor em desktop (título/metadados, superfície de escrita, Capa, painel contextual); avaliação de cobertura responsiva determinística dessa composição, incluída se estável sem fragilidade, ou documentada como limitação com validação manual responsiva obrigatória no lugar; conversão do slash menu de bloco estático para popover flutuante ancorado ao cursor (posição calculada via `Range.getBoundingClientRect()`, renderizado via `createPortal(..., document.body)`, `position: fixed`), com collision handling simples (clamp horizontal e flip vertical dentro da viewport, sem biblioteca nova) e fechamento por clique fora (`pointerdown` fora do popover e do editor); estilo visual Gutenberg/WordPress (card flutuante, borda sutil, radius, sombra, ícone à esquerda, nome curto à direita, item ativo destacado, densidade compacta, ícones via `lucide-react`); expondo as 8 capacidades já existentes no Editor (Lista, Lista numerada, Título 1, Título 2, Título 3, Citação, Imagem, Bloco de Produto — Citação reaproveita `$createQuoteNode()` já usada pela toolbar de formatação, `article-body-toolbar.tsx`), sem introduzir nenhuma capability nova; trigger, filtro, navegação por teclado (`ArrowUp`/`ArrowDown`/`Enter`/`Escape`) e estrutura ARIA existente preservados integralmente (editor com `role="textbox"` + `aria-autocomplete`/`aria-controls`/`aria-activedescendant`; popover com `role="listbox"`; itens com `role="option"`; região viva (`role="status"`) existente preservada); nodes/transformers/serialização Lexical intocados. Resize de imagem por arraste de borda/canto (borda altera somente `width`; canto altera `width` e `height` juntos), com dois sliders acessíveis por teclado como alternativa equivalente ao arraste por ponteiro; persistência em `Article.bodyMdx` restrita aos três estados normativos do Editorial Serialization Contract §10 (nenhuma dimensão; só `width`; `width` e `height` juntos — `height` isolado nunca é um estado persistível); responsividade/reflow da imagem preserva a proporção editorial persistida (a definida pelo par `width`/`height` quando ambos presentes; a intrínseca do arquivo quando só `width` está presente) em qualquer largura de container/breakpoint; `ImageNode`/transformer de imagem (`article-body-image/node.ts`, `transformer.ts`, `resize-zones.tsx`, `resize-sliders.tsx`) estendidos para os novos atributos; `packages/editorial` permanece fonte física única das primitivas de gramática/validação (Contract §10).
+**Fora de escopo:** agendamento de publicação ou qualquer nova capacidade funcional; reformulação do modo somente-leitura (`ArticleReadOnly`), incluindo seu tratamento visual de Capa — validado apenas quanto à ausência de regressão funcional/layout; correção da lacuna pré-existente de Capa não participar do guard de unsaved-changes; unificação do drawer do painel contextual com o `<dialog>` do shell (mecanismo da UXE-013 preservado integralmente); migração geral do painel para Tailwind (CSS Modules e Tailwind coexistem); qualquer alteração de API, contratos, autenticação, Roles, tenancy ou máquina de estados; alteração do formato/sintaxe versionada dos blocos editoriais (`Article.bodyMdx`, `ArticleProduct`, Editorial Serialization Contract); no slash menu: novas capabilities (Galeria, IA, Áudio, Arquivos), mudança do trigger/filtro atuais, mudança de nodes/transformers/serialização Lexical.
+**Arquivos/áreas:** `apps/admin/src/app/[siteSlug]/articles/article-body-editor.tsx`, `article-body-toolbar.tsx`, `article-body-slash-menu.tsx`, `article-body-slash-menu.spec.tsx`, `article-form.tsx`, `article-form.module.css`, `product-block/node.ts`, `article-body-image/node.ts`, `article-body-image/transformer.ts`, `article-body-image/resize-zones.tsx`, `article-body-image/resize-sliders.tsx`, `article-body-image/image-block-editing.spec.tsx`, `article-body-image/image-block.spec.ts`, `article-body-image/image-dimensions-remark-plugin.ts`, `article-body-image/image-dimensions-remark-plugin.spec.ts`, `apps/admin/src/app/[siteSlug]/articles/compile-article-body.ts`, `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/compile-article-body.ts`, `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/image-dimensions-remark-plugin.ts`, `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/image-dimensions-remark-plugin.spec.ts`, `packages/editorial/src/image/*`, `[id]/article-context-panel.module.css`, `[id]/article-health-checklist.module.css`, `[id]/article-transition-panel.module.css`, `[id]/article-detail.tsx`, `[id]/article-detail.module.css`; `apps/admin/e2e-visual/editor.visual.spec.ts-snapshots/*.png` (regenerados); novo `apps/admin/e2e-visual/editor-composition.visual.spec.ts`.
+**Critérios de aceite:** composição V3 reproduzida dentro dos limites documentados; Lexical/nodes/plugins/serialização, autosave, dirty-state, preview, ProductBlock, drawer do painel, health checklist, produtos vinculados e transições preservados integralmente; trigger/filtro, navegação por teclado e estrutura ARIA do slash menu preservados integralmente, com sua apresentação convertida deliberadamente de bloco estático para popover flutuante ancorado ao cursor (ver Escopo incluído), sem enfraquecer a cobertura de testes existente do slash menu; modo somente-leitura sem regressão funcional/layout; suíte existente (Testing Library/jest-axe) verde sem enfraquecer asserções; os 3 baselines Playwright do Editor (UXE-016) regenerados deliberadamente após aprovação visual explícita; novo baseline de composição completa do Editor criado e aprovado; cobertura responsiva determinística incluída ou, na sua ausência constatada na implementação, limitação documentada e validação responsiva manual realizada. Resize de imagem por bordas/cantos implementado conforme os critérios do Editorial Serialization Contract §10 (três estados persistíveis; `height` isolado nunca suportado), com os dois sliders acessíveis por teclado como alternativa ao arraste por ponteiro, comprovado por pipeline de produção real (`uxe-022-image-dimensions-production-pipeline-proof.mjs`); comportamento com IME (Input Method Editor) real permanece limitação conhecida, não validada manualmente nesta tarefa — não declarado como aprovado.
+**Testes esperados:** suíte existente (Testing Library/jest-axe); baselines Playwright (3 existentes regenerados + novo de composição completa); verificação manual de acessibilidade e responsividade; suíte de `image-block-editing.spec.tsx`/`image-block.spec.ts` (Admin) e `image-dimensions-remark-plugin.spec.ts` (Admin e FastCompre); prova de pipeline de produção real fora do Jest (`uxe-022-image-dimensions-production-pipeline-proof.mjs`, mecanismo `ts-extension-resolve-loader.mjs` já estabelecido pela UXE-018).
+**Acessibilidade/responsividade:** `aria-label`/`title` obrigatórios nos botões da toolbar (rótulo textual atual substituído por ícone), preservando `aria-pressed`, foco visível e tooltip; touch target 36×36px mantido; zoom/reflow 400% verificado na largura de 720px (WCAG 1.4.10); navegação completa por teclado e leitor de tela nos elementos restylados; `prefers-reduced-motion` seguido via `motion-safe:` em qualquer animação nova. Resize de imagem: dois sliders (`width`/`height`) navegáveis e operáveis por teclado como alternativa equivalente ao arraste de borda/canto por ponteiro, com nome acessível próprio e valor corrente comunicado; responsividade/reflow da imagem preserva a proporção editorial persistida (Contract §10) em qualquer largura de container/breakpoint.
+**Riscos:** nenhum identificado além dos já registrados no desenho técnico da investigação; comportamento do resize/inserção de dimensões com IME (Input Method Editor) real é uma limitação conhecida e não validada manualmente nesta tarefa — não deve ser declarado como aprovado até validação manual explícita.
+**Pendência de validação visual (baselines):** os baselines Playwright previstos para esta tarefa (3 regenerados do corpo do editor + novo de composição completa) **não foram gerados/regenerados** nesta execução; os 3 baselines existentes (UXE-016) permanecem exatamente como estavam, inalterados. A geração ficou bloqueada por indisponibilidade, nesta sessão, de um ambiente Linux/Chromium reproduzível para `next build`/Playwright — limitação de infraestrutura/rede já verificada (não uma limitação de código ou de design). **Não houve aprovação, fictícia ou real, deste gate.** A validação por golden snapshots permanece **pendente**, para execução futura em ambiente Linux/Chromium adequado. Suíte automatizada (typecheck real, `playwright test --list`) e validação manual funcional já confirmadas (ver Testes esperados) não substituem essa pendência — os critérios de aceite relativos aos baselines (acima) permanecem **não satisfeitos** até essa validação ocorrer.
+**Dependências posteriores:** UXQ-002, UXQ-004, UXQ-010.
 
 ---
 
@@ -1117,7 +1131,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 ### UXQ-002 — Cenários de acessibilidade camada 2 — Admin
 **Objetivo:** cobrir os fluxos críticos do Admin em browser real: login, criar/editar Artigo, publicar.
 **Contexto/decisão relacionada:** Etapa D — fluxos críticos já mapeados nas Etapas A–C.
-**Pré-requisitos:** UXQ-001, UXA-016, UXE-016.
+**Pré-requisitos:** UXQ-001, UXA-016, UXE-022.
 **Escopo incluído:** os três fluxos citados, cada um com verificação axe em pontos-chave da jornada (não só na carga inicial da página).
 **Fora de escopo:** todo o restante do Admin — só os fluxos críticos, conforme decisão de não fazer regressão visual/a11y de toda a aplicação.
 **Arquivos/áreas:** novo diretório de testes Playwright.
@@ -1141,7 +1155,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 ### UXQ-004 — Checklist manual WCAG 2.2 AA — Admin
 **Objetivo:** verificação humana dos critérios que nenhuma automação comprova: teclado, foco, reflow/zoom 400%, leitor de tela.
 **Contexto/decisão relacionada:** Etapa D, Seção 4 — declaração normativa de que axe não certifica WCAG.
-**Pré-requisitos:** UXA-016, UXE-016.
+**Pré-requisitos:** UXA-016, UXE-022.
 **Escopo incluído:** checklist cobrindo shell, os três CRUDs, Dashboard e Editor, nos fluxos críticos já testados em UXQ-002.
 **Fora de escopo:** nenhum.
 **Arquivos/áreas:** documento de checklist (a incorporar como anexo deste backlog).
@@ -1213,9 +1227,9 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 **Dependências posteriores:** UXQ-014.
 
 ### UXQ-010 — Reexecução consolidada da regressão visual
-**Objetivo:** reexecutar a suíte de regressão visual contra os baselines já nascidos em UXA-020 (Dashboard), UXE-016 (Editor) e UXW-015 (superfícies públicas) — não criar baselines novos aqui.
+**Objetivo:** reexecutar a suíte de regressão visual contra os baselines já existentes — nascidos em UXA-020 (Dashboard), UXW-015 (superfícies públicas) e, para o Editor, os baselines mantidos por UXE-022 (que regenera deliberadamente os 3 baselines originalmente nascidos em UXE-016 e acrescenta o baseline da composição completa do Editor) — não criar baselines novos aqui.
 **Contexto/decisão relacionada:** regra desta rodada — "E13 consolida e reexecuta a suíte, não cria todos os baselines somente no final"; escopo deliberadamente restrito a superfícies críticas, não a aplicação inteira.
-**Pré-requisitos:** UXA-020, UXE-016, UXW-015, UXQ-001.
+**Pré-requisitos:** UXA-020, UXE-022, UXW-015, UXQ-001.
 **Escopo incluído:** execução comparativa Playwright screenshot contra os baselines existentes (Dashboard, Editor, Home, Categoria, Artigo); resolução de qualquer divergência real encontrada (atualização deliberada do baseline com justificativa, nunca aceite automático).
 **Fora de escopo:** qualquer superfície fora das 5 já listadas — não é regressão visual de toda a aplicação.
 **Arquivos/áreas:** mesmo diretório de baselines visuais consolidado ao longo do ciclo.
@@ -1276,7 +1290,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 
 ## Mapa de dependências (visão consolidada)
 
-Reconstruído mecanicamente a partir do campo `Pré-requisitos` de cada uma das 90 tarefas — `→` é uma dependência real listada; `∥` liga tarefas que compartilham o(s) mesmo(s) pré-requisito(s) e portanto podem rodar ao mesmo tempo; `{A,B,C} → D` significa que `D` só começa quando todas as tarefas do conjunto terminarem.
+Reconstruído mecanicamente a partir do campo `Pré-requisitos` de cada uma das 95 tarefas — `→` é uma dependência real listada; `∥` liga tarefas que compartilham o(s) mesmo(s) pré-requisito(s) e portanto podem rodar ao mesmo tempo; `{A,B,C} → D` significa que `D` só começa quando todas as tarefas do conjunto terminarem.
 
 ```
 UXF (Foundation)
@@ -1322,6 +1336,7 @@ UXE (Editorial)
   UXE-017 → UXE-018 ∥ UXE-019                  (ambas dependem só de UXE-017)
   {UXE-017, UXE-018} → UXE-020
   {UXE-019, UXE-020, UXE-016, UXW-011} → UXE-021 (gate, lado público — fecha UX-M03 junto de UXE-016)
+  UXE-021 → UXE-022                            (posterior ao fechamento de UX-M03 — não é parte do milestone, nem o reabre)
 
 UXW (FastCompre)
   {UXF-009, UXF-001A} → UXW-001                (UXF-001A acrescentada nesta revisão — ver UXF-001A; UXF-009 preservado sem alteração)
@@ -1341,13 +1356,13 @@ UXW (FastCompre)
 
 UXQ (Quality)
   UXQ-001                                       (sem pré-requisito formal — nasce, na prática, junto do primeiro fluxo real testável: UXA-012 ou UXW-006, o que ocorrer primeiro; NÃO depende de UXA-016/UXE-016/UXW-016)
-  {UXQ-001, UXA-016, UXE-016} → UXQ-002
+  {UXQ-001, UXA-016, UXE-022} → UXQ-002
   {UXQ-001, UXW-016} → UXQ-003
-  {UXA-016, UXE-016} → UXQ-004                 (independente de UXQ-001 — não usa Playwright)
+  {UXA-016, UXE-022} → UXQ-004                 (independente de UXQ-001 — não usa Playwright)
   UXW-016 → UXQ-005                            (independente de UXQ-001)
   {UXQ-002, UXQ-003, UXQ-004, UXQ-005} → UXQ-006 (gate a11y, metade de UX-M05)
   UXW-016 → UXQ-007 → UXQ-008 (condicional) → UXQ-009 (gate performance, metade de UX-M05 — herda qualquer desvio já registrado em UXW-016)
-  {UXA-020, UXE-016, UXW-015, UXQ-001} → UXQ-010
+  {UXA-020, UXE-022, UXW-015, UXQ-001} → UXQ-010
   {UXQ-006, UXQ-009, UXQ-010} → UXQ-011 → UXQ-012 → UXQ-013
   {UX-M01, UX-M02, UX-M03, UX-M04, UX-M05, UXQ-013} → UXQ-014 (UX-M06)
 ```

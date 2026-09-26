@@ -102,6 +102,7 @@
 
 import * as runtime from 'react/jsx-runtime';
 import { splitBodyIntoSegments, type BodySegment } from './split-body-into-segments';
+import { remarkImageDimensions } from './article-body-image/image-dimensions-remark-plugin';
 
 type EvaluateModule = typeof import('@mdx-js/mdx');
 type Evaluate = EvaluateModule['evaluate'];
@@ -278,6 +279,7 @@ export async function compileArticleBody(bodyMdx: string): Promise<CompiledBodyS
       const { default: Content } = await evaluate(markdownForEvaluate, {
         ...runtime,
         format: 'md',
+        remarkPlugins: [remarkImageDimensions],
       });
       compiled.push({ type: 'markdown', key, Content });
       continue;

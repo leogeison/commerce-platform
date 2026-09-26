@@ -1,9 +1,132 @@
+/*
+ * UXE-022 — `max-width` removido daqui de propósito (decisão B do
+ * desenho técnico): a largura da coluna editorial passou a ser
+ * propriedade exclusiva do container (`.detail .content`, em
+ * `article-detail.module.css`, agora 720px) — nunca repetida num
+ * componente filho. `.form` só preenche o espaço que o container já
+ * delimita.
+ */
 .form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   width: 100%;
-  max-width: 480px;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão "Header
+ * superior") — breadcrumb + status de autosave + "Ver preview",
+ * reproduzindo a barra superior da V3. Reaproveita integralmente o
+ * indicador de autosave (`useArticleBodyAutosave`, UXE-008) e
+ * `ArticlePreview` (UXE-009) já existentes — só a POSIÇÃO deles no
+ * formulário muda (antes ficavam junto ao campo "Corpo"), nenhum estado/
+ * handler/lógica é duplicado ou recriado. "Enviar para revisão" NÃO é
+ * reproduzido aqui — permanece exclusivamente em `ArticleTransitionPanel`
+ * (`ArticleContextPanel`, `article-detail.tsx`), decisão registrada como
+ * divergência explícita no Addendum 3 (invariante de montagem única do
+ * painel contextual, UXE-013 — ver relatório desta tarefa).
+ */
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 1rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  padding-top: 0.5rem;
+}
+
+.breadcrumbSeparator {
+  margin: 0 0.375rem;
+}
+
+.breadcrumbCurrent {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.topBarActions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.topBarActions .autosaveStatus {
+  padding-top: 0.5rem;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 1) — agrupa
+ * `.headerCard` (título + metadados, Card A da V3) e o campo "Corpo"
+ * (que por sua vez contém `.toolbarCard` + `.editorCard`, via
+ * `ArticleBodyEditor`) num único container com `gap: 0`: é essa ausência
+ * de gap que faz `.headerCard` e `.toolbarCard` (o rodapé de `.headerCard`
+ * e o topo de `.toolbarCard`, com bordas/raio complementares) se lerem
+ * como UM ÚNICO card contínuo, igual à V3 — sem alterar em nada o `gap:
+ * 1rem` que `.form` continua usando entre os outros blocos do formulário
+ * (título+metadados+corpo vs. seção auxiliar vs. erro vs. botão salvar).
+ */
+.editorGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 1) — Card A da
+ * V3 (título + metadados): metade de cima de um card cuja metade de
+ * baixo é `.toolbarCard` (`ArticleBodyEditor`) — raio só nos cantos
+ * superiores, sem borda inferior, para se juntar sem costura visível ao
+ * topo de `.toolbarCard` logo abaixo (gap zero, via `.editorGroup`).
+ * Raio/sombra em valores literais (V3) — sem token exato equivalente;
+ * cor de borda/fundo continuam vindo de tokens semânticos existentes.
+ */
+.headerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1.5rem 1.75rem 0.625rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-bottom: none;
+  border-radius: 1rem 1rem 0 0;
+  box-shadow: 0 1px 3px rgba(20, 30, 22, 0.04);
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 1) — metade de
+ * baixo do mesmo card (ver `.headerCard` acima): sem borda superior, raio
+ * só nos cantos inferiores. Envolve exclusivamente `ArticleBodyToolbar`
+ * (`article-body-editor.tsx`) — nenhuma mudança de contexto Lexical, só
+ * de composição visual (ver doc comment de `article-body-editor.tsx`).
+ */
+.toolbarCard {
+  padding: 0 1.75rem 1.125rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-top: none;
+  border-radius: 0 0 1rem 1rem;
+  box-shadow: 0 1px 3px rgba(20, 30, 22, 0.04);
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3) — só o campo "Corpo" (que contém
+ * `.toolbarCard` + `.editorCard`) precisa de gap zero entre seus filhos
+ * diretos (ver `.editorGroup` acima); os demais usos de `.field` no
+ * formulário continuam com o `gap: 0.25rem` original, intocado.
+ */
+.field.bodyFieldGroup {
+  gap: 0;
 }
 
 .field {
@@ -31,14 +154,258 @@
   border-color: #c0392b;
 }
 
+/*
+ * UXE-022 — Título do Artigo: mesmo `<input>`, mesmo `<label>` visível,
+ * mesmo estado (`aria-invalid`/`aria-describedby` intocados) — só o
+ * ESTILO do input muda: maior, sem a borda/padding padrão compartilhada
+ * com os demais campos de `.field input` (escopo aprovado: "maior, sem
+ * borda de campo padrão" — nada além disso).
+ *
+ * UXE-022 (rodada 4 — fidelidade V3) — perde também a borda inferior
+ * (V3: `input` sem nenhuma borda), sobe para 30px/700 (valor literal da
+ * V3 — nenhum token de tamanho de fonte existente representa esse
+ * valor) e a cor passa a usar o token semântico de texto principal em
+ * vez de um peso de fonte fixo isolado. Sem borda nenhuma em repouso, o
+ * foco visível (WCAG 2.4.7) passa a ser um contorno explícito
+ * (`outline`), já que não há mais borda para trocar de cor.
+ */
+.titleInput {
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0.25rem 0 !important;
+  font-size: 1.875rem !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  color: var(--color-text-primary) !important;
+}
+
+.titleInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring) !important;
+  outline-offset: 2px !important;
+  border-radius: var(--radius-xs) !important;
+}
+
+.titleInput::placeholder {
+  color: var(--color-text-disabled);
+  font-weight: 700;
+}
+
+/*
+ * UXE-022 (correção pós-validação visual) — "metadados editoriais"
+ * (Tipo/Categoria/Autor/Slug) agrupados visualmente abaixo do Título,
+ * numa linha compacta que quebra em telas estreitas — mesmo princípio
+ * responsivo do resto do formulário (sem breakpoint novo). Cada campo
+ * individual continua usando `.metadataField` (variante compacta de
+ * `.field`, mesmo `<label>`/`<input>`/`<select>` de sempre) — nenhuma
+ * mudança de `id`, validação ou comportamento, só o agrupamento visual.
+ */
+.metadataGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3) — cada campo de metadado passa de
+ * "rótulo em cima, campo embaixo" para uma linha compacta ícone+texto
+ * (V3: `<svg>` decorativo + texto inline, sem rótulo visível). O
+ * `<label>` de cada campo (`.field label` original) ganha `styles.srOnly`
+ * na marcação (`article-form.tsx`) — continua associado por
+ * `htmlFor`/`id`, só deixa de ocupar espaço visual; nenhuma mudança de
+ * `id`/nome/validação/comportamento. `.metadataFieldIcon` é puramente
+ * decorativo (`aria-hidden`, ver `article-form.tsx`).
+ */
+.metadataField {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.metadataFieldIcon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.metadataField input,
+.metadataField select {
+  padding: 0.125rem 0;
+  font-size: 0.78125rem;
+  color: var(--color-text-muted);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font-family: inherit;
+  max-width: 16rem;
+}
+
+.metadataField input:focus-visible,
+.metadataField select:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * UXE-022 (correção pós-validação visual) — Meta description e Capa
+ * reagrupadas como bloco "auxiliar", deliberadamente com hierarquia
+ * tipográfica menor (rótulo sem destaque, espaçamento reduzido) para
+ * não competir com a superfície de escrita — mesmos campos/comportamento
+ * de sempre, só a apresentação muda.
+ */
+.auxiliarySection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.auxiliarySection .field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * UXE-022 (correção pós-validação visual) — restaura a apresentação
+ * visual (marcador + indentação) de listas com marcadores/numeradas
+ * dentro do corpo do Artigo. O Tailwind Preflight (`@import
+ * "tailwindcss"` em `globals.css`) zera `list-style`/margin/padding de
+ * TODO `ul`/`ol` do app por padrão — isso nunca foi corrigido para o
+ * conteúdo do editor, então clicar em "Lista"/"Lista numerada" sempre
+ * converteu o bloco corretamente (nó Lexical real, Markdown correto),
+ * só sem NENHUM indício visual da conversão. Confirmado por inspeção
+ * direta do DOM: o comando Lexical (`INSERT_UNORDERED_LIST_COMMAND`/
+ * `INSERT_ORDERED_LIST_COMMAND`, intocados) sempre funcionou — o defeito
+ * é puramente de CSS, pré-existente à V3 (não introduzido por ela), e
+ * escopado aqui só ao conteúdo do editor (`.bodyField`), nunca
+ * globalmente — `.slashMenuList` continua com seu próprio `list-style:
+ * none` intencional, intocado.
+ */
+.bodyField ul,
+.bodyField ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.bodyField ul {
+  list-style: disc;
+}
+
+.bodyField ol {
+  list-style: decimal;
+}
+
+.bodyField li {
+  list-style: inherit;
+  margin: 0.25rem 0;
+}
+
+.bodyField li::marker {
+  color: var(--color-text-secondary);
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 1) — a V3 separa
+ * "título + metadados + toolbar" (Card A, `.headerCard`+`.toolbarCard`,
+ * abaixo) da área de escrita (Card B) em dois cards visuais distintos.
+ * `.editorCard` passa a desenhar SÓ o Card B (área de escrita + menu `/`)
+ * — raio/borda completos nos 4 lados (não mais "metade de cima" de um
+ * card compartilhado com a toolbar) e `margin-top` para o espaçamento
+ * entre os dois cards (valor da V3: ~18px). Raio 16px é um valor literal
+ * (V3) — nenhum token de `radius.css` representa esse valor exato; a cor
+ * de borda/fundo continuam vindo de tokens semânticos existentes
+ * (`--color-border-default`/`--color-surface-raised`).
+ */
+.editorCard {
+  display: flex;
+  flex-direction: column;
+  margin-top: 1.125rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 1rem;
+  background: var(--color-surface-raised);
+  box-shadow: 0 1px 3px rgba(20, 30, 22, 0.04);
+  overflow: hidden;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3) — padding/tipografia da área de
+ * escrita passam a corresponder à V3 (36px/44px de padding, 15.5px/1.7 de
+ * corpo de texto) e a fonte deixa de ser `monospace`: o corpo do Artigo é
+ * conteúdo editorial, não código — a V3 usa a mesma família tipográfica
+ * do resto da UI. Nenhuma mudança de comportamento do `contentEditable`
+ * (Lexical), só da apresentação visual do texto.
+ */
 .bodyField {
-  min-height: 240px;
-  font-family: monospace;
-  padding: 0.5rem 0.75rem;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  min-height: 26rem;
+  font-family: inherit;
+  padding: 2.25rem 2.75rem;
+  font-size: 0.96875rem;
+  line-height: 1.7;
+  color: var(--color-text-primary);
   outline: none;
+}
+
+/*
+ * UXE-022 (rodada 5 — acabamento/composição, item 3 "Canvas") — ritmo
+ * vertical entre blocos de nível superior do corpo do Artigo, aproximando o
+ * "respiro" (gap 16px) da V3 sem depender de flex/gap (o corpo é um
+ * `contentEditable` real, em fluxo de documento normal — a V3 usa
+ * `display:flex;gap:16px` porque é HTML estático). `* + *` nunca aplica ao
+ * primeiro filho (sem elemento anterior), então nunca soma com o padding do
+ * card — margens entre irmãos colapsam normalmente (ex.: `.bodyField ul`
+ * abaixo já define `margin-bottom`, que colapsa com este `margin-top` em vez
+ * de somar). `* + h1/h2/h3` (mais específico) dá aos títulos um respiro
+ * extra acima, mesmo princípio do `margin-top:6px` adicional da V3 sobre o
+ * H2 do exemplo. Nenhuma mudança de node/transformer — só apresentação dos
+ * mesmos elementos HTML que `HeadingNode`/`QuoteNode` já renderizam
+ * (h1/h2/h3/blockquote), e dos blocos decorator (Produto/Imagem), sempre
+ * filhos diretos do próprio `contentEditable`.
+ */
+.bodyField > * + * {
+  margin-top: 1rem;
+}
+
+.bodyField > * + h1,
+.bodyField > * + h2,
+.bodyField > * + h3 {
+  margin-top: 1.375rem;
+}
+
+.bodyField h1,
+.bodyField h2,
+.bodyField h3 {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.bodyField h1 {
+  font-size: 1.5rem;
+}
+
+.bodyField h2 {
+  font-size: 1.25rem;
+}
+
+.bodyField h3 {
+  font-size: 1.0625rem;
+}
+
+.bodyField p {
+  margin: 0;
+}
+
+.bodyField blockquote {
+  margin: 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--color-border-default);
+  color: var(--color-text-secondary);
+  font-style: italic;
 }
 
 /*
@@ -49,8 +416,8 @@
  * foco visível (WCAG 2.4.7) é explícito aqui.
  */
 .bodyField:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 1px;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 .fieldError,
@@ -60,33 +427,91 @@
   margin: 0;
 }
 
-.preview {
-  max-width: 160px;
-  max-height: 160px;
-  object-fit: contain;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-.imageActions {
+/*
+ * UXE-022 (rodada 5 — acabamento/composição, item 6 "Capa") — apresentação
+ * editorial (thumbnail + nome do arquivo + ação), aproximando a V3, sobre o
+ * MESMO `<input type="file">`/`handleFileChange`/`handleRemoveImage` de
+ * sempre (ver `article-form.tsx`) — nenhuma mudança de upload/persistência/
+ * dirty-state. `::file-selector-button` é um pseudo-elemento padrão (não
+ * uma dependência nova) que permite estilizar só o botão nativo do input,
+ * sem remover o elemento real nem duplicar semântica de label.
+ */
+.coverRow {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
-.imageActions button {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.875rem;
+.coverThumb {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.625rem;
+}
+
+.coverInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.coverFileName {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coverActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.coverActions input[type='file'] {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  max-width: 100%;
+}
+
+.coverActions input[type='file']::file-selector-button {
+  padding: 0.25rem 0.625rem;
+  margin-right: 0.5rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
+  font-family: inherit;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-raised);
   cursor: pointer;
 }
 
-.imageActions button:disabled {
+.coverActions button {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-raised);
+  cursor: pointer;
+}
+
+.coverActions button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.coverActions input[type='file']:focus-visible,
+.coverActions button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
 .form button[type='submit'] {
@@ -108,30 +533,55 @@
 
 /*
  * UXE-007 — Toolbar e menu de comando `/`.
+ * UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão "Toolbar/alvo") —
+ * a toolbar agora vive dentro de `.toolbarCard` (ver abaixo), visualmente
+ * a metade de baixo do Card A da V3 (título+metadados+toolbar). A régua
+ * de separação (`border-top`+`padding-top`, valores literais da V3 —
+ * `margin-top:6px;padding-top:14px;border-top:1px solid #F1EFE7`)
+ * substitui o fundo sutil/borda inferior da versão anterior.
  */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-bottom: 0.375rem;
+  align-items: center;
+  gap: 0.125rem;
+  margin-top: 0.375rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--color-border-subtle);
 }
 
+/*
+ * UXE-022 (rodada 4 — fidelidade V3) — decisão explícita do Addendum 3:
+ * "preserve o requisito aprovado de hit target 36×36, mas faça o
+ * conteúdo visual corresponder à V3: sem caixa/borda persistente em
+ * repouso". `min-width`/`min-height` continuam `2.25rem` (36px, o alvo de
+ * toque REAL, WCAG 2.5.8) — só a apresentação em repouso muda: sem
+ * borda/fundo (antes sempre visíveis), aproximando o conteúdo interno da
+ * caixa aparente ~32px da V3. `aria-label`/`title`/`aria-pressed`/foco
+ * visível continuam intocados.
+ */
 .toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 2.25rem;
   min-height: 2.25rem;
-  padding: 0.375rem 0.625rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
+  padding: 0.375rem;
+  border: none;
+  border-radius: 0.4375rem;
+  background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
+.toolbar button:hover:not(:disabled) {
+  background: var(--color-surface-subtle);
+  color: var(--color-text-primary);
+}
+
 .toolbar button[aria-pressed='true'] {
-  background: #111827;
-  color: #fff;
-  border-color: #111827;
+  background: var(--color-accent-fill-default);
+  color: var(--color-on-accent-text);
 }
 
 .toolbar button:disabled {
@@ -140,8 +590,43 @@
 }
 
 .toolbar button:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3) — glifos textuais de Negrito/
+ * Itálico/Título 1-3 (substituem ícone `lucide-react` para B/I; H1/H2/H3
+ * já eram texto — ver `article-body-toolbar.tsx`). Tamanhos literais da
+ * V3 (14px para B/I, 12px para H1-H3) — nenhum token de tamanho de fonte
+ * representa esses valores exatos nesta escala.
+ */
+.toolbarGlyphBold,
+.toolbarGlyphItalic {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.toolbarGlyphItalic {
+  font-style: italic;
+}
+
+.toolbarGlyphHeading {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/*
+ * UXE-022 (rodada 4 — fidelidade V3) — divisor fino entre grupos de
+ * botões (`aria-hidden`, sem papel semântico — só separação visual,
+ * mesmo agrupamento/posições da V3).
+ */
+.toolbarSeparator {
+  width: 1px;
+  height: 1.125rem;
+  margin: 0 0.375rem;
+  background: var(--color-border-subtle);
+  flex-shrink: 0;
 }
 
 .linkForm {
@@ -162,15 +647,33 @@
   min-width: 160px;
   padding: 0.375rem 0.625rem;
   font-size: 0.875rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
 }
 
+/*
+ * UXE-022 (Addendum 7, implementação nesta rodada) — deixou de ser o
+ * último filho de `.editorCard` (bloco estático anexado à área de
+ * escrita) e passou a ser um popover flutuante, renderizado via
+ * `createPortal(..., document.body)` e posicionado com `position: fixed`
+ * (o `top`/`left` reais vêm do `style` inline aplicado em
+ * `article-body-slash-menu.tsx`, ancorado ao caret — ver doc comment
+ * daquele arquivo). Necessário porque `.editorCard` tem `overflow:
+ * hidden` (ver acima), que cortaria um popover posicionado dentro dele.
+ * Chrome de card independente (borda sutil, radius, sombra), estilo
+ * Gutenberg/WordPress — ícone à esquerda, nome à direita, item ativo
+ * destacado, densidade compacta.
+ */
 .slashMenu {
-  margin-top: 0.375rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
+  z-index: 60;
+  min-width: 13.75rem;
+  max-width: 17.5rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.5rem;
+  box-shadow:
+    0 4px 12px rgba(20, 30, 22, 0.12),
+    0 1px 3px rgba(20, 30, 22, 0.08);
   padding: 0.25rem;
 }
 
@@ -180,25 +683,46 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: 0.0625rem;
+  max-height: 18rem;
+  overflow-y: auto;
 }
 
 .slashMenuOption,
 .slashMenuOptionActive {
-  padding: 0.375rem 0.625rem;
-  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.2;
   cursor: default;
-  border-radius: 4px;
+  border-radius: 0.375rem;
+  color: var(--color-text-primary);
+}
+
+.slashMenuOptionIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--color-text-muted);
 }
 
 .slashMenuOptionActive {
-  background: #e5e7eb;
+  background: var(--color-accent-subtle-bg);
+}
+
+.slashMenuOptionActive .slashMenuOptionIcon {
+  color: var(--color-text-primary);
 }
 
 .slashMenuEmpty {
   margin: 0.25rem;
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
 }
 
 /*
@@ -477,8 +1001,217 @@
  * imagem (fora de escopo desta tarefa).
  */
 .imageNodeSelected {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
+}
+
+/**
+ * UXE-022 — Resize de imagem (Editorial Serialization Contract §10).
+ *
+ * `.imageNodeWrapper` — container relativo mínimo para posicionar as 8
+ * zonas de resize (`.resizeZone*`) e os 2 sliders de teclado
+ * (`.imageDimensionSlider`) sobre a imagem, sem alterar o fluxo/tamanho
+ * da própria `<img>` (que continua governada só por `width`/`height`/
+ * `aspect-ratio` conforme o caso — ver `node.ts`).
+ *
+ * `.resizeZone*` — 8 zonas INVISÍVEIS (sem `background`/conteúdo) sobre
+ * as bordas/cantos da imagem, só por pointer/touch (`./resize-zones.tsx`)
+ * — sinalizadas ao usuário só pelo `cursor` ao passar por cima, nunca por
+ * um handle visual. Cada zona é centrada sobre a borda/canto real
+ * (deslocamento negativo = metade da espessura), dando a mesma margem de
+ * "quase acertei" dos dois lados da borda visual. Espessura ~10px sob
+ * `@media (any-pointer: fine)` (mouse "verdadeiro") e ~24px sob
+ * `@media (any-pointer: coarse)` (alvo de toque efetivo — WCAG
+ * 2.5.8/2.5.5) — SEM nenhuma mudança visual em nenhum dos dois casos (a
+ * zona permanece invisível); `any-pointer` (não `pointer`) deliberadamente
+ * para também cobrir dispositivos híbridos touch+mouse. Cantos com
+ * `z-index` maior que bordas — decisão fechada no desenho aprovado
+ * (evita que a borda "roube" o canto na sobreposição das duas faixas).
+ * `touch-action: none` evita que o navegador trate o arraste como
+ * scroll/gesto de página em touch. Cursores: `ns-resize` (N/S, só
+ * altura), `ew-resize` (E/W, só largura), `nwse-resize` (NW/SE),
+ * `nesw-resize` (NE/SW) — os dois cantos livres/não-proporcionais.
+ *
+ * `.imageDimensionSlider` — os 2 sliders de teclado (`./resize-sliders.tsx`,
+ * "Largura da imagem"/"Altura da imagem"), visualmente ocultos até o
+ * foco via técnica "clip" (1x1px, `clip`/`clip-path`, `overflow:hidden`)
+ * — NUNCA `display:none`/`visibility:hidden` (decisão fechada no desenho
+ * aprovado: as duas propriedades removeriam o elemento da árvore de
+ * acessibilidade/ordem de tabulação). SEMPRE `position: absolute` — tanto
+ * oculto quanto focado — para que crescer ao ganhar `:focus-visible`
+ * nunca desloque o layout ao redor (correção final do desenho aprovado).
+ * Mesmo padrão visual de foco já usado neste arquivo
+ * (`outline: 2px solid var(--color-focus-ring)`, ver
+ * `.toolbar button:focus-visible` acima) — reaproveitado por
+ * consistência, não uma decisão visual nova.
+ */
+.imageNodeWrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.resizeZone {
+  position: absolute;
+  background: transparent;
+  touch-action: none;
+  z-index: 2;
+}
+
+.resizeZoneN,
+.resizeZoneS {
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.resizeZoneE,
+.resizeZoneW {
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.resizeZoneN {
+  top: -5px;
+}
+
+.resizeZoneS {
+  bottom: -5px;
+}
+
+.resizeZoneE {
+  right: -5px;
+}
+
+.resizeZoneW {
+  left: -5px;
+}
+
+.resizeZoneNE,
+.resizeZoneNW,
+.resizeZoneSE,
+.resizeZoneSW {
+  width: 14px;
+  height: 14px;
+  z-index: 3;
+}
+
+.resizeZoneNE {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+
+.resizeZoneNW {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.resizeZoneSE {
+  bottom: -7px;
+  right: -7px;
+  cursor: nwse-resize;
+}
+
+.resizeZoneSW {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+
+@media (any-pointer: coarse) {
+  .resizeZoneN,
+  .resizeZoneS {
+    height: 24px;
+  }
+
+  .resizeZoneE,
+  .resizeZoneW {
+    width: 24px;
+  }
+
+  .resizeZoneN {
+    top: -12px;
+  }
+
+  .resizeZoneS {
+    bottom: -12px;
+  }
+
+  .resizeZoneE {
+    right: -12px;
+  }
+
+  .resizeZoneW {
+    left: -12px;
+  }
+
+  .resizeZoneNE,
+  .resizeZoneNW,
+  .resizeZoneSE,
+  .resizeZoneSW {
+    width: 28px;
+    height: 28px;
+  }
+
+  .resizeZoneNE {
+    top: -14px;
+    right: -14px;
+  }
+
+  .resizeZoneNW {
+    top: -14px;
+    left: -14px;
+  }
+
+  .resizeZoneSE {
+    bottom: -14px;
+    right: -14px;
+  }
+
+  .resizeZoneSW {
+    bottom: -14px;
+    left: -14px;
+  }
+}
+
+.imageDimensionSlider {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 0.75rem;
+  font-family: inherit;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-xs);
+  cursor: default;
+  z-index: 4;
+}
+
+.imageDimensionSlider:focus-visible {
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  padding: 0.125rem 0.375rem;
+  border: 2px solid var(--color-focus-ring);
+  outline: none;
 }
 
 /*
@@ -499,13 +1232,13 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fafafa;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-subtle);
 }
 
 .productBlockNodeSelected {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
@@ -517,9 +1250,9 @@
   flex-shrink: 0;
   padding: 0.25rem 0.625rem;
   font-size: 0.8125rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-raised);
   cursor: pointer;
 }
 

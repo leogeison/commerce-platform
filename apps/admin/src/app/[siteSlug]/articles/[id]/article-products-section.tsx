@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { articleProductsResponseSchema, type ProductAdmin } from '@commerce-platform/contracts';
+import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import { Button, Text } from '@commerce-platform/ui';
 import { apiRequest } from '../../../../lib/api-client';
 import { AdminApiError } from '../../../../lib/api-error';
@@ -168,7 +169,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
   if (productIdsState.status === 'loading' || catalogState.status === 'loading') {
     return (
       <section className="flex flex-col gap-4">
-        <h2 className="m-0 font-ui text-lg">Produtos vinculados</h2>
+        <h2 className="m-0 font-ui font-action text-body-sm">Produtos vinculados</h2>
         <LoadingState>Carregando Produtos vinculados...</LoadingState>
       </section>
     );
@@ -177,7 +178,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
   if (productIdsState.status === 'error' || catalogState.status === 'error') {
     return (
       <section className="flex flex-col gap-4">
-        <h2 className="m-0 font-ui text-lg">Produtos vinculados</h2>
+        <h2 className="m-0 font-ui font-action text-body-sm">Produtos vinculados</h2>
         <ErrorState>{GENERIC_LOAD_ERROR_MESSAGE}</ErrorState>
       </section>
     );
@@ -191,8 +192,21 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="m-0 font-ui text-lg">Produtos vinculados</h2>
+      <h2 className="m-0 font-ui font-action text-body-sm">Produtos vinculados</h2>
 
+      {/*
+        UXE-022 (rodada 5 — acabamento/composição, item 5 "Produtos
+        vinculados") — linha compacta (sem borda, fundo sutil, mesmo
+        `Button`/tokens de sempre) e os três controles por produto viram
+        ícone-apenas (24×24 — cumpre o mínimo WCAG 2.5.8 AA, aproximando o
+        tamanho exato da V3; decisão deliberadamente distinta dos 36×36 da
+        toolbar principal do corpo do Artigo, que é um controle mais
+        usado/mais proeminente — não a mesma escala de controle). Mesmos
+        handlers/`aria-label` por produto de sempre (o de "Remover" ganha
+        `aria-label` explícito, já que o texto visível que servia de nome
+        acessível deixa de existir); `title` acrescenta tooltip nativo.
+        Nenhuma mudança de ordenação/lógica.
+      */}
       {linkedProducts.length === 0 ? (
         <EmptyState>Nenhum Produto vinculado.</EmptyState>
       ) : (
@@ -200,13 +214,13 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
           {linkedProducts.map((product, index) => (
             <li
               key={product.id}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-control border border-outline px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-control bg-subtle-surface px-2.5 py-2"
             >
-              <Text as="span" className="m-0 min-w-0 break-words">
+              <Text as="span" className="m-0 min-w-0 break-words text-body-sm">
                 {product.name}
                 {product.archivedAt ? ' (arquivado)' : ''}
               </Text>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-shrink-0 gap-1">
                 <Button
                   type="button"
                   variant="secondary"
@@ -214,8 +228,10 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
                   onClick={() => handleMove(index, -1)}
                   disabled={isProcessing || index === 0}
                   aria-label={`Mover ${product.name} para cima`}
+                  title="Mover para cima"
+                  className="size-6! p-0! rounded-[0.375rem]! border-outline-subtle! inline-flex items-center justify-center"
                 >
-                  Mover para cima
+                  <ArrowUp aria-hidden="true" size={13} />
                 </Button>
                 <Button
                   type="button"
@@ -224,11 +240,22 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
                   onClick={() => handleMove(index, 1)}
                   disabled={isProcessing || index === linkedProducts.length - 1}
                   aria-label={`Mover ${product.name} para baixo`}
+                  title="Mover para baixo"
+                  className="size-6! p-0! rounded-[0.375rem]! border-outline-subtle! inline-flex items-center justify-center"
                 >
-                  Mover para baixo
+                  <ArrowDown aria-hidden="true" size={13} />
                 </Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => handleUnlink(product.id)} disabled={isProcessing}>
-                  Remover
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleUnlink(product.id)}
+                  disabled={isProcessing}
+                  aria-label={`Remover ${product.name}`}
+                  title="Remover"
+                  className="size-6! p-0! rounded-[0.375rem]! border-outline-subtle! inline-flex items-center justify-center"
+                >
+                  <X aria-hidden="true" size={13} />
                 </Button>
               </div>
             </li>
@@ -237,7 +264,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="article-add-product" className="font-ui text-body-sm font-action">
+        <label htmlFor="article-add-product" className="sr-only">
           Adicionar Produto
         </label>
         <select
@@ -245,7 +272,7 @@ export function ArticleProductsSection({ siteSlug, articleId, onProductsChanged 
           value={selectedToLink}
           onChange={(event) => setSelectedToLink(event.target.value)}
           disabled={isProcessing}
-          className="rounded-control border border-outline px-3 py-2 font-ui text-body"
+          className="rounded-control border border-outline px-2.5 py-1.5 font-ui text-body-sm"
         >
           <option value="">Selecione um Produto</option>
           {availableProducts.map((product) => (

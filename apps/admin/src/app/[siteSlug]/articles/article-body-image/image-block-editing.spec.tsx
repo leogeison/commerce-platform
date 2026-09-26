@@ -3,6 +3,11 @@
  *
  * UXE-010 — Upload/inserção de imagem com decisão explícita de
  * acessibilidade.
+ * UXE-022 — Ampliação de escopo autorizada pelo Product Owner: resize de
+ * imagem por borda/canto (Editorial Serialization Contract §10) — 8
+ * zonas invisíveis de pointer/touch (`./resize-zones.tsx`) + 2 sliders
+ * de teclado independentes (`./resize-sliders.tsx`, "Largura da
+ * imagem"/"Altura da imagem"), foco.
  *
  * Cobertura mínima do comportamento de edição de `ImageNode` como bloco
  * atômico (`DecoratorBlockNode`, ver `node.ts`), através de um composer
@@ -10,25 +15,46 @@
  * `@testing-library/react`) — diferente de `image-block.spec.ts`
  * (`createEditor` puro, sem composer): só um composer React real ativa
  * `useDecorators`/`LegacyDecorators` (dentro de `RichTextPlugin`), o
- * mecanismo do qual `decorate()` depende para o `<img>` aparecer de fato
- * no DOM — ver doc comment de `image-block.spec.ts` para o racional
- * completo dessa divisão.
+ * mecanismo do qual `decorate()` depende para o `<img>`/zonas/sliders de
+ * resize aparecerem de fato no DOM.
  *
- * Escopo desta suíte (deliberadamente mínimo — não cobre toda a semântica
- * de teclado do Lexical, conforme decisão fechada no desenho): comprova
- * que o bloco existe entre blocos de texto e renderiza de verdade; que é
- * atômico por construção (nenhuma API de filhos Lexical exposta); que
- * seleção/caret continuam funcionando nos blocos antes/depois; e que um
- * cenário representativo de Backspace adjacente ao bloco não lança
- * exceção nem deixa o documento num estado quebrado (permanece
- * exportável e editável em seguida). Não afirma qual é o estado exato de
- * seleção entre teclas — essa mecânica interna já pertence a
- * `@lexical/rich-text` (`registerRichText`, `KEY_BACKSPACE_COMMAND`), não
- * a este node.
+ * LIMITAÇÃO DE AMBIENTE conhecida e documentada (não afeta a suíte de
+ * cima, `image-block.spec.ts`, que não depende de nenhuma delas):
+ * - `naturalWidth`/`naturalHeight` reais de um `<img>` nunca são
+ *   computados pelo jsdom (sem decodificação real de imagem) — os testes
+ *   que dependem deles stubam as duas propriedades com
+ *   `Object.defineProperty` antes de disparar `fireEvent.load(img)`,
+ *   prática padrão para este cenário.
+ * - jsdom 26.1.0 (versão instalada, confirmado no `node_modules` real)
+ *   NÃO implementa `PointerEvent`/`setPointerCapture` nativamente — por
+ *   isso `resize-zones.tsx` (produção) já trata `setPointerCapture`/
+ *   `releasePointerCapture` como opcionais (`typeof ... === 'function'`
+ *   + `try/catch`), e os testes de arraste abaixo usam
+ *   `fireEvent.pointerDown/pointerMove/pointerUp` (suporte de
+ *   compatibilidade do próprio `@testing-library/dom` para ambientes sem
+ *   `window.PointerEvent` nativo).
+ * - `getBoundingClientRect()` de qualquer elemento no jsdom sempre
+ *   devolve um retângulo zerado (sem layout real) — `resize-zones.tsx`
+ *   (produção) mede a largura/altura REALMENTE renderizada da própria
+ *   `<img>` nesse método no início de cada gesto (ver `node.ts`/
+ *   `resize-zones.tsx`), então os testes de arraste abaixo stubam
+ *   `img.getBoundingClientRect` com um retângulo conhecido antes de
+ *   disparar `pointerdown` — mesmo racional já estabelecido para
+ *   `naturalWidth`/`naturalHeight`.
+ * - Ordem real de tabulação (`Tab` percorrendo slider de Largura → de
+ *   Altura) não é simulada via `userEvent.tab()` aqui — `userEvent.tab()`
+ *   não é garantidamente confiável no jsdom para elementos focáveis por
+ *   `tabIndex` fora de um formulário nativo, atravessando a fronteira de
+ *   um decorator `contentEditable=false`. Em vez disso, os testes abaixo
+ *   verificam a garantia estrutural que sustenta essa ordem: os dois
+ *   sliders existem na árvore DOM, o de Largura aparece ANTES do de
+ *   Altura (mesma ordem que `Tab` percorreria por padrão), e os dois são
+ *   igualmente focáveis (`tabIndex=0`) — ver `resize-sliders.tsx` para o
+ *   racional completo da ordem.
  */
 
 import { describe, expect, it } from '@jest/globals';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LexicalComposer, type InitialConfigType } from '@lexical/react/LexicalComposer';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
@@ -55,6 +81,9 @@ const TRANSFORMERS = [IMAGE];
 const IMAGE_URL = 'https://cdn.exemplo.com/a.jpg';
 const IMAGE_ALT = 'Alt da imagem';
 
+const WIDTH_SLIDER_NAME = 'Largura da imagem';
+const HEIGHT_SLIDER_NAME = 'Altura da imagem';
+
 /**
  * Expõe a instância real do `LexicalEditor` para fora do componente —
  * mesmo papel que uma prop `editorRef`/`onReady` cumpriria num plugin de
@@ -69,7 +98,7 @@ function EditorHandlePlugin({ onReady }: { onReady: (editor: LexicalEditor) => v
   return null;
 }
 
-function renderImageBlockEditor(): LexicalEditor {
+function renderImageBlockEditor(initialWidth?: number, initialHeight?: number): LexicalEditor {
   let capturedEditor: LexicalEditor | null = null;
 
   const initialConfig: InitialConfigType = {
@@ -86,7 +115,7 @@ function renderImageBlockEditor(): LexicalEditor {
       const root = $getRoot();
       const before = $createParagraphNode();
       before.append($createTextNode('Antes'));
-      const image = $createImageNode(IMAGE_URL, IMAGE_ALT);
+      const image = $createImageNode(IMAGE_URL, IMAGE_ALT, initialWidth, initialHeight);
       const after = $createParagraphNode();
       after.append($createTextNode('Depois'));
       root.append(before, image, after);
@@ -140,15 +169,71 @@ function fakeBackspaceEvent(target: HTMLElement): KeyboardEvent {
  * código-fonte). Usado só depois de uma `NodeSelection` real já existir
  * (criada por um clique de verdade, ver teste de regressão abaixo) — o
  * que está em teste ali é se o clique seleciona o node, não se o
- * roteamento nativo de teclado até o elemento focado funciona no jsdom
- * (comportamento de foco/seleção nativa em `contentEditable`,
- * documentadamente não confiável no jsdom nesta base de código — ver
- * `article-body-image-flow.spec.tsx`). Dado que a seleção já existe,
- * `registerRichText` (comportamento genérico pré-existente, não
- * implementado por este node) resolve o resto.
+ * roteamento nativo de teclado até o elemento focado funciona no jsdom.
  */
 function fakeDeleteEvent(target: HTMLElement): KeyboardEvent {
   return { target, preventDefault: () => {} } as unknown as KeyboardEvent;
+}
+
+/**
+ * Estabelece `naturalWidth`/`naturalHeight` num `<img>` já renderizado e
+ * dispara `load` — as duas são somente-leitura em navegadores reais e
+ * nunca computadas pelo jsdom (sem decodificação real de imagem), então
+ * o único jeito de exercitar o caminho "imagem carregada" nestes testes
+ * é redefinir as propriedades antes do evento, prática padrão para este
+ * cenário em suítes que testam `<img onLoad>`.
+ */
+function stubNaturalDimensionsAndFireLoad(img: HTMLImageElement, naturalWidth: number, naturalHeight: number): void {
+  Object.defineProperty(img, 'naturalWidth', { value: naturalWidth, configurable: true });
+  Object.defineProperty(img, 'naturalHeight', { value: naturalHeight, configurable: true });
+  act(() => {
+    fireEvent.load(img);
+  });
+}
+
+/**
+ * Stub de `getBoundingClientRect()` — jsdom sempre devolve um retângulo
+ * zerado (sem layout real); `resize-zones.tsx` (produção) mede a
+ * largura/altura REALMENTE renderizada da própria `<img>` nesse método
+ * no início de cada gesto de arraste, então os testes precisam de um
+ * valor conhecido para poder afirmar o resultado do gesto.
+ */
+function stubRenderedRect(img: HTMLImageElement, width: number, height: number): void {
+  img.getBoundingClientRect = () =>
+    ({
+      width,
+      height,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
+async function selectImage(): Promise<HTMLImageElement> {
+  const user = userEvent.setup();
+  const img = await screen.findByAltText<HTMLImageElement>(IMAGE_ALT);
+  await user.click(img);
+  return img;
+}
+
+function getWidthSlider(): HTMLElement {
+  return screen.getByRole('slider', { name: WIDTH_SLIDER_NAME });
+}
+
+function getHeightSlider(): HTMLElement {
+  return screen.getByRole('slider', { name: HEIGHT_SLIDER_NAME });
+}
+
+function getResizeZone(key: string): HTMLElement {
+  const zone = document.querySelector<HTMLElement>(`[data-resize-zone="${key}"]`);
+  if (!zone) {
+    throw new Error(`zona de resize "${key}" não encontrada no DOM.`);
+  }
+  return zone;
 }
 
 describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => {
@@ -225,14 +310,6 @@ describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => 
       throw new Error('root element ausente');
     }
 
-    // Cenário representativo (não exaustivo, por decisão fechada no
-    // desenho): o primeiro Backspace nesta posição tipicamente promove o
-    // bloco atômico adjacente a uma seleção de nó antes de removê-lo
-    // (comportamento real de `@lexical/rich-text` para `DecoratorNode`,
-    // não uma suposição desta suíte); um segundo Backspace age sobre o
-    // que estiver selecionado. Não afirmamos qual é o estado exato entre
-    // as duas teclas — só que nenhuma delas lança e que o documento segue
-    // bem formado e editável depois.
     expect(() => {
       act(() => {
         editor.dispatchCommand(KEY_BACKSPACE_COMMAND, fakeBackspaceEvent(rootElement));
@@ -247,8 +324,6 @@ describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => 
     expect(() => exportMarkdown(editor)).not.toThrow();
     expect(typeof exportMarkdown(editor)).toBe('string');
 
-    // A edição continua possível depois do Backspace: inserir texto na
-    // seleção atual não lança, e o resultado aparece no export.
     expect(() => {
       act(() => {
         editor.update(
@@ -267,26 +342,11 @@ describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => 
   });
 
   it('clicar na própria imagem seleciona o node (NodeSelection real); Delete remove a imagem do DOM/Markdown; documento continua editável depois (regressão — bug real de validação manual: imagem "presa", impossível de remover)', async () => {
-    // Causa raiz confirmada na investigação: `DecoratorBlockNode` sozinho
-    // não faz nenhum wiring de clique-para-seleção — precisa de
-    // `BlockWithAlignableContents` ou equivalente (ver doc comment de
-    // `node.ts`). `getComposedEventTarget(event) === ref.current` do
-    // componente pronto do Lexical exige clicar exatamente no wrapper, não
-    // no `<img>` filho — por isso este teste clica na própria `<img>`
-    // (`screen.findByAltText`), exatamente o alvo que estava quebrado, não
-    // num wrapper artificial.
     const user = userEvent.setup();
     const editor = renderImageBlockEditor();
 
     const img = await screen.findByAltText(IMAGE_ALT);
 
-    // 1. Clique real (evento DOM nativo via userEvent, não
-    // `dispatchCommand` sintético) diretamente na imagem. Bubbling de
-    // clique/`event.target` é comportamento de DOM básico que o jsdom
-    // reproduz fielmente (diferente de foco/seleção nativa em
-    // `contentEditable`, que não é confiável aqui) — é exatamente isso
-    // que está sob teste: se ESSE clique aciona o `CLICK_COMMAND`
-    // registrado por `ImageDecorator` e produz uma `NodeSelection`.
     await user.click(img);
 
     const imageKey = editor.getEditorState().read(() => {
@@ -305,15 +365,6 @@ describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => 
       }
     });
 
-    // 2. Delete com o node já selecionado — despachado diretamente (não
-    // via `user.keyboard`, ver doc comment de `fakeDeleteEvent` acima)
-    // porque o que decide a remoção aqui é a `NodeSelection` do passo 1,
-    // não o roteamento de teclado até o elemento focado. Comportamento de
-    // remoção em si é genérico de `registerRichText`
-    // (`DELETE_CHARACTER_COMMAND` → `selection.deleteNodes()`), não
-    // implementado por este node — o que está sob teste é que a seleção
-    // do passo 1 realmente ativa esse caminho e realmente remove o node,
-    // não apenas "não lança" (diferente do teste de Backspace acima).
     const rootElement = editor.getRootElement();
     if (!rootElement) {
       throw new Error('root element ausente');
@@ -328,10 +379,6 @@ describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => 
     });
     expect(exportMarkdown(editor)).not.toContain(IMAGE_URL);
 
-    // 3. Documento continua editável depois da remoção — a seleção que
-    // sobra depois de `deleteNodes()` é uma seleção real de texto/caret
-    // (não a raiz nem um estado quebrado): inserir texto nela não lança e
-    // aparece no export.
     expect(() => {
       act(() => {
         editor.update(
@@ -347,5 +394,458 @@ describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => 
     }).not.toThrow();
 
     expect(exportMarkdown(editor)).toContain('Depois da remoção');
+  });
+});
+
+describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas de pointer/touch, sliders de teclado, foco', () => {
+  it('controles ausentes antes de a imagem carregar, mesmo selecionada (naturalWidth/naturalHeight ainda desconhecidos)', async () => {
+    renderImageBlockEditor();
+    await selectImage();
+
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-resize-zone]')).not.toBeInTheDocument();
+  });
+
+  it('controles ausentes quando naturalWidth < MIN_IMAGE_WIDTH (100), mesmo com naturalHeight válido — decisão fechada no desenho, evita aria-valuemax < aria-valuemin', async () => {
+    renderImageBlockEditor();
+    const img = await selectImage();
+
+    stubNaturalDimensionsAndFireLoad(img, 80, 800);
+
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+  });
+
+  it('controles ausentes quando naturalHeight < MIN_IMAGE_HEIGHT (100), mesmo com naturalWidth válido — mesma decisão, aplicada ao eixo altura', async () => {
+    renderImageBlockEditor();
+    const img = await selectImage();
+
+    stubNaturalDimensionsAndFireLoad(img, 800, 80);
+
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+  });
+
+  it('controles aparecem quando a imagem selecionada termina de carregar com naturalWidth E naturalHeight >= 100 — 8 zonas + 2 sliders', async () => {
+    renderImageBlockEditor();
+    const img = await selectImage();
+
+    stubNaturalDimensionsAndFireLoad(img, 800, 600);
+
+    expect(await screen.findAllByRole('slider')).toHaveLength(2);
+    for (const key of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+      expect(getResizeZone(key)).toBeInTheDocument();
+    }
+  });
+
+  it('controles desaparecem quando a imagem é desselecionada (clicar em outro lugar do editor)', async () => {
+    const user = userEvent.setup();
+    renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 800, 600);
+    expect(await screen.findAllByRole('slider')).toHaveLength(2);
+
+    await user.click(screen.getByText('Antes'));
+
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-resize-zone]')).not.toBeInTheDocument();
+  });
+
+  it('ordem no DOM: slider de Largura aparece antes do de Altura, os dois igualmente focáveis (sustenta a ordem de Tab — ver racional no cabeçalho do arquivo)', async () => {
+    renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 800, 600);
+    await screen.findAllByRole('slider');
+
+    const widthSlider = getWidthSlider();
+    const heightSlider = getHeightSlider();
+    expect(widthSlider.compareDocumentPosition(heightSlider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(widthSlider).toHaveAttribute('tabIndex', '0');
+    expect(heightSlider).toHaveAttribute('tabIndex', '0');
+  });
+
+  it('atributos ARIA dos dois sliders: role="slider", aria-valuemin/max/now coerentes por eixo, nunca max < min', async () => {
+    renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 500, 300);
+
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+    expect(widthSlider).toHaveAttribute('aria-valuemin', '100');
+    expect(widthSlider).toHaveAttribute('aria-valuemax', '500'); // naturalWidth (500) < MAX_IMAGE_WIDTH (1200), nunca upscale além dele
+    expect(widthSlider).toHaveAttribute('aria-orientation', 'horizontal');
+
+    const heightSlider = getHeightSlider();
+    expect(heightSlider).toHaveAttribute('aria-valuemin', '100');
+    expect(heightSlider).toHaveAttribute('aria-valuemax', '300');
+    expect(heightSlider).toHaveAttribute('aria-orientation', 'vertical');
+
+    for (const slider of [widthSlider, heightSlider]) {
+      expect(Number(slider.getAttribute('aria-valuemax'))).toBeGreaterThanOrEqual(Number(slider.getAttribute('aria-valuemin')));
+      expect(slider).toHaveAccessibleName();
+    }
+  });
+
+  it('sem width/height persistidos: aria-valuenow de cada slider parte do respectivo natural* (clampado ao máximo normativo) — comportamento legado (max-width:100%) preservado', async () => {
+    renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 2000, 1500);
+
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+    expect(widthSlider).toHaveAttribute('aria-valuemax', '1200');
+    expect(widthSlider).toHaveAttribute('aria-valuenow', '1200');
+
+    const heightSlider = getHeightSlider();
+    expect(heightSlider).toHaveAttribute('aria-valuemax', '1200');
+    expect(heightSlider).toHaveAttribute('aria-valuenow', '1200');
+  });
+
+  it('ArrowLeft/ArrowRight com o slider de Largura focado ajustam só a largura (altura pinada no valor efetivo atual) em passos de 10px', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 2000, 2000);
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+
+    act(() => {
+      widthSlider.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(widthSlider, { key: 'ArrowRight' });
+    });
+    await waitFor(() => expect(widthSlider).toHaveAttribute('aria-valuenow', '610'));
+
+    act(() => {
+      fireEvent.keyDown(widthSlider, { key: 'ArrowLeft' });
+    });
+    await waitFor(() => expect(widthSlider).toHaveAttribute('aria-valuenow', '600'));
+
+    editor.getEditorState().read(() => {
+      const image = $getRoot().getChildAtIndex(1);
+      expect($isImageNode(image) && image.getWidth()).toBe(600);
+      expect($isImageNode(image) && image.getHeight()).toBe(300);
+    });
+  });
+
+  it('ArrowUp/ArrowDown com o slider de Altura focado ajustam só a altura (largura pinada) em passos de 10px — Cima aumenta, Baixo diminui', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 2000, 2000);
+    const heightSlider = await screen.findByRole('slider', { name: HEIGHT_SLIDER_NAME });
+
+    act(() => {
+      heightSlider.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(heightSlider, { key: 'ArrowUp' });
+    });
+    await waitFor(() => expect(heightSlider).toHaveAttribute('aria-valuenow', '310'));
+
+    act(() => {
+      fireEvent.keyDown(heightSlider, { key: 'ArrowDown' });
+    });
+    await waitFor(() => expect(heightSlider).toHaveAttribute('aria-valuenow', '300'));
+
+    editor.getEditorState().read(() => {
+      const image = $getRoot().getChildAtIndex(1);
+      expect($isImageNode(image) && image.getWidth()).toBe(600);
+      expect($isImageNode(image) && image.getHeight()).toBe(300);
+    });
+  });
+
+  it('Shift+ArrowRight/Shift+ArrowUp ajustam largura/altura em passos de 50px', async () => {
+    renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 2000, 2000);
+
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+    act(() => {
+      widthSlider.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(widthSlider, { key: 'ArrowRight', shiftKey: true });
+    });
+    await waitFor(() => expect(widthSlider).toHaveAttribute('aria-valuenow', '650'));
+
+    const heightSlider = getHeightSlider();
+    act(() => {
+      heightSlider.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(heightSlider, { key: 'ArrowUp', shiftKey: true });
+    });
+    await waitFor(() => expect(heightSlider).toHaveAttribute('aria-valuenow', '350'));
+  });
+
+  it('ajuste de teclado nunca ultrapassa MIN_IMAGE_WIDTH/MIN_IMAGE_HEIGHT nem natural* — clampImageWidth/clampImageHeight aplicados na interação', async () => {
+    renderImageBlockEditor(105, 110);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 300, 300);
+
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+    act(() => {
+      widthSlider.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(widthSlider, { key: 'ArrowLeft', shiftKey: true }); // -50, resultaria em 55
+    });
+    await waitFor(() => expect(widthSlider).toHaveAttribute('aria-valuenow', '100'));
+
+    const heightSlider = getHeightSlider();
+    act(() => {
+      heightSlider.focus();
+    });
+    act(() => {
+      fireEvent.keyDown(heightSlider, { key: 'ArrowDown', shiftKey: true }); // -50, resultaria em 60
+    });
+    await waitFor(() => expect(heightSlider).toHaveAttribute('aria-valuenow', '100'));
+  });
+
+  it('navegação normal do Lexical (ArrowLeft/ArrowRight fora dos sliders) permanece intocada — não dispara ajuste de dimensões', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 2000, 2000);
+    await screen.findAllByRole('slider');
+
+    const rootElement = editor.getRootElement();
+    if (!rootElement) {
+      throw new Error('root element ausente');
+    }
+    act(() => {
+      fireEvent.keyDown(rootElement, { key: 'ArrowRight' });
+    });
+
+    editor.getEditorState().read(() => {
+      const image = $getRoot().getChildAtIndex(1);
+      expect($isImageNode(image) && image.getWidth()).toBe(600);
+      expect($isImageNode(image) && image.getHeight()).toBe(300);
+    });
+  });
+
+  it('arraste na zona LESTE (borda vertical) altera só a largura — altura persistida no valor efetivo atual ("pinada")', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 900, 900);
+    stubRenderedRect(img, 600, 300);
+    await screen.findAllByRole('slider');
+    const zoneE = getResizeZone('e');
+
+    act(() => {
+      fireEvent.pointerDown(zoneE, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
+    act(() => {
+      fireEvent.pointerMove(zoneE, { pointerId: 1, clientX: 40, clientY: 0 });
+    });
+    act(() => {
+      fireEvent.pointerUp(zoneE, { pointerId: 1, clientX: 40, clientY: 0 });
+    });
+
+    await waitFor(() => {
+      editor.getEditorState().read(() => {
+        const image = $getRoot().getChildAtIndex(1);
+        expect($isImageNode(image) && image.getWidth()).toBe(640);
+        expect($isImageNode(image) && image.getHeight()).toBe(300);
+      });
+    });
+  });
+
+  it('arraste na zona OESTE (borda vertical) altera só a largura, sentido invertido (arrastar para a esquerda aumenta)', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 900, 900);
+    stubRenderedRect(img, 600, 300);
+    await screen.findAllByRole('slider');
+    const zoneW = getResizeZone('w');
+
+    act(() => {
+      fireEvent.pointerDown(zoneW, { pointerId: 1, clientX: 100, clientY: 0 });
+    });
+    act(() => {
+      fireEvent.pointerMove(zoneW, { pointerId: 1, clientX: 60, clientY: 0 }); // dx=-40, signX=-1 → +40
+    });
+    act(() => {
+      fireEvent.pointerUp(zoneW, { pointerId: 1, clientX: 60, clientY: 0 });
+    });
+
+    await waitFor(() => {
+      editor.getEditorState().read(() => {
+        const image = $getRoot().getChildAtIndex(1);
+        expect($isImageNode(image) && image.getWidth()).toBe(640);
+        expect($isImageNode(image) && image.getHeight()).toBe(300);
+      });
+    });
+  });
+
+  it('arraste na zona NORTE (borda horizontal) altera só a altura, sentido invertido (arrastar para cima aumenta) — largura persistida "pinada"', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 900, 900);
+    stubRenderedRect(img, 600, 300);
+    await screen.findAllByRole('slider');
+    const zoneN = getResizeZone('n');
+
+    act(() => {
+      fireEvent.pointerDown(zoneN, { pointerId: 1, clientX: 0, clientY: 100 });
+    });
+    act(() => {
+      fireEvent.pointerMove(zoneN, { pointerId: 1, clientX: 0, clientY: 60 }); // dy=-40, signY=-1 → +40
+    });
+    act(() => {
+      fireEvent.pointerUp(zoneN, { pointerId: 1, clientX: 0, clientY: 60 });
+    });
+
+    await waitFor(() => {
+      editor.getEditorState().read(() => {
+        const image = $getRoot().getChildAtIndex(1);
+        expect($isImageNode(image) && image.getWidth()).toBe(600);
+        expect($isImageNode(image) && image.getHeight()).toBe(340);
+      });
+    });
+  });
+
+  it('arraste na zona SUDESTE (canto) altera largura E altura livremente/não-proporcionalmente', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 900, 900);
+    stubRenderedRect(img, 600, 300);
+    await screen.findAllByRole('slider');
+    const zoneSE = getResizeZone('se');
+
+    act(() => {
+      fireEvent.pointerDown(zoneSE, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
+    act(() => {
+      fireEvent.pointerMove(zoneSE, { pointerId: 1, clientX: 40, clientY: 20 });
+    });
+    act(() => {
+      fireEvent.pointerUp(zoneSE, { pointerId: 1, clientX: 40, clientY: 20 });
+    });
+
+    await waitFor(() => {
+      editor.getEditorState().read(() => {
+        const image = $getRoot().getChildAtIndex(1);
+        expect($isImageNode(image) && image.getWidth()).toBe(640);
+        expect($isImageNode(image) && image.getHeight()).toBe(320);
+      });
+    });
+  });
+
+  it('arraste captura a largura/altura REALMENTE RENDERIZADA no início do gesto — nunca o width/height ainda não persistido', async () => {
+    // Sem width/height persistidos ainda (undefined) — a única forma de
+    // saber o ponto de partida do gesto é medir o retângulo renderizado
+    // real (ver racional em `resize-zones.tsx`).
+    const editor = renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 900, 900);
+    stubRenderedRect(img, 500, 400);
+    await screen.findAllByRole('slider');
+    const zoneE = getResizeZone('e');
+
+    act(() => {
+      fireEvent.pointerDown(zoneE, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
+    act(() => {
+      fireEvent.pointerMove(zoneE, { pointerId: 1, clientX: 20, clientY: 0 });
+    });
+    act(() => {
+      fireEvent.pointerUp(zoneE, { pointerId: 1, clientX: 20, clientY: 0 });
+    });
+
+    await waitFor(() => {
+      editor.getEditorState().read(() => {
+        const image = $getRoot().getChildAtIndex(1);
+        expect($isImageNode(image) && image.getWidth()).toBe(520);
+        // height nunca existia antes — o gesto na zona LESTE persiste os
+        // DOIS eixos a partir do renderizado real (400), nunca deixa
+        // height órfão.
+        expect($isImageNode(image) && image.getHeight()).toBe(400);
+      });
+    });
+  });
+
+  it('arraste nunca faz upscale além de naturalWidth/naturalHeight quando conhecidos', async () => {
+    const editor = renderImageBlockEditor(600, 300);
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 650, 320);
+    stubRenderedRect(img, 600, 300);
+    await screen.findAllByRole('slider');
+    const zoneSE = getResizeZone('se');
+
+    act(() => {
+      fireEvent.pointerDown(zoneSE, { pointerId: 1, clientX: 0, clientY: 0 });
+    });
+    act(() => {
+      // Tentaria width=1100 (muito além de naturalWidth=650) e
+      // height=800 (muito além de naturalHeight=320).
+      fireEvent.pointerMove(zoneSE, { pointerId: 1, clientX: 500, clientY: 500 });
+    });
+    act(() => {
+      fireEvent.pointerUp(zoneSE, { pointerId: 1, clientX: 500, clientY: 500 });
+    });
+
+    await waitFor(() => {
+      editor.getEditorState().read(() => {
+        const image = $getRoot().getChildAtIndex(1);
+        expect($isImageNode(image) && image.getWidth()).toBe(650);
+        expect($isImageNode(image) && image.getHeight()).toBe(320);
+      });
+    });
+  });
+
+  it('Enter com a ImageNode selecionada move o foco para o slider de Largura primeiro', async () => {
+    const editor = renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 800, 600);
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+
+    expect(document.activeElement).not.toBe(widthSlider);
+
+    const rootElement = editor.getRootElement();
+    if (!rootElement) {
+      throw new Error('root element ausente');
+    }
+    act(() => {
+      fireEvent.keyDown(rootElement, { key: 'Enter' });
+    });
+
+    await waitFor(() => expect(document.activeElement).toBe(widthSlider));
+  });
+
+  it('Escape no slider de Largura devolve o foco ao editor, mantendo a imagem selecionada (NodeSelection intocada)', async () => {
+    const editor = renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 800, 600);
+    const widthSlider = await screen.findByRole('slider', { name: WIDTH_SLIDER_NAME });
+
+    act(() => {
+      widthSlider.focus();
+    });
+    expect(document.activeElement).toBe(widthSlider);
+
+    act(() => {
+      fireEvent.keyDown(widthSlider, { key: 'Escape' });
+    });
+
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      expect($isNodeSelection(selection)).toBe(true);
+    });
+  });
+
+  it('Escape no slider de Altura devolve o foco ao editor, mantendo a imagem selecionada (mesmo comportamento do slider de Largura)', async () => {
+    const editor = renderImageBlockEditor();
+    const img = await selectImage();
+    stubNaturalDimensionsAndFireLoad(img, 800, 600);
+    const heightSlider = await screen.findByRole('slider', { name: HEIGHT_SLIDER_NAME });
+
+    act(() => {
+      heightSlider.focus();
+    });
+    expect(document.activeElement).toBe(heightSlider);
+
+    act(() => {
+      fireEvent.keyDown(heightSlider, { key: 'Escape' });
+    });
+
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      expect($isNodeSelection(selection)).toBe(true);
+    });
   });
 });

@@ -550,9 +550,17 @@ describe('ArticleDetail', () => {
     renderDetail();
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
-    // UXE-012: "Publicado" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(screen.getAllByText('Publicado')).toHaveLength(2);
+    // UXE-022 (rodada 6, correção pós-execução local): desde o
+    // `.statusPill` adicionado a `ArticleContextPanel` na rodada 5, o
+    // rótulo de status bruto passa a aparecer em mais de um lugar de
+    // forma simultânea e permanente (resumo de `ArticleReadOnly` + pill
+    // do card "Status do Artigo"), então uma contagem global deixou de
+    // ser inequívoca. Cada representação é localizada pelo seu próprio
+    // landmark semântico, não por contagem de strings idênticas.
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Publicado');
+    expect(screen.getByRole('heading', { name: 'Status do Artigo' }).nextElementSibling).toHaveTextContent(
+      'Publicado',
+    );
     expect(screen.getByText('Review')).toBeInTheDocument();
     expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Arquivar' })).toBeInTheDocument();
@@ -564,9 +572,14 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail();
 
-    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
+    // UXE-022 (rodada 6): ver nota da correção de testes acima (teste
+    // PUBLISHED) — rótulo bruto agora aparece em mais de um lugar
+    // simultâneo; cada landmark é verificado separadamente.
+    await screen.findByText('Status');
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Em revisão');
+    expect(screen.getByRole('heading', { name: 'Status do Artigo' }).nextElementSibling).toHaveTextContent(
+      'Em revisão',
+    );
     expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
@@ -576,9 +589,14 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'ARCHIVED' }) });
     renderDetail();
 
-    // UXE-012: "Arquivado" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(await screen.findAllByText('Arquivado')).toHaveLength(2);
+    // UXE-022 (rodada 6): ver nota da correção de testes acima (teste
+    // PUBLISHED) — rótulo bruto agora aparece em mais de um lugar
+    // simultâneo; cada landmark é verificado separadamente.
+    await screen.findByText('Status');
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Arquivado');
+    expect(screen.getByRole('heading', { name: 'Status do Artigo' }).nextElementSibling).toHaveTextContent(
+      'Arquivado',
+    );
     expect(screen.getByRole('button', { name: 'Restaurar para rascunho' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
   });
@@ -617,10 +635,13 @@ describe('ArticleDetail', () => {
     const externalIndicator = screen.getByRole('button', { name: 'Status e ações do Artigo' }).parentElement;
     await waitFor(() => expect(externalIndicator).toHaveTextContent('Em revisão · Sem pendências'));
 
-    // (1) `ArticleReadOnly` continua exibindo o rótulo isolado — `getByText`
-    // exato já é inequívoco agora que o indicador externo assentou no
-    // texto composto (só sobra essa ocorrência).
-    expect(screen.getByText('Em revisão')).toBeInTheDocument();
+    // (1) `ArticleReadOnly` continua exibindo o rótulo isolado. Desde a
+    // rodada 5 da UXE-022, o pill do card "Status do Artigo" também
+    // mostra o rótulo bruto (sempre, independente do indicador externo já
+    // ter assentado no texto composto), então `getByText` exato deixou de
+    // ser inequívoco — escopado ao `<dd>` do resumo pelo `<dt>Status</dt>`
+    // que o antecede.
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Em revisão');
     // (2) o indicador externo — localizado pelo seu trigger correspondente
     // ("Status e ações do Artigo", por papel/nome acessível), não por
     // posição — continua perceptibilizando o mesmo status, verificado por
@@ -792,7 +813,7 @@ describe('ArticleDetail', () => {
     await screen.findByText(PRODUCT_A.name);
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
 
-    await user.click(screen.getByRole('button', { name: 'Remover' }));
+    await user.click(screen.getByRole('button', { name: `Remover ${PRODUCT_A.name}` }));
 
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
   });
@@ -816,7 +837,7 @@ describe('ArticleDetail', () => {
     await screen.findByText(PRODUCT_A.name);
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(1));
 
-    await user.click(screen.getByRole('button', { name: 'Remover' }));
+    await user.click(screen.getByRole('button', { name: `Remover ${PRODUCT_A.name}` }));
 
     expect(await screen.findByText('Não foi possível remover o Produto.')).toBeInTheDocument();
     expect(fetchState.getHealthCallCount()).toBe(1);
@@ -875,7 +896,11 @@ describe('ArticleDetail', () => {
     // do Artigo", por papel/nome acessível) — continua perceptibilizando o
     // mesmo status dentro do seu texto composto, verificado por conteúdo,
     // nunca por contagem de strings idênticas (invariante 2).
-    expect(await screen.findByText('Publicado')).toBeInTheDocument();
+    // UXE-022 (rodada 6): ver nota equivalente no teste "DRAFT →
+    // PENDING_REVIEW" acima — o pill do card "Status do Artigo" também
+    // mostra o rótulo bruto, então a checagem de `ArticleReadOnly` é
+    // escopada ao seu próprio `<dd>` em vez de `getByText` exato.
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Publicado');
     const externalIndicator = screen.getByRole('button', { name: 'Status e ações do Artigo' }).parentElement;
     expect(externalIndicator).toHaveTextContent('Publicado');
     await waitFor(() => expect(fetchState.getHealthCallCount()).toBe(2));
@@ -888,9 +913,13 @@ describe('ArticleDetail', () => {
     renderDetail('VIEWER');
 
     expect(await screen.findByRole('heading', { name: 'Melhor fone Bluetooth' })).toBeInTheDocument();
-    // UXE-012: "Rascunho" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(screen.getAllByText('Rascunho')).toHaveLength(2);
+    // UXE-022 (rodada 6): ver nota da correção de testes no teste
+    // PUBLISHED acima — rótulo bruto agora aparece em mais de um lugar
+    // simultâneo; cada landmark é verificado separadamente.
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Rascunho');
+    expect(screen.getByRole('heading', { name: 'Status do Artigo' }).nextElementSibling).toHaveTextContent(
+      'Rascunho',
+    );
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(screen.queryByText('Adicionar Produto')).not.toBeInTheDocument();
     expect(await screen.findByText('Nenhum Produto vinculado.')).toBeInTheDocument();
@@ -923,9 +952,14 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail('EDITOR');
 
-    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
+    // UXE-022 (rodada 6): ver nota da correção de testes no teste
+    // PUBLISHED acima — rótulo bruto agora aparece em mais de um lugar
+    // simultâneo; cada landmark é verificado separadamente.
+    await screen.findByText('Status');
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Em revisão');
+    expect(screen.getByRole('heading', { name: 'Status do Artigo' }).nextElementSibling).toHaveTextContent(
+      'Em revisão',
+    );
     expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publicar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar para rascunho' })).toBeInTheDocument();
@@ -935,9 +969,14 @@ describe('ArticleDetail', () => {
     mockFetch({ article: () => jsonResponse(200, { ...draftArticle, status: 'PENDING_REVIEW' }) });
     renderDetail('VIEWER');
 
-    // UXE-012: "Em revisão" aparece no resumo de `ArticleReadOnly` e no
-    // badge de `ArticleContextPanel` — ver nota acima.
-    expect(await screen.findAllByText('Em revisão')).toHaveLength(2);
+    // UXE-022 (rodada 6): ver nota da correção de testes no teste
+    // PUBLISHED acima — rótulo bruto agora aparece em mais de um lugar
+    // simultâneo; cada landmark é verificado separadamente.
+    await screen.findByText('Status');
+    expect(screen.getByText('Status').nextElementSibling).toHaveTextContent('Em revisão');
+    expect(screen.getByRole('heading', { name: 'Status do Artigo' }).nextElementSibling).toHaveTextContent(
+      'Em revisão',
+    );
     // UXE-013: ver nota equivalente no teste "VIEWER em DRAFT" acima — o
     // trigger mobile de `ArticleContextPanel` é chrome de UI sempre
     // montada, não uma ação de transição.

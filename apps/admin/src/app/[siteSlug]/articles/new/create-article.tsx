@@ -5,6 +5,7 @@ import { articleAdminSchema, type CreateArticleRequest } from '@commerce-platfor
 import { apiRequest } from '../../../../lib/api-client';
 import { ArticleForm, type ArticleFormValues } from '../article-form';
 import { ProductLookupProvider } from '../product-lookup-context';
+import styles from './create-article.module.css';
 
 interface CreateArticleProps {
   siteSlug: string;
@@ -68,7 +69,17 @@ export function CreateArticle({ siteSlug }: CreateArticleProps) {
     // mantém o item "Bloco Produto-Oferta" do menu `/` indisponível (com
     // explicação acessível) em `/articles/new`.
     <ProductLookupProvider siteSlug={siteSlug} articleId={null}>
-      <ArticleForm siteSlug={siteSlug} initialValues={EMPTY_VALUES} submitLabel="Criar" onSubmit={handleSubmit} />
+      {/*
+        UXE-022 (correção pós-validação visual) — `.container` (720px,
+        ver doc comment em `create-article.module.css`) é o único container
+        desta rota: `/articles/new` não tem o grid de duas colunas de
+        `/articles/:id` (sem `ArticleContextPanel`, já que não há Artigo
+        persistido ainda — UXE-011), então precisa do próprio limite de
+        largura para compartilhar a composição V3.
+      */}
+      <div className={styles.container}>
+        <ArticleForm siteSlug={siteSlug} initialValues={EMPTY_VALUES} submitLabel="Criar" onSubmit={handleSubmit} />
+      </div>
     </ProductLookupProvider>
   );
 }

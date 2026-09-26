@@ -253,7 +253,11 @@ export function ArticleDetail({ siteSlug, id }: ArticleDetailProps) {
   }
 
   return (
-    <div className={styles.detail}>
+    // UXE-022 — `data-testid` novo, só marcação (sem lógica/layout
+    // novos), reservado para o baseline visual da composição completa do
+    // Editor exigido pelo desenho aprovado — baseline ainda NÃO criado
+    // nesta rodada (ver §11 do desenho: só após aprovação visual).
+    <div className={styles.detail} data-testid="article-editor-composition">
       {/*
         UXE-011 — `ProductLookupProvider` posicionado acima de `ArticleForm`
         (editor Lexical do corpo do Artigo: menu `/`, decorator do bloco de

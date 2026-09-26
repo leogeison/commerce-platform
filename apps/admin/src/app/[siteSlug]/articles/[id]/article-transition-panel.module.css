@@ -4,20 +4,41 @@
   gap: 0.5rem;
 }
 
+/*
+ * UXE-022 (rodada 5 — acabamento/composição, item 4 "transição
+ * editorial") — botão de ação primária cheio/verde, aproximando a V3
+ * (única ação visível no mockup, "Enviar para revisão" — full width,
+ * 700/13.5px). Empilhado (`flex-direction: column`) em vez de lado a lado:
+ * mesmo tratamento aplicado a todas as ações deste painel (nunca houve
+ * distinção visual primária/secundária entre elas antes desta rodada), sem
+ * inventar uma hierarquia nova entre ações que a V3 não mostra (só cobre o
+ * caso DRAFT). Cores/raio reaproveitam os mesmos tokens já usados pela
+ * toolbar principal (`--color-accent-fill-*`/`--color-on-accent-text`).
+ */
 .actions {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  flex-wrap: wrap;
 }
 
 .actions button {
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
+  padding: 0.75rem 0.875rem;
+  font-size: 0.84375rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 0.625rem;
+  background: var(--color-accent-fill-default);
+  color: var(--color-on-accent-text);
   cursor: pointer;
+  box-shadow: var(--elevation-1);
+}
+
+.actions button:hover:not(:disabled) {
+  background: var(--color-accent-fill-hover);
+}
+
+.actions button:active:not(:disabled) {
+  background: var(--color-accent-fill-active);
 }
 
 .actions button:disabled {
@@ -25,7 +46,13 @@
   cursor: not-allowed;
 }
 
+.actions button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 .status {
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
   margin: 0;
+  color: var(--color-feedback-danger-text);
 }

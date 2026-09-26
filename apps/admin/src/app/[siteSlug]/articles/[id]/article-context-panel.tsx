@@ -422,26 +422,47 @@ export function ArticleContextPanel({
             Fechar Status e ações do Artigo
           </button>
         )}
-        <h2 id={PANEL_HEADING_ID} className={styles.heading}>
-          Status do Artigo
-        </h2>
-        <ArticleHealthChecklist
-          siteSlug={siteSlug}
-          articleId={articleId}
-          status={status}
-          refreshKey={healthRefreshKey}
-          onHealthChange={handleHealthChange}
-        />
+        {/*
+          UXE-022 (rodada 5 — acabamento/composição, item 4 "Painel
+          direito") — três cards visuais (Status do Artigo+checklist /
+          Produtos vinculados / transição), aproximando a V3. `.card`/
+          `.statusCard` são wrappers puramente de apresentação
+          (`article-context-panel.module.css`) — nenhum dos três
+          componentes filhos muda de props/handlers/estado.
+          `styles.card:empty` (CSS) colapsa o wrapper da transição quando
+          `ArticleTransitionPanel` devolve `null` (nenhuma ação disponível
+          para a Role/status atuais) — sem duplicar `ACTIONS_BY_STATUS`/
+          `MIN_ROLE_BY_TRANSITION` aqui.
+        */}
+        <div className={styles.statusCard}>
+          <div className={styles.statusCardHeader}>
+            <h2 id={PANEL_HEADING_ID} className={styles.heading}>
+              Status do Artigo
+            </h2>
+            <span className={styles.statusPill}>{STATUS_LABELS[status]}</span>
+          </div>
+          <ArticleHealthChecklist
+            siteSlug={siteSlug}
+            articleId={articleId}
+            status={status}
+            refreshKey={healthRefreshKey}
+            onHealthChange={handleHealthChange}
+          />
+        </div>
         {canManageProducts && (
-          <ArticleProductsSection siteSlug={siteSlug} articleId={articleId} onProductsChanged={onProductsChanged} />
+          <div className={styles.card}>
+            <ArticleProductsSection siteSlug={siteSlug} articleId={articleId} onProductsChanged={onProductsChanged} />
+          </div>
         )}
-        <ArticleTransitionPanel
-          siteSlug={siteSlug}
-          articleId={articleId}
-          status={status}
-          onTransition={onTransition}
-          onBeforeTransition={onBeforeTransition}
-        />
+        <div className={styles.card}>
+          <ArticleTransitionPanel
+            siteSlug={siteSlug}
+            articleId={articleId}
+            status={status}
+            onTransition={onTransition}
+            onBeforeTransition={onBeforeTransition}
+          />
+        </div>
       </aside>
     </div>
   );

@@ -1,0 +1,15 @@
+/*
+ * UXE-022 (correção pós-validação visual) — `/articles/new` não tem
+ * nenhum container próprio hoje (diferente de `/articles/:id`, que já
+ * tem `.detail .content` em `article-detail.module.css`) — o formulário
+ * renderizava em largura total do shell. Mesmo princípio da V3 (largura é
+ * propriedade do CONTAINER, nunca repetida num componente filho,
+ * `ArticleForm` continua sem `max-width` próprio): `.container` é o
+ * container que faltava para esta rota específica, com o MESMO valor
+ * (720px) já aprovado para a composição DRAFT/editável — para que
+ * `/articles/new` compartilhe a mesma linguagem visual da V3 (feedback
+ * do PO). Não introduz nenhum comportamento novo, só a largura.
+ */
+.container {
+  max-width: 720px;
+}

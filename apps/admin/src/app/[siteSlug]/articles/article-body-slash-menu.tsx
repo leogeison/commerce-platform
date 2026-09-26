@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
   $getSelection,
@@ -14,8 +15,19 @@ import {
   type LexicalEditor,
   type NodeKey,
 } from 'lexical';
-import { $createHeadingNode, type HeadingTagType } from '@lexical/rich-text';
+import { $createHeadingNode, $createQuoteNode, type HeadingTagType } from '@lexical/rich-text';
 import { $createListItemNode, $createListNode } from '@lexical/list';
+import {
+  Heading1,
+  Heading2,
+  Heading3,
+  Image as ImageIcon,
+  List,
+  ListOrdered,
+  Package,
+  Quote,
+  type LucideIcon,
+} from 'lucide-react';
 import { $getBlockElement } from './article-body-block-utils';
 import type { ImageInsertionAnchor } from './article-body-image-flow';
 import type { ProductBlockInsertionAnchor } from './article-body-product-flow';
@@ -83,11 +95,34 @@ import styles from './article-form.module.css';
  * removido (`blockElement.clear()`) antes do novo bloco ser criado — o
  * usuário nunca vê o texto do comando sobrar no conteúdo final.
  *
- * Não é um popup flutuante ancorado ao cursor: renderiza como um bloco
- * estático logo abaixo da área editável. Medir a posição real do cursor
- * (`getBoundingClientRect()`) é frágil em jsdom (retorna zero) e nenhum
- * critério de aceite desta tarefa exige ancoragem visual exata — só que o
- * menu seja operável por mouse/teclado no padrão combobox acessível.
+ * UXE-022 (Addendum 7, investigação; implementação nesta rodada) — o menu
+ * deixou de ser um bloco estático abaixo da área editável e passou a ser um
+ * popover flutuante ancorado ao caret, estilo Gutenberg/WordPress. Trigger,
+ * filtro, comandos de teclado e estrutura ARIA (ver abaixo) permanecem 100%
+ * intocados — só posicionamento/renderização mudam:
+ * - Posição: `getCaretRect()` lê `window.getSelection().getRangeAt(0)
+ *   .getBoundingClientRect()`. jsdom (testes) sempre devolve um retângulo
+ *   com todos os campos zerados (sem layout real) — `isDegenerateRect`
+ *   detecta esse caso e o trata como "não mensurável" (um caret real nunca
+ *   fica exatamente na origem da viewport), caindo no fallback:
+ *   `editor.getRootElement()?.getBoundingClientRect()`. Testes que precisam
+ *   de uma posição real mockam `Range.prototype.getBoundingClientRect`.
+ * - Renderização: `createPortal(..., document.body)` com `position: fixed`
+ *   — necessário porque `.editorCard` (`article-form.module.css`) tem
+ *   `overflow: hidden`, que cortaria um popover posicionado dentro dele.
+ *   Só é alcançado client-side (o componente já só monta depois de
+ *   `isMounted` no `ArticleBodyEditor` pai — sem risco de SSR).
+ * - Collision handling (clamp/flip): depois de renderizado, o tamanho real
+ *   do popover (`menuRef`) é medido e a posição é ajustada para nunca
+ *   estourar a viewport horizontalmente (clamp) e para abrir acima do caret
+ *   quando não há espaço suficiente abaixo (flip) — sem biblioteca nova.
+ * - Reposição: listeners de `scroll` (capture, para pegar containers
+ *   internos com scroll) e `resize` recalculam a posição enquanto o menu
+ *   está aberto.
+ * - Fechar ao clicar fora: listener de `pointerdown` em `document` enquanto
+ *   o menu está visível — ignora eventos originados dentro do próprio
+ *   popover ou do `contentEditable` do editor (o foco nunca sai do editor;
+ *   não depende de `blur`, que sairia do `contentEditable`).
  *
  * Correspondência de query sem acento (correção desta rodada): os rótulos
  * do menu contêm acentos ("Título"), mas uma consulta comum como "/tit"
@@ -146,6 +181,12 @@ interface SlashMenuItem {
   id: string;
   label: string;
   /**
+   * UXE-022 (Addendum 7) — ícone renderizado à esquerda do rótulo no
+   * popover, estilo Gutenberg/WordPress. `lucide-react`, já dependência
+   * existente (mesmo pacote usado por `article-body-toolbar.tsx`).
+   */
+  icon: LucideIcon;
+  /**
    * UXE-011 — quando presente, o item permanece visível no menu (nunca
    * removido) mas não pode ser confirmado (`selectResult` ignora
    * clique/Enter/Tab sobre ele) — texto sempre renderizado ao lado do
@@ -199,6 +240,32 @@ function applyHeadingFromEmptyBlock(editor: LexicalEditor, tag: HeadingTagType):
   });
 }
 
+/**
+ * UXE-022 (Addendum 7) — densidade compacta do popover Gutenberg/WordPress:
+ * ícones menores e traço mais fino que a toolbar principal
+ * (`TOOLBAR_ICON_SIZE`/`TOOLBAR_ICON_STROKE` em `article-body-toolbar.tsx`),
+ * adequados ao espaço reduzido de uma linha de opção do menu.
+ */
+const SLASH_MENU_ICON_SIZE = 16;
+const SLASH_MENU_ICON_STROKE = 1.75;
+
+function applyQuoteFromEmptyBlock(editor: LexicalEditor): void {
+  editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) {
+      return;
+    }
+    const blockElement = $getBlockElement(selection.anchor.getNode());
+    if (!blockElement) {
+      return;
+    }
+    blockElement.clear();
+    const quote = $createQuoteNode();
+    blockElement.replace(quote);
+    quote.select();
+  });
+}
+
 function applyListFromEmptyBlock(editor: LexicalEditor, listType: 'bullet' | 'number'): void {
   editor.update(() => {
     const selection = $getSelection();
@@ -217,13 +284,49 @@ function applyListFromEmptyBlock(editor: LexicalEditor, listType: 'bullet' | 'nu
   });
 }
 
+/**
+ * UXE-022 (Addendum 7) — ordem aprovada pelo Product Owner para o popover:
+ * Lista, Lista numerada, Título 1, Título 2, Título 3, Citação (seguidos de
+ * Imagem e Bloco de Produto, construídos dentro do componente abaixo por
+ * dependerem de `onRequestImage`/`onRequestProductBlock`). "Citação" é
+ * capacidade já existente no editor (mesma `$createQuoteNode()` usada por
+ * `article-body-toolbar.tsx`, função `toggleQuote`) — apenas exposta aqui
+ * pela primeira vez, nenhuma capability nova.
+ */
 const SLASH_MENU_ITEMS: SlashMenuItem[] = [
-  { id: 'heading-1', label: 'Título 1', apply: (editor) => applyHeadingFromEmptyBlock(editor, 'h1') },
-  { id: 'heading-2', label: 'Título 2', apply: (editor) => applyHeadingFromEmptyBlock(editor, 'h2') },
-  { id: 'heading-3', label: 'Título 3', apply: (editor) => applyHeadingFromEmptyBlock(editor, 'h3') },
-  { id: 'list-bullet', label: 'Lista', apply: (editor) => applyListFromEmptyBlock(editor, 'bullet') },
-  { id: 'list-number', label: 'Lista numerada', apply: (editor) => applyListFromEmptyBlock(editor, 'number') },
+  { id: 'list-bullet', label: 'Lista', icon: List, apply: (editor) => applyListFromEmptyBlock(editor, 'bullet') },
+  {
+    id: 'list-number',
+    label: 'Lista numerada',
+    icon: ListOrdered,
+    apply: (editor) => applyListFromEmptyBlock(editor, 'number'),
+  },
+  { id: 'heading-1', label: 'Título 1', icon: Heading1, apply: (editor) => applyHeadingFromEmptyBlock(editor, 'h1') },
+  { id: 'heading-2', label: 'Título 2', icon: Heading2, apply: (editor) => applyHeadingFromEmptyBlock(editor, 'h2') },
+  { id: 'heading-3', label: 'Título 3', icon: Heading3, apply: (editor) => applyHeadingFromEmptyBlock(editor, 'h3') },
+  { id: 'quote', label: 'Citação', icon: Quote, apply: (editor) => applyQuoteFromEmptyBlock(editor) },
 ];
+
+/**
+ * UXE-022 (Addendum 7) — jsdom (testes) não implementa layout real:
+ * `getBoundingClientRect()` sempre devolve um retângulo com todos os
+ * campos zerados. Um caret real nunca fica exatamente na origem da
+ * viewport (atrás do chrome do navegador), então tratar esse caso
+ * específico como "não mensurável" é seguro. Testes que precisam de uma
+ * posição real mockam `Range.prototype.getBoundingClientRect`.
+ */
+function isDegenerateRect(rect: DOMRect): boolean {
+  return rect.top === 0 && rect.left === 0 && rect.bottom === 0 && rect.right === 0;
+}
+
+function getCaretRect(): DOMRect | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  return isDegenerateRect(rect) ? null : rect;
+}
 
 interface ArticleBodySlashMenuProps {
   disabled?: boolean;
@@ -257,6 +360,13 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
 
+  // UXE-022 (Addendum 7) — popover flutuante: `menuRef` mede o card
+  // renderizado (para o collision handling); `position`/`positionTick` ver
+  // o `useLayoutEffect` de posicionamento mais abaixo.
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const [positionTick, setPositionTick] = useState(0);
+
   /**
    * "Imagem" (UXE-010) é construído aqui dentro (não em
    * `SLASH_MENU_ITEMS`, que é módulo-level e não tem acesso a
@@ -271,6 +381,7 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
     {
       id: 'image',
       label: 'Imagem',
+      icon: ImageIcon,
       apply: (editorInstance) => {
         let capturedBlockKey: NodeKey | null = null;
         editorInstance.update(() => {
@@ -293,6 +404,7 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
     {
       id: 'product-block',
       label: 'Bloco Produto-Oferta',
+      icon: Package,
       disabledReason:
         overallStatus === 'unavailable' ? 'salve o Artigo antes de inserir um bloco de Produto.' : undefined,
       apply: (editorInstance) => {
@@ -523,6 +635,100 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
     };
   }, [editor, isVisible, listboxId, activeDescendantId]);
 
+  // UXE-022 (Addendum 7) — posicionamento do popover: ancora no caret
+  // (`getCaretRect()`), com fallback para o canto do editor quando o caret
+  // não é mensurável (jsdom). Depois de renderizado, mede o card real
+  // (`menuRef`) e aplica collision handling: nunca ultrapassa a viewport
+  // horizontalmente (clamp) e abre acima do caret quando falta espaço
+  // abaixo (flip) — sem biblioteca nova. `positionTick` força recomputar em
+  // scroll/resize (efeito logo abaixo); `query`/`results.length` cobrem
+  // mudanças de texto/filtro que alteram a posição do caret ou a altura do
+  // card.
+  useLayoutEffect(() => {
+    if (!isVisible) {
+      setPosition(null);
+      return;
+    }
+    const GAP = 4;
+    const VIEWPORT_MARGIN = 8;
+    const caretRect = getCaretRect();
+    const anchorRect = caretRect ?? editor.getRootElement()?.getBoundingClientRect() ?? null;
+    const anchorTop = anchorRect ? anchorRect.bottom : 0;
+    const anchorCaretTop = anchorRect ? anchorRect.top : 0;
+    const anchorLeft = anchorRect ? anchorRect.left : 0;
+
+    const menuEl = menuRef.current;
+    const menuWidth = menuEl?.offsetWidth ?? 0;
+    const menuHeight = menuEl?.offsetHeight ?? 0;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = anchorLeft;
+    if (left + menuWidth > viewportWidth - VIEWPORT_MARGIN) {
+      left = viewportWidth - menuWidth - VIEWPORT_MARGIN;
+    }
+    if (left < VIEWPORT_MARGIN) {
+      left = VIEWPORT_MARGIN;
+    }
+
+    let top = anchorTop + GAP;
+    const fitsBelow = top + menuHeight <= viewportHeight - VIEWPORT_MARGIN;
+    if (!fitsBelow) {
+      const flippedTop = anchorCaretTop - menuHeight - GAP;
+      top = flippedTop >= VIEWPORT_MARGIN ? flippedTop : VIEWPORT_MARGIN;
+    }
+
+    setPosition({ top, left });
+  }, [editor, isVisible, query, results.length, positionTick]);
+
+  // UXE-022 (Addendum 7) — reposiciona em scroll (capture: também pega
+  // containers internos com scroll, não só a janela) e resize enquanto o
+  // popover está aberto. Gap pré-existente no bloco estático anterior
+  // (nunca precisava reposicionar) — comportamento novo, necessário para um
+  // popover flutuante.
+  useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+    function handleReposition() {
+      setPositionTick((tick) => tick + 1);
+    }
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, [isVisible]);
+
+  // UXE-022 (Addendum 7) — fecha ao clicar fora: gap pré-existente no bloco
+  // estático anterior (perder foco não fechava o menu de forma confiável,
+  // baixo impacto porque o bloco ficava sempre abaixo do editor; passa a
+  // importar mais com um popover flutuante, que pode ficar sobre outros
+  // elementos). `pointerdown` (não `blur`) porque o foco do DOM nunca deve
+  // sair do `contentEditable` — ignora eventos originados dentro do próprio
+  // popover ou do editor.
+  useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+    function handlePointerDownOutside(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (menuRef.current?.contains(target)) {
+        return;
+      }
+      if (editor.getRootElement()?.contains(target)) {
+        return;
+      }
+      setIsOpen(false);
+    }
+    document.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => document.removeEventListener('pointerdown', handlePointerDownOutside);
+  }, [isVisible, editor]);
+
   return (
     <>
       {/*
@@ -535,36 +741,48 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
       <div role="status" className={styles.srOnly}>
         {liveMessage}
       </div>
-      {isVisible && (
-        <div className={styles.slashMenu}>
-          <ul id={listboxId} role="listbox" aria-label="Inserir bloco" className={styles.slashMenuList}>
-            {results.length > 0 ? (
-              results.map((item, index) => (
-                <li
-                  key={item.id}
-                  id={`${baseId}-option-${item.id}`}
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  aria-disabled={item.disabledReason ? true : undefined}
-                  className={index === activeIndex ? styles.slashMenuOptionActive : styles.slashMenuOption}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => selectResult(item)}
-                >
-                  {item.label}
-                  {item.disabledReason && (
-                    <span className={styles.slashMenuOptionDisabledReason}> — {item.disabledReason}</span>
-                  )}
+      {isVisible &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className={styles.slashMenu}
+            style={{ position: 'fixed', top: position?.top ?? 0, left: position?.left ?? 0 }}
+          >
+            <ul id={listboxId} role="listbox" aria-label="Inserir bloco" className={styles.slashMenuList}>
+              {results.length > 0 ? (
+                results.map((item, index) => {
+                  const Icon = item.icon;
+                  return (
+                    <li
+                      key={item.id}
+                      id={`${baseId}-option-${item.id}`}
+                      role="option"
+                      aria-selected={index === activeIndex}
+                      aria-disabled={item.disabledReason ? true : undefined}
+                      className={index === activeIndex ? styles.slashMenuOptionActive : styles.slashMenuOption}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => selectResult(item)}
+                    >
+                      <span className={styles.slashMenuOptionIcon}>
+                        <Icon aria-hidden="true" size={SLASH_MENU_ICON_SIZE} strokeWidth={SLASH_MENU_ICON_STROKE} />
+                      </span>
+                      {item.label}
+                      {item.disabledReason && (
+                        <span className={styles.slashMenuOptionDisabledReason}> — {item.disabledReason}</span>
+                      )}
+                    </li>
+                  );
+                })
+              ) : (
+                <li id={emptyOptionId} role="option" aria-disabled={true} aria-selected={false} className={styles.slashMenuEmpty}>
+                  Nenhum resultado encontrado
                 </li>
-              ))
-            ) : (
-              <li id={emptyOptionId} role="option" aria-disabled={true} aria-selected={false} className={styles.slashMenuEmpty}>
-                Nenhum resultado encontrado
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
+              )}
+            </ul>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

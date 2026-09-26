@@ -164,7 +164,7 @@ describe('ArticleProductsSection', () => {
     render_();
 
     await screen.findByText('Fone Bluetooth');
-    await user.click(screen.getByRole('button', { name: 'Remover' }));
+    await user.click(screen.getByRole('button', { name: `Remover ${PRODUCT_A.name}` }));
 
     await waitFor(() => expect(screen.getByText('Nenhum Produto vinculado.')).toBeInTheDocument());
   });
@@ -273,7 +273,7 @@ describe('ArticleProductsSection', () => {
     render_(onProductsChanged);
 
     await screen.findByText('Fone Bluetooth');
-    await user.click(screen.getByRole('button', { name: 'Remover' }));
+    await user.click(screen.getByRole('button', { name: `Remover ${PRODUCT_A.name}` }));
 
     await waitFor(() => expect(onProductsChanged).toHaveBeenCalledTimes(1));
   });
@@ -352,7 +352,7 @@ describe('ArticleProductsSection', () => {
     render_(onProductsChanged);
 
     await screen.findByText('Fone Bluetooth');
-    await user.click(screen.getByRole('button', { name: 'Remover' }));
+    await user.click(screen.getByRole('button', { name: `Remover ${PRODUCT_A.name}` }));
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(onProductsChanged).not.toHaveBeenCalled();

@@ -33,6 +33,13 @@
  * total. `align-items: start` evita que o painel (mais curto que o
  * formulário/conteúdo em muitos casos) seja esticado para a altura da
  * coluna editorial.
+ *
+ * UXE-022 (nota adicionada, histórico acima preservado): os 480px acima
+ * descrevem o estado anterior a esta tarefa, ainda válido para
+ * `.readOnly`/`ArticleReadOnly` (não redesenhado). A composição
+ * DRAFT/editável (`.detail`) passou a 720px, conforme V3 aprovada —
+ * `.detail`/`.readOnly` deixaram de compartilhar a mesma regra de grid,
+ * ver `.detail .content`/`.readOnly .content` e o `@media` abaixo.
  */
 .detail,
 .readOnly {
@@ -42,27 +49,55 @@
 }
 
 /*
- * `max-width: 480px` aqui é o que já existia antes desta tarefa (mesma
- * largura de leitura de `ArticleForm`/`ArticleReadOnly`) — continua
- * correto tanto na pilha vertical (<1024px) quanto dentro da primeira
- * track do grid (>=1024px, ver abaixo): a track nunca excede 480px, então
- * este valor nunca entra em conflito com ela, só reforça o mesmo limite
- * em qualquer contexto em que `.content` seja usado fora deste grid.
+ * `.content` em si não impõe largura (UXE-022, decisão B do desenho
+ * técnico: a largura é propriedade EXCLUSIVA do container, nunca repetida
+ * num componente filho). `.detail .content`/`.readOnly .content`, logo
+ * abaixo, definem o limite de cada composição separadamente — nunca o
+ * mesmo número repetido dentro de `ArticleForm`/`ArticleReadOnly`.
  */
 .content {
   display: flex;
   flex-direction: column;
   gap: 2rem;
-  max-width: 480px;
   min-width: 0;
 }
 
+/*
+ * UXE-022 — coluna editorial de `ArticleForm` (DRAFT/editável), 480px →
+ * 720px, conforme V3 aprovada. `ArticleReadOnly` (`.readOnly .content`,
+ * abaixo) NÃO é redesenhado por esta tarefa — mantém os mesmos 480px de
+ * sempre, tanto empilhado (<1024px) quanto na primeira track do grid
+ * (>=1024px).
+ */
+.detail .content {
+  max-width: 720px;
+}
+
+.readOnly .content {
+  max-width: 480px;
+}
+
 @media (min-width: 1024px) {
-  .detail,
   .readOnly {
     display: grid;
     grid-template-columns: minmax(0, 480px) minmax(280px, 320px);
     align-items: start;
+    gap: 2rem;
     max-width: 832px;
+  }
+
+  /*
+   * UXE-022 — mesma estrutura de grid de `.readOnly`, só com a primeira
+   * track e o gap remodelados conforme V3 aprovada (720px + painel até
+   * ~320px, gap 24px — breakpoint 1024px preservado). `max-width: 1064px`
+   * é a soma explícita das duas colunas + gap (720 + 320 + 24), mesmo
+   * critério já documentado para os 832px de `.readOnly`.
+   */
+  .detail {
+    display: grid;
+    grid-template-columns: minmax(0, 720px) minmax(280px, 320px);
+    align-items: start;
+    gap: 1.5rem;
+    max-width: 1064px;
   }
 }

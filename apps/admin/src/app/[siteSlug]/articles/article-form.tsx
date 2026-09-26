@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useState, type ChangeEvent, type FormEvent } from 'react';
 import { z } from 'zod';
-import { CircleAlert, CircleCheckBig, Loader2 } from 'lucide-react';
+import { CircleAlert, CircleCheckBig, FileType, Link2, Loader2, Tag, User } from 'lucide-react';
 import {
   articleTypeSchema,
   uploadImageResponseSchema,
@@ -344,177 +344,266 @@ export const ArticleForm = forwardRef<ArticleFormHandle, ArticleFormProps>(funct
 
   return (
     <form className={styles.form} onSubmit={handleSubmit} noValidate>
-      <div className={styles.field}>
-        <label htmlFor="article-type">Tipo</label>
-        <select
-          id="article-type"
-          value={type}
-          onChange={(event) => setType(event.target.value as ArticleType)}
-          disabled={isSubmitting}
-        >
-          {articleTypeSchema.options.map((option) => (
-            <option key={option} value={option}>
-              {TYPE_LABELS[option]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className={styles.field}>
-        <label htmlFor="article-title">Título</label>
-        <input
-          id="article-title"
-          type="text"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          disabled={isSubmitting}
-          aria-invalid={fieldErrors.title ? true : undefined}
-          aria-describedby={fieldErrors.title ? 'article-title-error' : undefined}
-        />
-        {fieldErrors.title && (
-          <p id="article-title-error" role="alert" className={styles.fieldError}>
-            {fieldErrors.title}
-          </p>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label htmlFor="article-slug">Slug</label>
-        <input
-          id="article-slug"
-          type="text"
-          value={slug}
-          onChange={(event) => setSlug(event.target.value)}
-          disabled={isSubmitting}
-          aria-invalid={fieldErrors.slug ? true : undefined}
-          aria-describedby={fieldErrors.slug ? 'article-slug-error' : undefined}
-        />
-        {fieldErrors.slug && (
-          <p id="article-slug-error" role="alert" className={styles.fieldError}>
-            {fieldErrors.slug}
-          </p>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label htmlFor="article-category">Categoria</label>
-        <select
-          id="article-category"
-          value={categoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
-          disabled={isSubmitting || categoriesState.status !== 'ready'}
-        >
-          <option value="">Nenhuma</option>
-          {categoryOptions.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-              {category.archivedAt ? ' (arquivada)' : ''}
-            </option>
-          ))}
-        </select>
-        {categoriesState.status === 'error' && (
-          <p role="alert" className={styles.fieldError}>
-            {GENERIC_CATEGORIES_ERROR_MESSAGE}
-          </p>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label htmlFor="article-author">Autor</label>
-        <select
-          id="article-author"
-          value={authorId}
-          onChange={(event) => setAuthorId(event.target.value)}
-          disabled={isSubmitting || authorsState.status !== 'ready'}
-        >
-          <option value="">Nenhum</option>
-          {authorsState.status === 'ready' &&
-            authorsState.items.map((author) => (
-              <option key={author.id} value={author.id}>
-                {author.name}
-              </option>
-            ))}
-        </select>
-        {authorsState.status === 'error' && (
-          <p role="alert" className={styles.fieldError}>
-            {GENERIC_AUTHORS_ERROR_MESSAGE}
-          </p>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label htmlFor="article-meta-description">Meta description</label>
-        <textarea
-          id="article-meta-description"
-          value={metaDescription}
-          onChange={(event) => setMetaDescription(event.target.value)}
-          disabled={isSubmitting}
-        />
-      </div>
-
-      <div className={styles.field} data-testid="article-body-field">
-        <label id="article-body-label" htmlFor="article-body">
-          Corpo (Markdown)
-        </label>
-        <ArticleBodyEditor
-          id="article-body"
-          labelId="article-body-label"
-          siteSlug={siteSlug}
-          initialValue={initialValues.bodyMdx}
-          onChange={setBodyMdx}
-          disabled={isSubmitting}
-        />
-        {/*
-          UXE-008 — indicador local do autosave de `bodyMdx`.
-          `aria-live="polite"` montado de forma estável desde o primeiro
-          render (mesmo critério de `ToastProvider`, UXA-004): a região
-          nunca é desmontada/remontada, só o conteúdo interno muda —
-          garante o anúncio confiável por leitor de tela. Ícone decorativo
-          (`aria-hidden`) sempre acompanhado de texto: a cor nunca é o
-          único sinal. Nunca reaproveita `ToastProvider` (decisão fechada
-          desta tarefa): aqui o estado é persistente (reflete o autosave
-          atual), não um "sucesso passageiro" de alguns segundos. Em
-          `/articles/new` (sem `articleId`), `autosaveStatus` permanece
-          sempre `'idle'` e esta região nunca exibe conteúdo.
-        */}
-        <div aria-live="polite" className={styles.autosaveStatus}>
-          {autosaveStatus === 'saving' && (
-            <span className={styles.autosaveSaving}>
-              <Loader2 aria-hidden="true" className={styles.autosaveIcon} />
-              Salvando...
-            </span>
-          )}
-          {autosaveStatus === 'saved' && (
-            <span className={styles.autosaveSaved}>
-              <CircleCheckBig aria-hidden="true" className={styles.autosaveIcon} />
-              Salvo
-            </span>
-          )}
-          {autosaveStatus === 'error' && (
-            <span className={styles.autosaveError}>
-              <CircleAlert aria-hidden="true" className={styles.autosaveIcon} />
-              Não foi possível salvar automaticamente. A próxima edição tentará salvar de novo.
-            </span>
-          )}
+      {/*
+        UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão "Header
+        superior") — breadcrumb + status de autosave (`useArticleBodyAutosave`,
+        UXE-008, reaproveitado sem alteração) + `ArticlePreview` (UXE-009,
+        reaproveitado sem alteração — só a POSIÇÃO no formulário muda).
+        "Enviar para revisão" NÃO está aqui — ver `styles.topBar` no CSS e o
+        relatório desta tarefa (divergência registrada, Addendum 3).
+      */}
+      <div className={styles.topBar}>
+        <div className={styles.breadcrumb}>
+          <span>Artigos</span>
+          <span aria-hidden="true" className={styles.breadcrumbSeparator}>
+            /
+          </span>
+          <span className={styles.breadcrumbCurrent}>{articleId ? 'Editar artigo' : 'Novo artigo'}</span>
         </div>
-        {/*
-          UXE-009 — preview sob demanda do Artigo, reaproveitando o mesmo
-          `bodyMdx` já em estado local do formulário. Ver doc comment de
-          `ArticlePreview` para as decisões fechadas desta tarefa.
-        */}
-        <ArticlePreview bodyMdx={bodyMdx} />
+        <div className={styles.topBarActions}>
+          {/*
+            UXE-008 — indicador local do autosave de `bodyMdx`. Movido para
+            cá nesta rodada (antes ficava junto ao campo "Corpo") — mesmo
+            elemento/estado/comportamento de sempre, só a posição muda.
+          */}
+          <div aria-live="polite" className={styles.autosaveStatus}>
+            {autosaveStatus === 'saving' && (
+              <span className={styles.autosaveSaving}>
+                <Loader2 aria-hidden="true" className={styles.autosaveIcon} />
+                Salvando...
+              </span>
+            )}
+            {autosaveStatus === 'saved' && (
+              <span className={styles.autosaveSaved}>
+                <CircleCheckBig aria-hidden="true" className={styles.autosaveIcon} />
+                Salvo
+              </span>
+            )}
+            {autosaveStatus === 'error' && (
+              <span className={styles.autosaveError}>
+                <CircleAlert aria-hidden="true" className={styles.autosaveIcon} />
+                Não foi possível salvar automaticamente. A próxima edição tentará salvar de novo.
+              </span>
+            )}
+          </div>
+          {/*
+            UXE-009 — preview sob demanda do Artigo. Movido para cá nesta
+            rodada (antes ficava junto ao campo "Corpo") — mesmo componente/
+            estado/comportamento de sempre (`ArticlePreview` continua um
+            único componente autocontido, botão + painel), só a posição do
+            botão de disparo muda; o painel expandido continua aparecendo
+            logo abaixo dele.
+          */}
+          <ArticlePreview bodyMdx={bodyMdx} />
+        </div>
       </div>
 
-      <div className={styles.field}>
-        <label htmlFor="article-cover">Capa</label>
-        {previewSrc && <img src={previewSrc} alt="Capa do Artigo" className={styles.preview} />}
-        <input id="article-cover" type="file" accept="image/*" onChange={handleFileChange} disabled={isSubmitting} />
-        <div className={styles.imageActions}>
-          {previewSrc && (
-            <button type="button" onClick={handleRemoveImage} disabled={isSubmitting}>
-              Remover capa
-            </button>
-          )}
+      <div className={styles.editorGroup}>
+        {/*
+          UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 3) —
+          Título + metadados passam a viver dentro de `.headerCard` (Card A
+          da V3, metade de cima — a outra metade é a toolbar, dentro de
+          `ArticleBodyEditor`/`.toolbarCard`, ver `styles.editorGroup` no
+          CSS). Mesmo campo/estado/comportamento de sempre —
+          `aria-invalid`/`aria-describedby` intocados.
+        */}
+        <div className={styles.headerCard}>
+          <div className={styles.field}>
+            {/*
+              UXE-022 (rodada 4 — fidelidade V3) — mesmo tratamento já
+              autorizado para os metadados (Addendum 3, decisão 3): a V3
+              também não mostra nenhum rótulo visível acima do Título — só
+              o `<input>` grande. `srOnly` preserva a associação
+              `htmlFor`/`id` e o nome acessível; nenhuma mudança de
+              comportamento.
+            */}
+            <label htmlFor="article-title" className={styles.srOnly}>
+              Título
+            </label>
+            <input
+              id="article-title"
+              type="text"
+              className={styles.titleInput}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              disabled={isSubmitting}
+              placeholder="Título do artigo"
+              aria-invalid={fieldErrors.title ? true : undefined}
+              aria-describedby={fieldErrors.title ? 'article-title-error' : undefined}
+            />
+            {fieldErrors.title && (
+              <p id="article-title-error" role="alert" className={styles.fieldError}>
+                {fieldErrors.title}
+              </p>
+            )}
+          </div>
+
+          {/*
+            UXE-022 (rodada 4 — fidelidade V3, Addendum 3, decisão 3) —
+            "metadados sem label visível": cada `<label>` ganha
+            `styles.srOnly` (continua associado por `htmlFor`/`id` — nome
+            acessível, foco e leitura por leitor de tela intocados) e um
+            ícone decorativo (`aria-hidden`) substitui visualmente o rótulo,
+            aproximando a apresentação da V3 (ícone + texto). Nenhuma
+            mudança de `id`/nome/validação/comportamento em nenhum campo.
+            O link "Editar" do Slug da V3 NÃO tem correspondência funcional
+            aprovada — omitido (Addendum 3, "fora de escopo").
+          */}
+          <div className={styles.metadataGroup}>
+            <div className={styles.metadataField}>
+              <FileType aria-hidden="true" size={13} className={styles.metadataFieldIcon} />
+              <label htmlFor="article-type" className={styles.srOnly}>
+                Tipo
+              </label>
+              <select
+                id="article-type"
+                value={type}
+                onChange={(event) => setType(event.target.value as ArticleType)}
+                disabled={isSubmitting}
+              >
+                {articleTypeSchema.options.map((option) => (
+                  <option key={option} value={option}>
+                    {TYPE_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className={styles.metadataField}>
+              <Tag aria-hidden="true" size={13} className={styles.metadataFieldIcon} />
+              <label htmlFor="article-category" className={styles.srOnly}>
+                Categoria
+              </label>
+              <select
+                id="article-category"
+                value={categoryId}
+                onChange={(event) => setCategoryId(event.target.value)}
+                disabled={isSubmitting || categoriesState.status !== 'ready'}
+              >
+                <option value="">Nenhuma</option>
+                {categoryOptions.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                    {category.archivedAt ? ' (arquivada)' : ''}
+                  </option>
+                ))}
+              </select>
+              {categoriesState.status === 'error' && (
+                <p role="alert" className={styles.fieldError}>
+                  {GENERIC_CATEGORIES_ERROR_MESSAGE}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.metadataField}>
+              <User aria-hidden="true" size={13} className={styles.metadataFieldIcon} />
+              <label htmlFor="article-author" className={styles.srOnly}>
+                Autor
+              </label>
+              <select
+                id="article-author"
+                value={authorId}
+                onChange={(event) => setAuthorId(event.target.value)}
+                disabled={isSubmitting || authorsState.status !== 'ready'}
+              >
+                <option value="">Nenhum</option>
+                {authorsState.status === 'ready' &&
+                  authorsState.items.map((author) => (
+                    <option key={author.id} value={author.id}>
+                      {author.name}
+                    </option>
+                  ))}
+              </select>
+              {authorsState.status === 'error' && (
+                <p role="alert" className={styles.fieldError}>
+                  {GENERIC_AUTHORS_ERROR_MESSAGE}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.metadataField}>
+              <Link2 aria-hidden="true" size={13} className={styles.metadataFieldIcon} />
+              <label htmlFor="article-slug" className={styles.srOnly}>
+                Slug
+              </label>
+              <input
+                id="article-slug"
+                type="text"
+                value={slug}
+                onChange={(event) => setSlug(event.target.value)}
+                disabled={isSubmitting}
+                aria-invalid={fieldErrors.slug ? true : undefined}
+                aria-describedby={fieldErrors.slug ? 'article-slug-error' : undefined}
+              />
+              {fieldErrors.slug && (
+                <p id="article-slug-error" role="alert" className={styles.fieldError}>
+                  {fieldErrors.slug}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className={`${styles.field} ${styles.bodyFieldGroup}`} data-testid="article-body-field">
+          <label id="article-body-label" htmlFor="article-body" className={styles.srOnly}>
+            Corpo (Markdown)
+          </label>
+          <ArticleBodyEditor
+            id="article-body"
+            labelId="article-body-label"
+            siteSlug={siteSlug}
+            initialValue={initialValues.bodyMdx}
+            onChange={setBodyMdx}
+            disabled={isSubmitting}
+          />
+        </div>
+      </div>
+
+      {/*
+        UXE-022 (correção pós-validação visual) — Meta description e Capa
+        reagrupadas aqui como "auxiliares", DEPOIS da superfície de
+        escrita (protagonista), para não disputar hierarquia com o
+        conteúdo principal (feedback do PO). Mesmos campos/estado/
+        comportamento de antes (Meta description reaparece idêntica ao
+        que já era antes desta correção; Capa idêntica à versão aprovada
+        da V3) — só a POSIÇÃO no formulário muda, nunca lógica/validação.
+      */}
+      <div className={styles.auxiliarySection}>
+        <div className={styles.field}>
+          <label htmlFor="article-meta-description">Meta description</label>
+          <textarea
+            id="article-meta-description"
+            value={metaDescription}
+            onChange={(event) => setMetaDescription(event.target.value)}
+            disabled={isSubmitting}
+          />
+        </div>
+
+        {/*
+          UXE-022 (rodada 5 — acabamento/composição, item 6 "Capa") —
+          mesmo `<input type="file">`/`handleFileChange`/`handleRemoveImage`
+          de sempre, só reorganizado numa linha compacta (thumbnail +
+          identificação do arquivo + ação), aproximando a V3. Nenhuma
+          mudança de upload/persistência/dirty-state — só apresentação.
+        */}
+        <div className={styles.field}>
+          <label htmlFor="article-cover">Capa</label>
+          <div className={styles.coverRow}>
+            {previewSrc && <img src={previewSrc} alt="Capa do Artigo" className={styles.coverThumb} />}
+            <div className={styles.coverInfo}>
+              <span className={styles.coverFileName}>
+                {selectedFile ? selectedFile.name : previewSrc ? 'Capa atual' : 'Nenhuma capa selecionada'}
+              </span>
+              <div className={styles.coverActions}>
+                <input id="article-cover" type="file" accept="image/*" onChange={handleFileChange} disabled={isSubmitting} />
+                {previewSrc && (
+                  <button type="button" onClick={handleRemoveImage} disabled={isSubmitting}>
+                    Remover capa
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { evaluate } from '@mdx-js/mdx';
 import * as runtime from 'react/jsx-runtime';
 import { remarkProductBlock } from './product-block-remark-plugin';
+import { remarkImageDimensions } from './image-dimensions-remark-plugin';
 
 /**
  * A renderização pública trata `bodyMdx` como Markdown restrito, não como
@@ -42,7 +43,7 @@ export async function compileArticleBody(bodyMdx: string) {
   const { default: MDXContent } = await evaluate(bodyMdx, {
     ...runtime,
     format: 'md',
-    remarkPlugins: [() => remarkProductBlock(referencedProductIds)],
+    remarkPlugins: [() => remarkProductBlock(referencedProductIds), remarkImageDimensions],
   });
 
   return { MDXContent, referencedProductIds };

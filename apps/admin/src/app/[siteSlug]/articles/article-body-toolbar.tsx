@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { Image as ImageIcon, Link as LinkIcon, List, ListOrdered, Quote } from 'lucide-react';
 import {
   $createParagraphNode,
   $getSelection,
@@ -65,15 +66,56 @@ import styles from './article-form.module.css';
  * editor. "Cancelar" nunca despacha nada (o link só é criado/alterado no
  * documento em "Confirmar"/"Remover link") — nenhum estado é sujado por um
  * fluxo cancelado.
+ *
+ * UXE-022 — toolbar compacta com ícones (`lucide-react`, já dependência
+ * existente). Cada botão troca o texto visível por um ícone decorativo
+ * (`aria-hidden`) e ganha `aria-label`/`title` com o MESMO texto que antes
+ * era o conteúdo visível do botão (ex.: "Negrito") — o nome acessível não
+ * muda, só deixa de vir do texto e passa a vir do atributo. Título 1/2/3
+ * continuam mostrando texto ("H1"/"H2"/"H3", já que `lucide-react` não tem
+ * glifos numerados de heading) só que como glifo compacto, com
+ * `aria-label`/`title` preservando o rótulo por extenso ("Título 1", etc.).
+ * `aria-pressed`, `onMouseDown={preventMouseDown}`, foco visível e a caixa
+ * mínima 36×36px (`.toolbar button`, `article-form.module.css`) são
+ * preservados sem nenhuma mudança de lógica.
+ *
+ * UXE-022 (rodada 4 — fidelidade V3) — Negrito/Itálico passam de ícone
+ * `lucide-react` para glifo textual ("B"/"I"), mesmo tratamento que já
+ * existia para Título 1/2/3, para reproduzir a V3 (`B/I/H1/H2/H3 conforme
+ * a referência`, decisão explícita do Addendum 3). Citação/Lista/Lista
+ * numerada/Link/Imagem continuam como ícone `lucide-react` (a V3 também
+ * usa pictograma para esses). `aria-label`/`title`/`aria-pressed`/
+ * `onMouseDown`/estado — tudo intocado, só o CONTEÚDO VISUAL de dois
+ * botões muda. Separadores finos (`styles.toolbarSeparator`,
+ * `aria-hidden`, sem papel semântico — só divisor visual entre grupos,
+ * mesmo agrupamento da V3) são inseridos entre os grupos de botões; nenhum
+ * botão novo é adicionado (o bloco "/" de inserção da V3 não tem
+ * correspondência funcional aprovada aqui — permanece fora de escopo).
  */
 
 type ActiveBlockType = 'paragraph' | 'h1' | 'h2' | 'h3' | 'quote' | 'bullet' | 'number';
 
-const HEADING_LEVELS: Array<{ tag: HeadingTagType; label: string }> = [
-  { tag: 'h1', label: 'Título 1' },
-  { tag: 'h2', label: 'Título 2' },
-  { tag: 'h3', label: 'Título 3' },
+const HEADING_LEVELS: Array<{ tag: HeadingTagType; label: string; glyph: string }> = [
+  { tag: 'h1', label: 'Título 1', glyph: 'H1' },
+  { tag: 'h2', label: 'Título 2', glyph: 'H2' },
+  { tag: 'h3', label: 'Título 3', glyph: 'H3' },
 ];
+
+/**
+ * Tamanho do ícone dentro da caixa 36×36px preservada do botão
+ * (`.toolbar button`, `article-form.module.css`) — UXE-022.
+ * UXE-022 (correção pós-validação visual) — `TOOLBAR_ICON_SIZE` sobe de
+ * 18 para 20, e `TOOLBAR_ICON_STROKE` (peso do traço do ícone,
+ * `strokeWidth` do `lucide-react`) sobe do padrão da lib (2) para 2.25,
+ * só para dar mais presença visual aos ícones (feedback do PO: "ficaram
+ * muito pequenos/leve visualmente") — a caixa do botão continua 36×36.
+ * UXE-022 (rodada 4 — fidelidade V3) — reduzido para 15/1.6 para
+ * corresponder ao peso mais leve dos ícones da V3 (Citação/Lista/Lista
+ * numerada/Link/Imagem); a caixa do botão continua 36×36 real
+ * (`.toolbar button`), só a aparência interna muda.
+ */
+const TOOLBAR_ICON_SIZE = 15;
+const TOOLBAR_ICON_STROKE = 1.6;
 
 function preventMouseDown(event: ReactMouseEvent): void {
   event.preventDefault();
@@ -158,7 +200,7 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
   // UXE-010 — botão "Imagem" fica desabilitado sem seleção Lexical
   // válida (mesmo precedente já usado pelo botão "Link" acima/abaixo,
   // `disabled || (!isLink && isSelectionCollapsed)`): evita por
-  // construção o caso "acionado sem seleção", em vez de inventar um
+  // construção o caso "acionado sem seleção", em vej de inventar um
   // destino de inserção default silencioso caso isso aconteça mesmo
   // assim (ver `handleRequestImage`, que também nunca insere por
   // padrão nesse caso).
@@ -303,6 +345,7 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
   }
 
   const isInList = blockType === 'bullet' || blockType === 'number';
+  const linkLabel = isLink ? 'Editar link' : 'Link';
 
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Formatação do corpo do Artigo">
@@ -312,8 +355,12 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
         onClick={toggleBold}
         aria-pressed={isBold}
         disabled={disabled}
+        aria-label="Negrito"
+        title="Negrito"
       >
-        Negrito
+        <span aria-hidden="true" className={styles.toolbarGlyphBold}>
+          B
+        </span>
       </button>
       <button
         type="button"
@@ -321,10 +368,15 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
         onClick={toggleItalic}
         aria-pressed={isItalic}
         disabled={disabled}
+        aria-label="Itálico"
+        title="Itálico"
       >
-        Itálico
+        <span aria-hidden="true" className={styles.toolbarGlyphItalic}>
+          I
+        </span>
       </button>
-      {HEADING_LEVELS.map(({ tag, label }) => (
+      <span className={styles.toolbarSeparator} aria-hidden="true" />
+      {HEADING_LEVELS.map(({ tag, label, glyph }) => (
         <button
           key={tag}
           type="button"
@@ -332,18 +384,25 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
           onClick={() => toggleHeading(tag)}
           aria-pressed={blockType === tag}
           disabled={disabled || isInList}
+          aria-label={label}
+          title={label}
         >
-          {label}
+          <span aria-hidden="true" className={styles.toolbarGlyphHeading}>
+            {glyph}
+          </span>
         </button>
       ))}
+      <span className={styles.toolbarSeparator} aria-hidden="true" />
       <button
         type="button"
         onMouseDown={preventMouseDown}
         onClick={toggleQuote}
         aria-pressed={blockType === 'quote'}
         disabled={disabled || isInList}
+        aria-label="Citação"
+        title="Citação"
       >
-        Citação
+        <Quote aria-hidden="true" size={TOOLBAR_ICON_SIZE} strokeWidth={TOOLBAR_ICON_STROKE} />
       </button>
       <button
         type="button"
@@ -351,8 +410,10 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
         onClick={toggleUnorderedList}
         aria-pressed={blockType === 'bullet'}
         disabled={disabled}
+        aria-label="Lista"
+        title="Lista"
       >
-        Lista
+        <List aria-hidden="true" size={TOOLBAR_ICON_SIZE} strokeWidth={TOOLBAR_ICON_STROKE} />
       </button>
       <button
         type="button"
@@ -360,17 +421,22 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
         onClick={toggleOrderedList}
         aria-pressed={blockType === 'number'}
         disabled={disabled}
+        aria-label="Lista numerada"
+        title="Lista numerada"
       >
-        Lista numerada
+        <ListOrdered aria-hidden="true" size={TOOLBAR_ICON_SIZE} strokeWidth={TOOLBAR_ICON_STROKE} />
       </button>
+      <span className={styles.toolbarSeparator} aria-hidden="true" />
       <button
         type="button"
         onMouseDown={preventMouseDown}
         onClick={openLinkForm}
         aria-pressed={isLink}
         disabled={disabled || (!isLink && isSelectionCollapsed)}
+        aria-label={linkLabel}
+        title={linkLabel}
       >
-        {isLink ? 'Editar link' : 'Link'}
+        <LinkIcon aria-hidden="true" size={TOOLBAR_ICON_SIZE} strokeWidth={TOOLBAR_ICON_STROKE} />
       </button>
       {isEditingLink && (
         <div className={styles.linkForm} role="group" aria-label="Link">
@@ -400,8 +466,10 @@ export function ArticleBodyToolbar({ disabled = false, onRequestImage }: Article
         onMouseDown={preventMouseDown}
         onClick={handleRequestImage}
         disabled={disabled || !hasValidSelection}
+        aria-label="Imagem"
+        title="Imagem"
       >
-        Imagem
+        <ImageIcon aria-hidden="true" size={TOOLBAR_ICON_SIZE} strokeWidth={TOOLBAR_ICON_STROKE} />
       </button>
     </div>
   );

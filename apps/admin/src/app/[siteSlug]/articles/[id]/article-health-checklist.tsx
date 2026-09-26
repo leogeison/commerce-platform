@@ -233,7 +233,13 @@ export function ArticleHealthChecklist({
   return (
     <div className={sectionClassName}>
       <h2>{heading}</h2>
-      <p className={styles.summary}>
+      {/*
+        UXE-022 (rodada 5 — acabamento/composição, item 4) — classe
+        condicional puramente de apresentação (cor), reaproveitando o
+        booleano `health.healthy` que este componente já calculava; nenhuma
+        lógica/estado novo.
+      */}
+      <p className={health.healthy ? styles.summaryOk : styles.summaryPending}>
         {health.healthy ? 'Sem pendências.' : `${pendingCount} pendência(s) encontrada(s).`}
       </p>
 
