@@ -34,12 +34,16 @@ describe('CategoryPage', () => {
   async function renderCategoryWith(
     category: PublicCategory | null,
     listResult: ListPublicArticlesResponse,
+    rawPage?: string | string[],
   ): Promise<string> {
     mockCategoryDependencies(category, listResult);
 
     const { default: CategoryPage } = await import('./page');
     const html = renderToStaticMarkup(
-      await CategoryPage({ params: Promise.resolve({ categorySlug: 'fones-bluetooth' }) }),
+      await CategoryPage({
+        params: Promise.resolve({ categorySlug: 'fones-bluetooth' }),
+        searchParams: Promise.resolve({ page: rawPage }),
+      }),
     );
     return html;
   }
@@ -197,6 +201,160 @@ describe('CategoryPage', () => {
   });
 
   /**
+   * UXW-012 — Paginação consistente. Mesmo critério da Home
+   * (`(home)/page.spec.tsx`), aplicado à Categoria — inclusive a ordem de
+   * checagem (formato de `page` antes da rede; categoria inexistente e
+   * página fora do range depois da resposta da API).
+   */
+  describe('paginação (UXW-012)', () => {
+    it('repassa categorySlug e a página solicitada (?page=N) para listPublicArticles', async () => {
+      const listPublicArticlesMock = jest.fn<
+        (query?: { categorySlug?: string; page?: number }) => Promise<ListPublicArticlesResponse>
+      >();
+      listPublicArticlesMock.mockResolvedValue({
+        items: [],
+        page: 2,
+        pageSize: 20,
+        total: 25,
+        totalPages: 2,
+      });
+      jest.doMock('next/navigation', () => ({
+        notFound: jest.fn(() => {
+          throw new Error('NEXT_NOT_FOUND');
+        }),
+      }));
+      jest.doMock('../../lib/public-api/client', () => ({
+        getPublicCategory: jest.fn(() => Promise.resolve({ name: 'Fones bluetooth', slug: 'fones-bluetooth' })),
+        listPublicArticles: listPublicArticlesMock,
+      }));
+
+      const { default: CategoryPage } = await import('./page');
+      await CategoryPage({
+        params: Promise.resolve({ categorySlug: 'fones-bluetooth' }),
+        searchParams: Promise.resolve({ page: '2' }),
+      });
+
+      expect(listPublicArticlesMock).toHaveBeenCalledWith({ categorySlug: 'fones-bluetooth', page: 2 });
+    });
+
+    it('gera um link "limpo" (sem ?page=1) de volta para a página 1 quando a página atual é outra', async () => {
+      // Mesmo critério da Home: a página atual é um <span>, não um link —
+      // o href "limpo" só aparece nos links que apontam DE VOLTA para a
+      // página 1 a partir de outra página (aqui, a 2).
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        { items: [], page: 2, pageSize: 20, total: 25, totalPages: 2 },
+        '2',
+      );
+
+      expect(html).toContain('href="/fones-bluetooth"');
+      expect(html).not.toContain('page=1');
+    });
+
+    it('renderiza os controles de paginação na última página, com aria-current e sem link "Próxima"', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        { items: [], page: 2, pageSize: 20, total: 25, totalPages: 2 },
+        '2',
+      );
+
+      expect(html).toContain('aria-current="page"');
+      expect(html).not.toContain('Próxima');
+      expect(html).toContain('Anterior');
+    });
+
+    it('não renderiza nenhum controle de paginação quando há só uma página', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        { items: [], page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      );
+
+      expect(html).not.toContain('aria-label="Paginação"');
+      expect(html).not.toContain('Anterior');
+    });
+
+    it('nenhuma URL de paginação gerada contém pageSize', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        { items: [], page: 1, pageSize: 20, total: 45, totalPages: 3 },
+      );
+
+      expect(html).not.toContain('pageSize');
+    });
+
+    it.each([['0'], ['-1'], ['1.5'], ['abc'], [['1', '2']]])(
+      'chama notFound() quando ?page= é malformado (%p)',
+      async (rawPage) => {
+        await expect(
+          renderCategoryWith(
+            { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+            { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+            rawPage as string | string[],
+          ),
+        ).rejects.toThrow('NEXT_NOT_FOUND');
+      },
+    );
+
+    it('chama notFound() quando a página pedida está acima de totalPages', async () => {
+      await expect(
+        renderCategoryWith(
+          { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+          { items: [], page: 3, pageSize: 20, total: 20, totalPages: 2 },
+          '3',
+        ),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+    });
+
+    it('chama notFound() quando a categoria existe sem nenhum artigo e a página pedida é maior que 1', async () => {
+      await expect(
+        renderCategoryWith(
+          { name: 'Cafeteiras', slug: 'cafeteiras' },
+          { items: [], page: 2, pageSize: 20, total: 0, totalPages: 0 },
+          '2',
+        ),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+    });
+
+    it('NÃO chama notFound() na página 1 quando a categoria existe sem nenhum artigo (estado vazio legítimo)', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Cafeteiras', slug: 'cafeteiras' },
+        { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+      );
+
+      expect(html).toContain('Nenhum artigo publicado nesta categoria ainda.');
+    });
+
+    it('formato de page inválido gera notFound() antes de tocar em getPublicCategory/listPublicArticles', async () => {
+      const getPublicCategoryMock = jest.fn(() =>
+        Promise.resolve({ name: 'Fones bluetooth', slug: 'fones-bluetooth' }),
+      );
+      const listPublicArticlesMock = jest.fn(() =>
+        Promise.resolve({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }),
+      );
+      jest.doMock('next/navigation', () => ({
+        notFound: jest.fn(() => {
+          throw new Error('NEXT_NOT_FOUND');
+        }),
+      }));
+      jest.doMock('../../lib/public-api/client', () => ({
+        getPublicCategory: getPublicCategoryMock,
+        listPublicArticles: listPublicArticlesMock,
+      }));
+
+      const { default: CategoryPage } = await import('./page');
+      await expect(
+        CategoryPage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth' }),
+          searchParams: Promise.resolve({ page: 'abc' }),
+        }),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+
+      expect(getPublicCategoryMock).not.toHaveBeenCalled();
+      expect(listPublicArticlesMock).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
    * UXW-008, ajuste explicitamente pedido nesta implementação (mesmo padrão
    * já fechado para a Home em UXW-007): gate de acessibilidade (`jest-axe`)
    * com a Categoria populada por cards reais (com e sem imagem), exercitando
@@ -207,9 +365,11 @@ describe('CategoryPage', () => {
    * para analisar, e `CategoryPage` chamado diretamente (`await
    * CategoryPage({ params })`) devolve um elemento React de verdade,
    * montável via `render()` — mesma técnica de `page.spec.tsx` da Home.
+   * UXW-012 — `totalPages: 2` faz os controles de paginação entrarem
+   * neste mesmo gate.
    */
   describe('acessibilidade (jest-axe) — Categoria populada', () => {
-    it('não tem violação de acessibilidade com cards com e sem imagem', async () => {
+    it('não tem violação de acessibilidade com cards com e sem imagem, e paginação visível', async () => {
       mockCategoryDependencies(
         { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
         {
@@ -237,14 +397,15 @@ describe('CategoryPage', () => {
           ],
           page: 1,
           pageSize: 20,
-          total: 2,
-          totalPages: 1,
+          total: 3,
+          totalPages: 2,
         },
       );
 
       const { default: CategoryPage } = await import('./page');
       const page = await CategoryPage({
         params: Promise.resolve({ categorySlug: 'fones-bluetooth' }),
+        searchParams: Promise.resolve({}),
       });
       const { container } = render(page);
 

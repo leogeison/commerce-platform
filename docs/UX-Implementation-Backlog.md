@@ -1049,7 +1049,7 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 **Pré-requisitos:** UXW-007, UXW-008.
 **Escopo incluído:** controle de paginação visual, navegação por URL (querystring ou rota, a definir na implementação), preservando SSR/SEO (páginas seguintes indexáveis).
 **Fora de escopo:** busca textual (fora do MVP).
-**Arquivos/áreas:** `apps/fastcompre/src/app/page.tsx`, `apps/fastcompre/src/app/[categorySlug]/page.tsx`.
+**Arquivos/áreas:** `apps/fastcompre/src/app/(home)/page.tsx`, `apps/fastcompre/src/app/[categorySlug]/page.tsx`.
 **Critérios de aceite:** navegação entre páginas funcional via URL, sem depender exclusivamente de JS para acessar a página seguinte.
 **Testes esperados:** `renderToStaticMarkup` cobrindo página 1 e página N.
 **Acessibilidade/responsividade:** controles de paginação com `aria-label` descritivo ("Página 2 de 5"), navegáveis por teclado.

@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getPublicCategory, listPublicArticles } from '@/lib/public-api/client';
+import { Pagination } from '../pagination';
+import { resolvePageParam } from '../pagination-window';
 
 /**
  * Sem `generateStaticParams`, esta rota dinâmica já não tenta buscar dados
@@ -12,17 +14,38 @@ export const fetchCache = 'force-cache';
 
 interface CategoryPageProps {
   params: Promise<{ categorySlug: string }>;
+  searchParams: Promise<{ page?: string | string[] }>;
 }
 
-export default async function CategoryPage({ params }: CategoryPageProps) {
+/**
+ * UXW-012 — mesmo critério de paginação da Home (`../pagination.tsx`),
+ * aplicado a esta rota: `page` inválido (formato ou repetido) →
+ * `notFound()` antes de qualquer chamada à API; `page` acima de
+ * `totalPages` devolvido pela API → `notFound()` também, exceto
+ * `page === 1` com `totalPages === 0` (categoria existente sem nenhum
+ * artigo publicado — estado vazio legítimo, já existente). A checagem de
+ * categoria inexistente (já existente, `if (!category) notFound()`)
+ * continua sem alteração, só reordenada para depois da validação de
+ * formato de `page` (mais barata, não depende de rede).
+ */
+export default async function CategoryPage({ params, searchParams }: CategoryPageProps) {
   const { categorySlug } = await params;
+  const { page: rawPage } = await searchParams;
+  const page = resolvePageParam(rawPage);
+  if (page === null) {
+    notFound();
+  }
 
-  const [category, { items }] = await Promise.all([
+  const [category, { items, totalPages }] = await Promise.all([
     getPublicCategory(categorySlug),
-    listPublicArticles({ categorySlug }),
+    listPublicArticles({ categorySlug, page }),
   ]);
 
   if (!category) {
+    notFound();
+  }
+
+  if (page > 1 && page > totalPages) {
     notFound();
   }
 
@@ -107,6 +130,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           })}
         </ul>
       )}
+
+      <Pagination currentPage={page} totalPages={totalPages} basePath={`/${categorySlug}`} />
     </main>
   );
 }

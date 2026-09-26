@@ -15,7 +15,9 @@ import type { ListPublicArticlesResponse } from '@commerce-platform/contracts';
  *
  * `connection()` depende de contexto interno de requisição do Next.js, que
  * não existe rodando via Jest puro — mocado para não testar o Next em si,
- * só o comportamento desta página.
+ * só o comportamento desta página. UXW-012 — `next/navigation` (`notFound`)
+ * também é mocado agora: a Home lê `searchParams` e chama `notFound()`
+ * para paginação inválida/fora do range (ver `page.tsx`).
  *
  * UXW-007 — `page.tsx` moveu de `apps/fastcompre/src/app/page.tsx` para
  * `apps/fastcompre/src/app/(home)/page.tsx` (Route Group `(home)`, para
@@ -32,15 +34,23 @@ describe('Home', () => {
 
   function mockHomeDependencies(result: ListPublicArticlesResponse) {
     jest.doMock('next/server', () => ({ connection: jest.fn(() => Promise.resolve()) }));
+    jest.doMock('next/navigation', () => ({
+      notFound: jest.fn(() => {
+        throw new Error('NEXT_NOT_FOUND');
+      }),
+    }));
     jest.doMock('../../lib/public-api/client', () => ({
       listPublicArticles: jest.fn(() => Promise.resolve(result)),
     }));
   }
 
-  async function renderHomeWith(result: ListPublicArticlesResponse): Promise<string> {
+  async function renderHomeWith(
+    result: ListPublicArticlesResponse,
+    rawPage?: string | string[],
+  ): Promise<string> {
     mockHomeDependencies(result);
     const { default: Home } = await import('./page');
-    return renderToStaticMarkup(await Home());
+    return renderToStaticMarkup(await Home({ searchParams: Promise.resolve({ page: rawPage }) }));
   }
 
   it('renderiza os artigos retornados pela API pública', async () => {
@@ -169,6 +179,104 @@ describe('Home', () => {
   });
 
   /**
+   * UXW-012 — Paginação consistente. `listPublicArticles` é mocado para
+   * devolver sempre o `result` informado, independentemente dos argumentos
+   * — exceto no primeiro teste abaixo, que inspeciona diretamente a
+   * chamada para confirmar que `page` é repassado corretamente.
+   */
+  describe('paginação (UXW-012)', () => {
+    it('repassa a página solicitada (?page=N) para listPublicArticles', async () => {
+      const listPublicArticlesMock = jest.fn<
+        (query?: { page?: number }) => Promise<ListPublicArticlesResponse>
+      >();
+      listPublicArticlesMock.mockResolvedValue({
+        items: [],
+        page: 2,
+        pageSize: 20,
+        total: 25,
+        totalPages: 2,
+      });
+      jest.doMock('next/server', () => ({ connection: jest.fn(() => Promise.resolve()) }));
+      jest.doMock('next/navigation', () => ({
+        notFound: jest.fn(() => {
+          throw new Error('NEXT_NOT_FOUND');
+        }),
+      }));
+      jest.doMock('../../lib/public-api/client', () => ({ listPublicArticles: listPublicArticlesMock }));
+
+      const { default: Home } = await import('./page');
+      await Home({ searchParams: Promise.resolve({ page: '2' }) });
+
+      expect(listPublicArticlesMock).toHaveBeenCalledWith({ page: 2 });
+    });
+
+    it('gera um link "limpo" (sem ?page=1) de volta para a página 1 quando a página atual é outra', async () => {
+      // A página atual nunca é um link para si mesma (é um <span>) — para
+      // verificar o href "limpo" da página 1, é preciso renderizar a partir
+      // de outra página (aqui, a 2), de onde "Anterior"/o número "1" de
+      // fato apontam de volta para a página 1.
+      const html = await renderHomeWith(
+        { items: [], page: 2, pageSize: 20, total: 25, totalPages: 2 },
+        '2',
+      );
+
+      expect(html).toContain('href="/"');
+      expect(html).not.toContain('page=1');
+    });
+
+    it('renderiza os controles de paginação na última página, com aria-current e sem link "Próxima"', async () => {
+      const html = await renderHomeWith(
+        { items: [], page: 2, pageSize: 20, total: 25, totalPages: 2 },
+        '2',
+      );
+
+      expect(html).toContain('aria-current="page"');
+      expect(html).not.toContain('Próxima');
+      expect(html).toContain('Anterior');
+    });
+
+    it('não renderiza nenhum controle de paginação quando há só uma página', async () => {
+      const html = await renderHomeWith({ items: [], page: 1, pageSize: 20, total: 1, totalPages: 1 });
+
+      expect(html).not.toContain('aria-label="Paginação"');
+      expect(html).not.toContain('Anterior');
+    });
+
+    it('nenhuma URL de paginação gerada contém pageSize', async () => {
+      const html = await renderHomeWith({ items: [], page: 1, pageSize: 20, total: 45, totalPages: 3 });
+
+      expect(html).not.toContain('pageSize');
+    });
+
+    it.each([['0'], ['-1'], ['1.5'], ['abc'], [['1', '2']]])(
+      'chama notFound() quando ?page= é malformado (%p)',
+      async (rawPage) => {
+        await expect(
+          renderHomeWith({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 }, rawPage as string | string[]),
+        ).rejects.toThrow('NEXT_NOT_FOUND');
+      },
+    );
+
+    it('chama notFound() quando a página pedida está acima de totalPages', async () => {
+      await expect(
+        renderHomeWith({ items: [], page: 3, pageSize: 20, total: 20, totalPages: 2 }, '3'),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+    });
+
+    it('chama notFound() quando não há nenhum artigo e a página pedida é maior que 1', async () => {
+      await expect(
+        renderHomeWith({ items: [], page: 2, pageSize: 20, total: 0, totalPages: 0 }, '2'),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+    });
+
+    it('NÃO chama notFound() na página 1 quando não há nenhum artigo (estado vazio legítimo)', async () => {
+      const html = await renderHomeWith({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 });
+
+      expect(html).toContain('Nenhum artigo publicado ainda.');
+    });
+  });
+
+  /**
    * UXW-007, ajuste solicitado nesta implementação: `shell.integration
    * .spec.tsx` só roda `jest-axe` com a Home vazia (`ARTICLES: total 0`) —
    * nunca com cards populados/imagem real. Este bloco fecha essa lacuna
@@ -176,9 +284,12 @@ describe('Home', () => {
    * estático, por isso `render()`/Testing Library aqui em vez de
    * `renderToStaticMarkup`) com um artigo com e um artigo sem imagem, para
    * cobrir os dois formatos de card num único gate de acessibilidade.
+   * UXW-012 — `totalPages: 2` (em vez de `1`) faz os controles de
+   * paginação novos entrarem neste mesmo gate, não só no spec isolado de
+   * `pagination.spec.tsx`.
    */
   describe('acessibilidade (jest-axe) — Home populada', () => {
-    it('não tem violação de acessibilidade com cards com e sem imagem', async () => {
+    it('não tem violação de acessibilidade com cards com e sem imagem, e paginação visível', async () => {
       mockHomeDependencies({
         items: [
           {
@@ -204,8 +315,8 @@ describe('Home', () => {
         ],
         page: 1,
         pageSize: 20,
-        total: 2,
-        totalPages: 1,
+        total: 3,
+        totalPages: 2,
       });
 
       const { default: Home } = await import('./page');
@@ -215,7 +326,7 @@ describe('Home', () => {
       // `renderToStaticMarkup`, que só serve para comparação de HTML
       // estático, não para rodar `jest-axe` (que precisa de um container
       // DOM real).
-      const home = await Home();
+      const home = await Home({ searchParams: Promise.resolve({}) });
       const { container } = render(home);
 
       expect(await axe(container)).toHaveNoViolations();

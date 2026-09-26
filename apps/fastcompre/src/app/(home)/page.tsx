@@ -1,5 +1,8 @@
+import { notFound } from 'next/navigation';
 import { connection } from 'next/server';
 import { listPublicArticles } from '@/lib/public-api/client';
+import { Pagination } from '../pagination';
+import { resolvePageParam } from '../pagination-window';
 
 /**
  * `connection()` adia a renderização para o momento da requisição, então
@@ -9,9 +12,48 @@ import { listPublicArticles } from '@/lib/public-api/client';
  */
 export const fetchCache = 'force-cache';
 
-export default async function Home() {
+interface HomeProps {
+  searchParams?: Promise<{ page?: string | string[] }>;
+}
+
+/**
+ * UXW-012 — leitura de `page` via querystring (`?page=N`), decisão fechada
+ * do desenho técnico aprovado. `resolvePageParam` (`../pagination.tsx`)
+ * valida o formato ANTES de chamar a API pública: qualquer valor que não
+ * seja um inteiro positivo estrito (ausência → 1; `0`, negativo, decimal,
+ * texto ou valores repetidos, que chegam como array) resulta em
+ * `notFound()` imediato, sem gastar uma chamada à API — mesmo critério já
+ * usado por `[categorySlug]/page.tsx` para categoria inexistente.
+ *
+ * Depois da resposta real da API, uma segunda checagem cobre página fora
+ * do range: `page > totalPages` também é `notFound()` — exceto o caso
+ * legítimo de `page === 1` com `totalPages === 0` (nenhum artigo
+ * publicado ainda), que continua sendo o estado vazio já existente, não
+ * um erro. Nenhuma dessas duas regras altera `packages/contracts` ou
+ * `apps/api` — são decisões de apresentação/SEO desta própria tarefa,
+ * aplicadas só aqui.
+ *
+ * `searchParams` é opcional (com default `{}`) só para preservar a
+ * assinatura já usada por `shell.integration.spec.tsx` (`await Home()`,
+ * sem argumento nenhum — arquivo fora do escopo/`Arquivos/áreas` desta
+ * tarefa, não tocado). O Next.js real sempre invoca a página com
+ * `searchParams` de verdade — a opcionalidade só existe para o teste de
+ * integração pré-existente continuar compilando e passando sem alteração.
+ */
+export default async function Home({ searchParams }: HomeProps = {}) {
   await connection();
-  const { items } = await listPublicArticles();
+
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const page = resolvePageParam(resolvedSearchParams.page);
+  if (page === null) {
+    notFound();
+  }
+
+  const { items, totalPages } = await listPublicArticles({ page });
+
+  if (page > 1 && page > totalPages) {
+    notFound();
+  }
 
   // Correção de LCP (UXW-006 — regressão encontrada no gate contra o budget
   // da UXF-014): a primeira imagem da listagem com `coverImageUrl` é o
@@ -103,6 +145,8 @@ export default async function Home() {
           })}
         </ul>
       )}
+
+      <Pagination currentPage={page} totalPages={totalPages} basePath="/" />
     </main>
   );
 }
