@@ -1,5 +1,7 @@
+import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { getPublicCategory, listPublicArticles } from '@/lib/public-api/client';
+import { ARTICLE_CARD_IMAGE_SIZES } from '../article-card-image-sizes';
 import { Pagination } from '../pagination';
 import { resolvePageParam } from '../pagination-window';
 
@@ -52,14 +54,18 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
   // Correção de LCP (UXW-006 — regressão encontrada no gate contra o budget
   // da UXF-014): mesmo racional de `apps/fastcompre/src/app/(home)/page.tsx`
   // (ver comentário lá) — a primeira imagem da listagem com `coverImageUrl` é
-  // o elemento LCP real desta rota. Só essa imagem sai de lazy/prioridade
-  // padrão; todas as demais continuam exatamente como antes. Duplicado aqui
-  // em vez de extraído para um componente compartilhado — esta rota já
-  // duplicava o bloco de listagem inteiro da Home antes desta correção, e
-  // UXW-008 (redesenho visual desta página) preserva essa mesma decisão: o
-  // novo card reproduz localmente a linguagem visual da Home sem promover
-  // nenhum componente comum a `packages/ui` nem a um módulo compartilhado
-  // dentro de `apps/fastcompre`.
+  // o elemento LCP real desta rota. UXW-013 substitui o mecanismo manual de
+  // prioridade pelo prop `preload` do `next/image` (Next 16) — mesmo
+  // racional exato da Home. Duplicado aqui em vez de extraído para um
+  // componente compartilhado — esta rota já duplicava o bloco de listagem
+  // inteiro da Home antes desta correção, e UXW-008 (redesenho visual
+  // desta página) preserva essa mesma decisão: o novo card reproduz
+  // localmente a linguagem visual da Home sem promover nenhum componente
+  // comum a `packages/ui` nem a um módulo compartilhado dentro de
+  // `apps/fastcompre` (`ARTICLE_CARD_IMAGE_SIZES`, abaixo, é a única
+  // exceção deliberada — ver `../article-card-image-sizes.ts`: um valor de
+  // layout puro, sem conhecimento de domínio, com dois consumidores reais
+  // simultâneos nesta própria tarefa).
   const firstImageIndex = items.findIndex((article) => article.coverImageUrl);
 
   return (
@@ -86,19 +92,19 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                       // `alt=""`: o título do artigo já está visível como
                       // texto dentro deste mesmo link (o `<h2>` abaixo) — um
                       // `alt` não vazio aqui duplicaria o título no nome
-                      // acessível do link inteiro. `width`/`height` mantêm a
-                      // proporção 16:9 (640×360, mesmos valores da Home) — o
-                      // navegador reserva o espaço pela proporção informada
-                      // nos atributos HTML antes do carregamento, prevenindo
-                      // CLS. Mesmo critério exato de `apps/fastcompre/src/
-                      // app/(home)/page.tsx` (UXW-007).
-                      <img
+                      // acessível do link inteiro. `width`/`height`
+                      // (640×360, mesmos valores da Home) são o tamanho
+                      // intrínseco real; `sizes` (`ARTICLE_CARD_IMAGE_SIZES`)
+                      // é a largura real do card, mesmo layout exato da
+                      // Home. Mesmo critério exato de `apps/fastcompre/src/
+                      // app/(home)/page.tsx` (UXW-007/UXW-013).
+                      <Image
                         src={article.coverImageUrl}
                         alt=""
                         width={640}
                         height={360}
-                        loading={isLcpCandidate ? 'eager' : 'lazy'}
-                        fetchPriority={isLcpCandidate ? 'high' : undefined}
+                        sizes={ARTICLE_CARD_IMAGE_SIZES}
+                        preload={isLcpCandidate}
                         className="aspect-video w-full rounded-control object-cover"
                       />
                     )}

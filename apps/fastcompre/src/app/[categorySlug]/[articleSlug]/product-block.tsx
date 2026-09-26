@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import Image from 'next/image';
 import { resolveProductBlock } from './product-block-resolver';
 import { ProductOfferList } from './product-offer-list';
 import type { PublicArticleProduct } from '@commerce-platform/contracts';
@@ -72,11 +73,12 @@ import type { PublicArticleProduct } from '@commerce-platform/contracts';
  * border border-outline bg-surface` reaproveita o mesmo trio de tokens já
  * usado como "cartão" em `apps/admin/.../dashboard.tsx` — nenhum token
  * novo, e deliberadamente sem `shadow` (usado no projeto só em overlays/
- * dropdowns) para não ler como elemento flutuante/anúncio. Imagem com
- * `width`/`height` explícitos (mesmas dimensões já usadas na seção
- * estática) e `loading="lazy"` — estabilidade de dimensão para não causar
- * CLS, sem antecipar `next/image` (UXW-013). `min-w-0` no bloco de texto
- * — mesmo padrão já usado na byline (UXW-010) — garante reflow em vez de
+ * dropdowns) para não ler como elemento flutuante/anúncio. Imagem via
+ * `next/image` desde a UXW-013 (`width`/`height` explícitos, mesmas
+ * dimensões já usadas na seção estática) — estabilidade de dimensão para
+ * não causar CLS; ver o comentário junto ao JSX abaixo para o racional de
+ * `alt=""`/ausência de `sizes`/`preload`. `min-w-0` no bloco de texto —
+ * mesmo padrão já usado na byline (UXW-010) — garante reflow em vez de
  * overflow a 320px/zoom 200%, com a imagem de largura fixa ao lado.
  */
 
@@ -105,13 +107,20 @@ function ProductBlockFound({
   return (
     <div className="mt-8 rounded-control border border-outline bg-surface p-4 font-ui sm:p-6">
       <div className="flex gap-4">
+        {/* UXW-013 — `alt=""`: mesma correção e mesmo racional da seção
+            estática de Produtos em `page.tsx` — `product.name` já é texto
+            sempre visível, incondicional, no `<p>` logo ao lado (mesmo
+            bloco `min-w-0`), então um `alt` não vazio duplicaria o nome no
+            leitor de tela. `width`/`height` (96×96) casam exatamente com
+            `w-24` — sem `sizes` (tamanho fixo). Sem `preload` — Artigo é
+            LCP-por-texto (UXW-006), e este bloco nunca é a primeira coisa
+            renderizada na página de qualquer forma. */}
         {product.imageUrl && (
-          <img
+          <Image
             src={product.imageUrl}
-            alt={product.name}
+            alt=""
             width={96}
             height={96}
-            loading="lazy"
             className="aspect-square w-24 shrink-0 rounded object-cover"
           />
         )}

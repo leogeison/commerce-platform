@@ -10,7 +10,23 @@ import type { ListPublicArticlesResponse, PublicCategory } from '@commerce-platf
  * transform SWC do `next/jest` neste projeto. `jest.resetModules()` a cada
  * teste garante que o novo `doMock` valha para a próxima importação, não
  * para uma já cacheada.
+ *
+ * UXW-013 — `next/image` também precisa de `jest.doMock()`, mesma razão e
+ * mesmo duplo exatos de `(home)/page.spec.tsx` (ver o comentário completo
+ * lá): `Image` quebra sob este mesmo padrão `resetModules()` + `import()`
+ * dinâmico (duas cópias de React, mesma causa raiz já documentada para
+ * `next/link` na UXW-012).
  */
+interface MockNextImageProps {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  sizes?: string;
+  preload?: boolean;
+  className?: string;
+}
+
 describe('CategoryPage', () => {
   afterEach(() => {
     jest.resetModules();
@@ -24,6 +40,20 @@ describe('CategoryPage', () => {
       notFound: jest.fn(() => {
         throw new Error('NEXT_NOT_FOUND');
       }),
+    }));
+    jest.doMock('next/image', () => ({
+      __esModule: true,
+      default: ({ src, alt, width, height, sizes, preload, className }: MockNextImageProps) => (
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          sizes={sizes}
+          className={className}
+          data-preload={preload ? 'true' : undefined}
+        />
+      ),
     }));
     jest.doMock('../../lib/public-api/client', () => ({
       getPublicCategory: jest.fn(() => Promise.resolve(category)),
@@ -103,8 +133,9 @@ describe('CategoryPage', () => {
    * Correção de LCP (UXW-006) — mesma regra e mesmos casos de
    * `apps/fastcompre/src/app/(home)/page.spec.tsx`, aplicados a esta rota (o
    * bloco de listagem é duplicado entre as duas, não compartilhado).
-   * Preservada sem alteração de lógica pela UXW-008 — só o markup ao redor
-   * do `<img>` mudou (ver `page.tsx`).
+   * UXW-013 trocou `loading="eager"`/`fetchPriority="high"` pelo prop
+   * `preload` do `next/image` — exposto pelo duplo de teste como
+   * `data-preload="true"` (ver comentário no topo do arquivo).
    */
   describe('prioridade de carregamento da imagem LCP', () => {
     function article(overrides: {
@@ -128,7 +159,7 @@ describe('CategoryPage', () => {
       return html.match(/<img[^>]*>/g) ?? [];
     }
 
-    it('aplica loading="eager" e fetchpriority="high" somente na primeira imagem, mantendo as demais lazy e sem prioridade', async () => {
+    it('aplica preload somente na primeira imagem, mantendo as demais sem preload', async () => {
       const html = await renderCategoryWith(
         { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
         {
@@ -148,12 +179,10 @@ describe('CategoryPage', () => {
       expect(imgTags).toHaveLength(3);
 
       expect(imgTags[0]).toContain('src="https://example.com/1.jpg"');
-      expect(imgTags[0]).toContain('loading="eager"');
-      expect(imgTags[0]).toContain('fetchPriority="high"');
+      expect(imgTags[0]).toContain('data-preload="true"');
 
       for (const tag of imgTags.slice(1)) {
-        expect(tag).toContain('loading="lazy"');
-        expect(tag).not.toContain('fetchPriority');
+        expect(tag).not.toContain('data-preload');
       }
     });
 
@@ -175,8 +204,23 @@ describe('CategoryPage', () => {
       const imgTags = extractImgTags(html);
       expect(imgTags).toHaveLength(1);
       expect(imgTags[0]).toContain('src="https://example.com/2.jpg"');
-      expect(imgTags[0]).toContain('loading="eager"');
-      expect(imgTags[0]).toContain('fetchPriority="high"');
+      expect(imgTags[0]).toContain('data-preload="true"');
+    });
+
+    it('inclui o `sizes` derivado do layout real do card em toda imagem de capa', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        {
+          items: [article({ id: '1', title: 'Primeiro artigo', coverImageUrl: 'https://example.com/1.jpg' })],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      );
+
+      const imgTags = extractImgTags(html);
+      expect(imgTags[0]).toContain('sizes="(min-width: 768px) 736px, calc(100vw - 32px)"');
     });
 
     it('preserva o comportamento atual quando nenhum artigo tem coverImageUrl (nenhuma imagem, nenhum crash)', async () => {

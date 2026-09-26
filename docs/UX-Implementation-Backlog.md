@@ -1059,11 +1059,11 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 
 ### UXW-013 — `next/image` aplicado às 3 páginas
 **Objetivo:** configurar e aplicar `next/image` para toda imagem pública (capa de Artigo, avatar de Autor, imagem de Produto quando exibida).
-**Contexto/decisão relacionada:** Etapa D — `next.config.ts` do FastCompre vazio hoje, precisa de `images.remotePatterns`.
+**Contexto/decisão relacionada:** Etapa D — `next.config.ts` do FastCompre vazio hoje, precisa de `images.remotePatterns`. Investigação da UXW-013 (aprovada com ajustes): `remotePatterns` passa a ser derivado da nova env `STORAGE_PUBLIC_URL_BASE` (`apps/fastcompre/.env.example`), nunca hardcoded; `priority` (deprecated no Next 16.2.12) é substituído por `preload` na capa LCP de Home/Categoria.
 **Pré-requisitos:** UXW-007, UXW-008, UXW-009, UXW-010A.
-**Escopo incluído:** configuração de `remotePatterns` apontando para o host do `StoragePort`; substituição de `<img>` cru por `next/image` nas 3 páginas.
-**Fora de escopo:** otimização de imagens fora do que `next/image` já oferece por padrão.
-**Arquivos/áreas:** `apps/fastcompre/next.config.ts`.
+**Escopo incluído:** configuração de `remotePatterns` apontando para o host do `StoragePort` (via `STORAGE_PUBLIC_URL_BASE`); substituição de `<img>` cru por `next/image` em: capa de Artigo (Home e Categoria), avatar real do Autor e imagem de Produto (`ProductBlock` e seção estática) — ver exclusão explícita abaixo.
+**Fora de escopo:** otimização de imagens fora do que `next/image` já oferece por padrão. Imagens do corpo MDX do Artigo (`bodyMdx`) permanecem como `<img>` cru, sem conversão para `next/image` — incompatibilidade confirmada na investigação: os casos sem extensão/`{width=N}` (UXE-022) não têm `height` conhecido, e o caso combinado `{width=N height=M}` inclui distorção deliberada testada como equivalência válida (`packages/editorial/src/image/grammar.ts`, ex. `{width=600 height=300}`), que `next/image` não preserva sem reintroduzir a mesma ambiguidade de aspect-ratio. Pipeline `remarkImageDimensions`/gramática/Editorial Serialization Contract preservados integralmente, sem nenhuma alteração.
+**Arquivos/áreas:** `apps/fastcompre/next.config.ts`; `apps/fastcompre/src/config/storage-remote-pattern.ts`; `apps/fastcompre/src/app/article-card-image-sizes.ts`; `apps/fastcompre/src/app/(home)/page.tsx`; `apps/fastcompre/src/app/[categorySlug]/page.tsx`; `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.tsx`; `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/product-block.tsx`; `apps/fastcompre/.env.example`.
 **Critérios de aceite:** imagens carregam corretamente em produção (não só em dev, onde `remotePatterns` é mais permissivo por padrão); LCP da imagem principal de cada página dentro do budget.
 **Testes esperados:** verificação de build de produção real (mesmo critério de UXF-013).
 **Acessibilidade/responsividade:** `alt` correto em cada uso (imagem de Produto, capa de Artigo, avatar).

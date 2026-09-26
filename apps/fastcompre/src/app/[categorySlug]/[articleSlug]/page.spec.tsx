@@ -44,7 +44,25 @@ describe('ArticlePage', () => {
    * produção, fechado sobre `article.products`/`article.id` por `page.tsx`)
    * — exercitando a composição real de página + bloco, não uma simulação
    * do próprio `ProductBlock`.
+   *
+   * UXW-013 — `next/image` também precisa de `jest.doMock()`, mesma razão
+   * e mesmo duplo exatos de `(home)/page.spec.tsx` (ver o comentário
+   * completo lá). Único `doMock` aqui cobre tanto o `next/image` desta
+   * própria página (avatar, seção estática de Produtos) quanto o de
+   * `product-block.tsx` — este último é importado de verdade por
+   * `page.tsx` (`createProductBlockComponent`, não mocado), então herda o
+   * mesmo `next/image` mocado no registro de módulos desta execução.
    */
+  interface MockNextImageProps {
+    src: string;
+    alt: string;
+    width?: number;
+    height?: number;
+    sizes?: string;
+    preload?: boolean;
+    className?: string;
+  }
+
   function mockArticleDependencies(
     article: PublicArticle | null,
     options: { productBlockIds?: string[]; referencedProductIds?: Set<string> } = {},
@@ -58,6 +76,20 @@ describe('ArticlePage', () => {
       permanentRedirect: jest.fn((url: string) => {
         throw new Error(`NEXT_REDIRECT:${url}`);
       }),
+    }));
+    jest.doMock('next/image', () => ({
+      __esModule: true,
+      default: ({ src, alt, width, height, sizes, preload, className }: MockNextImageProps) => (
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          sizes={sizes}
+          className={className}
+          data-preload={preload ? 'true' : undefined}
+        />
+      ),
     }));
     jest.doMock('../../../lib/public-api/client', () => ({
       getPublicArticle: jest.fn(() => Promise.resolve(article)),

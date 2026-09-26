@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef } from 'react';
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { getPublicArticle } from '@/lib/public-api/client';
 import { compileArticleBody } from './compile-article-body';
@@ -269,19 +270,25 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           `aria-hidden="true"` no segundo. Fallback usa `bg-outline-subtle`
           + `text-fg-secondary` — mesmo par já usado como pílula neutra
           permanente em apps/admin (dashboard.tsx), nunca `bg-skeleton`
-          (papel semântico de loading, não de estado permanente). `<img>`
-          cru nesta tarefa — `next/image` fica para a UXW-013. `min-w-0`
+          (papel semântico de loading, não de estado permanente). `min-w-0`
           no nome garante reflow natural em vez de o flex item impedir a
-          quebra de linha em telas estreitas/zoom alto; nunca truncamento. */}
+          quebra de linha em telas estreitas/zoom alto; nunca truncamento.
+          UXW-013 — `next/image`, sem `sizes` (tamanho fixo 40×40, `h-10
+          w-10` casa exatamente com o intrínseco — não há redimensionamento
+          responsivo a descrever) e sem `preload`: a investigação da
+          UXW-006 já havia estabelecido, por evidência Lighthouse, que o
+          elemento de LCP desta rota é texto (`h1`), não imagem — nenhuma
+          imagem do Artigo (avatar ou Produto) deve competir por
+          prioridade de carregamento. Fallback de iniciais permanece
+          intocado (não é imagem, fora do escopo desta tarefa). */}
       {article.author && (
         <div className="mt-4 flex items-center gap-3 font-ui">
           {article.author.avatarUrl ? (
-            <img
+            <Image
               src={article.author.avatarUrl}
               alt=""
               width={40}
               height={40}
-              loading="lazy"
               className="h-10 w-10 shrink-0 rounded-pill object-cover"
             />
           ) : (
@@ -322,13 +329,25 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
 
               return (
                 <li key={product.id} className="flex gap-4">
+                  {/* UXW-013 — `alt=""`: `product.name` já é texto sempre
+                      visível, incondicional, no `<h3>` logo ao lado (mesmo
+                      contexto/bloco) — um `alt` não vazio aqui duplicaria o
+                      nome do Produto no leitor de tela (imagem + `<h3>` em
+                      sequência), mesmo critério já usado para a capa de
+                      Artigo e o avatar de Autor nesta mesma tarefa. Decisão
+                      revista nesta tarefa: a implementação anterior usava
+                      `alt={product.name}`, redundante com o `<h3>` adjacente
+                      — corrigida aqui, não uma consequência automática da
+                      troca por `next/image`. `width`/`height` (96×96,
+                      quadrado) casam exatamente com `w-24`
+                      (96px) — sem `sizes` (tamanho fixo, não responsivo).
+                      Sem `preload` — Artigo é LCP-por-texto (UXW-006). */}
                   {product.imageUrl && (
-                    <img
+                    <Image
                       src={product.imageUrl}
-                      alt={product.name}
+                      alt=""
                       width={96}
                       height={96}
-                      loading="lazy"
                       className="aspect-square w-24 shrink-0 rounded object-cover"
                     />
                   )}

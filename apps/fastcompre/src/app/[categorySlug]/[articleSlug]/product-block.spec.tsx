@@ -82,11 +82,22 @@ describe('ProductBlock (unidade)', () => {
     const ProductBlock = createProductBlockComponent([product], ARTICLE_ID);
     const html = renderToStaticMarkup(<ProductBlock productId={product.id} />);
 
-    it('renderiza nome, descrição e imagem do Product', () => {
+    it('renderiza nome, descrição e imagem do Product via next/image (UXW-013), com alt="" (nome já visível e adjacente)', () => {
       expect(html).toContain('Fone Bluetooth XYZ');
       expect(html).toContain('Cancelamento de ruído ativo.');
-      expect(html).toContain('src="https://cdn.example.com/fone-xyz.jpg"');
-      expect(html).toContain('alt="Fone Bluetooth XYZ"');
+      // Este arquivo importa `createProductBlockComponent` estaticamente (não
+      // usa o padrão `jest.doMock` + `import()` dinâmico das páginas), então
+      // o `next/image` real do Next 16 processa a imagem — daí o `src`
+      // reescrito para o endpoint do Image Optimizer (`/_next/image?url=...`,
+      // URL original codificada) em vez do `src` bruto do Product.
+      expect(html).toContain('url=https%3A%2F%2Fcdn.example.com%2Ffone-xyz.jpg');
+      expect(html).toContain('width="96"');
+      expect(html).toContain('height="96"');
+      // UXW-013 — `alt=""`: `product.name` já é texto sempre visível e
+      // adjacente (`<p class="font-medium text-fg">`, mesmo bloco `min-w-0`),
+      // então um `alt` não vazio duplicaria o nome no leitor de tela (mesma
+      // decisão e mesmo racional documentados em `product-block.tsx`).
+      expect(html).toContain('alt=""');
     });
 
     it('não mostra o aviso de indisponibilidade (existe Oferta em estoque)', () => {

@@ -26,7 +26,32 @@ import type { ListPublicArticlesResponse } from '@commerce-platform/contracts';
  * organização, não de rota) — `/` continua resolvendo para este arquivo.
  * O import relativo do client da API pública mudou de `../lib/...` para
  * `../../lib/...` por causa do nível extra de pasta.
+ *
+ * UXW-013 — `next/image` também precisa de `jest.doMock()` (mesma
+ * disciplina acima, mesma razão): `Image` chama `useContext` internamente
+ * (`ImageConfigContext`) e quebra sob o mesmo padrão `resetModules()` +
+ * `import()` dinâmico já documentado para `next/link` na UXW-012 (duas
+ * cópias de React — a instância de `Image` importada dinamicamente por
+ * `page.tsx` não enxerga o dispatcher da instância de `react-dom` usada
+ * estaticamente por este arquivo de teste). O duplo (padrão recomendado
+ * pela própria documentação do Next.js para testes) renderiza um `<img>`
+ * simples com as props relevantes — inclusive `data-preload`, já que um
+ * `<img>` não tem prop `preload` real — para os testes desta suíte
+ * continuarem verificando exatamente o que é responsabilidade desta
+ * página (que props ela passa para `next/image`), não a implementação
+ * interna do próprio `next/image` (otimização, `<link rel="preload">`
+ * real etc., fora do escopo de um teste unitário desta página).
  */
+interface MockNextImageProps {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  sizes?: string;
+  preload?: boolean;
+  className?: string;
+}
+
 describe('Home', () => {
   afterEach(() => {
     jest.resetModules();
@@ -38,6 +63,20 @@ describe('Home', () => {
       notFound: jest.fn(() => {
         throw new Error('NEXT_NOT_FOUND');
       }),
+    }));
+    jest.doMock('next/image', () => ({
+      __esModule: true,
+      default: ({ src, alt, width, height, sizes, preload, className }: MockNextImageProps) => (
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          sizes={sizes}
+          className={className}
+          data-preload={preload ? 'true' : undefined}
+        />
+      ),
     }));
     jest.doMock('../../lib/public-api/client', () => ({
       listPublicArticles: jest.fn(() => Promise.resolve(result)),
@@ -89,9 +128,14 @@ describe('Home', () => {
 
   /**
    * Correção de LCP (UXW-006): só a primeira imagem da listagem com
-   * `coverImageUrl` pode sair de `loading="lazy"`/prioridade padrão — nunca
-   * `index === 0` cru, porque `coverImageUrl` é opcional. Preservado pela
-   * UXW-007 sem alteração de lógica, só o markup ao redor do `<img>` mudou.
+   * `coverImageUrl` pode receber prioridade de carregamento — nunca
+   * `index === 0` cru, porque `coverImageUrl` é opcional. UXW-013 trocou o
+   * mecanismo de `loading="eager"`/`fetchPriority="high"` manuais pelo prop
+   * `preload` do `next/image` (Next 16 — `priority` está deprecated); o
+   * duplo de teste de `next/image` (topo do arquivo) expõe isso como
+   * `data-preload="true"`, já que um `<img>` não tem prop `preload` real —
+   * os testes abaixo passam a verificar essa marca, não mais os atributos
+   * antigos, mas a MESMA regra de negócio (só a primeira imagem real).
    */
   describe('prioridade de carregamento da imagem LCP', () => {
     function article(overrides: {
@@ -115,7 +159,7 @@ describe('Home', () => {
       return html.match(/<img[^>]*>/g) ?? [];
     }
 
-    it('aplica loading="eager" e fetchpriority="high" somente na primeira imagem, mantendo as demais lazy e sem prioridade', async () => {
+    it('aplica preload somente na primeira imagem, mantendo as demais sem preload', async () => {
       const html = await renderHomeWith({
         items: [
           article({ id: '1', title: 'Primeiro artigo', coverImageUrl: 'https://example.com/1.jpg' }),
@@ -132,12 +176,10 @@ describe('Home', () => {
       expect(imgTags).toHaveLength(3);
 
       expect(imgTags[0]).toContain('src="https://example.com/1.jpg"');
-      expect(imgTags[0]).toContain('loading="eager"');
-      expect(imgTags[0]).toContain('fetchPriority="high"');
+      expect(imgTags[0]).toContain('data-preload="true"');
 
       for (const tag of imgTags.slice(1)) {
-        expect(tag).toContain('loading="lazy"');
-        expect(tag).not.toContain('fetchPriority');
+        expect(tag).not.toContain('data-preload');
       }
     });
 
@@ -156,8 +198,36 @@ describe('Home', () => {
       const imgTags = extractImgTags(html);
       expect(imgTags).toHaveLength(1);
       expect(imgTags[0]).toContain('src="https://example.com/2.jpg"');
-      expect(imgTags[0]).toContain('loading="eager"');
-      expect(imgTags[0]).toContain('fetchPriority="high"');
+      expect(imgTags[0]).toContain('data-preload="true"');
+    });
+
+    it('não aplica preload a nenhuma imagem quando nenhum artigo tem coverImageUrl', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Sem imagem 1', coverImageUrl: null }),
+          article({ id: '2', title: 'Sem imagem 2', coverImageUrl: null }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+      });
+
+      expect(extractImgTags(html)).toHaveLength(0);
+      expect(html).not.toContain('data-preload');
+    });
+
+    it('inclui o `sizes` derivado do layout real do card em toda imagem de capa', async () => {
+      const html = await renderHomeWith({
+        items: [article({ id: '1', title: 'Primeiro artigo', coverImageUrl: 'https://example.com/1.jpg' })],
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+
+      const imgTags = extractImgTags(html);
+      expect(imgTags[0]).toContain('sizes="(min-width: 768px) 736px, calc(100vw - 32px)"');
     });
 
     it('preserva o comportamento atual quando nenhum artigo tem coverImageUrl (nenhuma imagem, nenhum crash)', async () => {

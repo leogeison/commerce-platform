@@ -1,6 +1,8 @@
+import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { connection } from 'next/server';
 import { listPublicArticles } from '@/lib/public-api/client';
+import { ARTICLE_CARD_IMAGE_SIZES } from '../article-card-image-sizes';
 import { Pagination } from '../pagination';
 import { resolvePageParam } from '../pagination-window';
 
@@ -58,18 +60,16 @@ export default async function Home({ searchParams }: HomeProps = {}) {
   // Correção de LCP (UXW-006 — regressão encontrada no gate contra o budget
   // da UXF-014): a primeira imagem da listagem com `coverImageUrl` é o
   // elemento LCP real desta rota (confirmado pelo relatório Lighthouse —
-  // `img.aspect-video`). `loading="lazy"` nela atrasa o INÍCIO do fetch até
-  // o navegador confirmar proximidade do viewport (resourceLoadDelay ≈
-  // 1,7 s medido, muito acima do resourceLoadDuration real de ≈ 0,7 s), e a
-  // ausência de `fetchPriority` deixa esse fetch em prioridade padrão,
-  // competindo com os demais recursos da página. Só essa imagem sai de
-  // lazy/prioridade padrão — todas as demais continuam exatamente como
-  // antes. `findIndex` em vez de `index === 0`: nem todo artigo tem
-  // `coverImageUrl` (campo opcional), então o candidato a LCP é o primeiro
-  // artigo da lista que REALMENTE tem imagem, não necessariamente o
-  // primeiro item da lista. Preservado integralmente pela UXW-007 — só o
-  // markup ao redor da imagem mudou (ver comentário sobre `width`/`height`
-  // abaixo), a lógica que decide QUAL imagem recebe prioridade não.
+  // `img.aspect-video`). UXW-013 substitui o `loading="eager"`+
+  // `fetchPriority="high"` manuais (Next 16, `next/image`) pelo prop
+  // `preload` (ver JSX abaixo) — mesmo racional, mecanismo nativo mais
+  // forte (inclui `<link rel="preload">` real no `<head>`). `findIndex` em
+  // vez de `index === 0`: nem todo artigo tem `coverImageUrl` (campo
+  // opcional), então o candidato a LCP é o primeiro artigo da lista que
+  // REALMENTE tem imagem, não necessariamente o primeiro item da lista.
+  // Preservado integralmente desde a UXW-006/UXW-007 — só o mecanismo de
+  // prioridade muda nesta tarefa, a lógica que decide QUAL imagem recebe
+  // prioridade não.
   const firstImageIndex = items.findIndex((article) => article.coverImageUrl);
 
   return (
@@ -99,21 +99,27 @@ export default async function Home({ searchParams }: HomeProps = {}) {
                       // `alt=""`: o título do artigo já está visível como
                       // texto dentro deste mesmo link (o `<h2>` abaixo) —
                       // um `alt` não vazio aqui duplicaria o título no nome
-                      // acessível do link inteiro. `width`/`height` mantêm
-                      // a mesma proporção 16:9 de antes (160×90); só os
-                      // valores absolutos mudam, para casar com a
-                      // renderização fluida (`w-full aspect-video`) — o
-                      // navegador continua reservando o espaço pela
-                      // proporção informada nos atributos HTML antes do
-                      // carregamento, prevenindo CLS, exatamente como
-                      // antes.
-                      <img
+                      // acessível do link inteiro. `width`/`height`
+                      // (640×360, proporção 16:9) são o tamanho intrínseco
+                      // real usado para o cálculo de `aspect-ratio`
+                      // automático do `next/image` — a exibição real
+                      // continua fluida via `w-full aspect-video`
+                      // (CSS), exatamente como antes; `sizes`
+                      // (`ARTICLE_CARD_IMAGE_SIZES`) é a largura real do
+                      // card, derivada do layout (`../article-card-image-
+                      // sizes.ts`), não um valor presumido. UXW-013 — Next
+                      // 16: `preload` (não `priority`, deprecated) é a API
+                      // atual para a primeira imagem elegível a LCP;
+                      // nenhum `loading`/`fetchPriority` manual é passado
+                      // junto — `next/image` decide os dois a partir de
+                      // `preload` sozinho.
+                      <Image
                         src={article.coverImageUrl}
                         alt=""
                         width={640}
                         height={360}
-                        loading={isLcpCandidate ? 'eager' : 'lazy'}
-                        fetchPriority={isLcpCandidate ? 'high' : undefined}
+                        sizes={ARTICLE_CARD_IMAGE_SIZES}
+                        preload={isLcpCandidate}
                         className="aspect-video w-full rounded-control object-cover"
                       />
                     )}
