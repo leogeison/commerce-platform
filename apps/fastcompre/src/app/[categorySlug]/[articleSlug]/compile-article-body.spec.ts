@@ -102,8 +102,16 @@ describe('compileArticleBody', () => {
     expect(optionsArg.jsx).toBe(fakeRuntime.jsx);
     expect(optionsArg.jsxs).toBe(fakeRuntime.jsxs);
     expect(optionsArg.Fragment).toBe(fakeRuntime.Fragment);
-    expect(optionsArg.remarkPlugins).toHaveLength(1);
-    expect(typeof (optionsArg.remarkPlugins as unknown[])[0]).toBe('function');
+    const { remarkImageDimensions } = await import('./image-dimensions-remark-plugin');
+    const remarkPlugins = optionsArg.remarkPlugins as unknown[];
+    expect(remarkPlugins).toHaveLength(2);
+    // Wrapper de remarkProductBlock: closure sobre referencedProductIds, não comparável por identidade.
+    expect(typeof remarkPlugins[0]).toBe('function');
+    // remarkImageDimensions é passado direto (sem wrapper) — comparável por identidade.
+    // Import dinâmico, não estático: mesma disciplina de resetModules()/import() deste
+    // arquivo (ver afterEach acima) — garante a mesma instância de módulo que
+    // compile-article-body.ts importou nesta execução do teste.
+    expect(remarkPlugins[1]).toBe(remarkImageDimensions);
 
     expect(result.MDXContent).toBe(fakeDefault);
     expect(result.referencedProductIds).toEqual(new Set());
