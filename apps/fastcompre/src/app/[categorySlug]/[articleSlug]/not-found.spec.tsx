@@ -7,6 +7,10 @@ import ArticleNotFound from './not-found';
  * `jest.doMock`/import dinâmico. Não testa internals do Next.js (roteamento
  * de `not-found.tsx`, status HTTP): isso é comportamento do framework, fora
  * do escopo desta tarefa.
+ *
+ * UXW-014 — restylizou o componente (tokens `text-fg`/`text-fg-muted`, foco
+ * visível), mas as asserções abaixo já eram sobre conteúdo (texto/`href`),
+ * não sobre classes — continuam válidas sem alteração.
  */
 describe('ArticleNotFound', () => {
   it('mostra título, mensagem e link para a Home', () => {

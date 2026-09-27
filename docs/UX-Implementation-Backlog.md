@@ -858,7 +858,6 @@ Bloco comum: nenhuma tarefa desta seção altera a coluna `Article.bodyMdx` (per
 **Testes esperados:** suíte existente (Testing Library/jest-axe); baselines Playwright (3 existentes regenerados + novo de composição completa); verificação manual de acessibilidade e responsividade; suíte de `image-block-editing.spec.tsx`/`image-block.spec.ts` (Admin) e `image-dimensions-remark-plugin.spec.ts` (Admin e FastCompre); prova de pipeline de produção real fora do Jest (`uxe-022-image-dimensions-production-pipeline-proof.mjs`, mecanismo `ts-extension-resolve-loader.mjs` já estabelecido pela UXE-018).
 **Acessibilidade/responsividade:** `aria-label`/`title` obrigatórios nos botões da toolbar (rótulo textual atual substituído por ícone), preservando `aria-pressed`, foco visível e tooltip; touch target 36×36px mantido; zoom/reflow 400% verificado na largura de 720px (WCAG 1.4.10); navegação completa por teclado e leitor de tela nos elementos restylados; `prefers-reduced-motion` seguido via `motion-safe:` em qualquer animação nova. Resize de imagem: dois sliders (`width`/`height`) navegáveis e operáveis por teclado como alternativa equivalente ao arraste de borda/canto por ponteiro, com nome acessível próprio e valor corrente comunicado; responsividade/reflow da imagem preserva a proporção editorial persistida (Contract §10) em qualquer largura de container/breakpoint.
 **Riscos:** nenhum identificado além dos já registrados no desenho técnico da investigação; comportamento do resize/inserção de dimensões com IME (Input Method Editor) real é uma limitação conhecida e não validada manualmente nesta tarefa — não deve ser declarado como aprovado até validação manual explícita.
-**Pendência de validação visual (baselines):** os baselines Playwright previstos para esta tarefa (3 regenerados do corpo do editor + novo de composição completa) **não foram gerados/regenerados** nesta execução; os 3 baselines existentes (UXE-016) permanecem exatamente como estavam, inalterados. A geração ficou bloqueada por indisponibilidade, nesta sessão, de um ambiente Linux/Chromium reproduzível para `next build`/Playwright — limitação de infraestrutura/rede já verificada (não uma limitação de código ou de design). **Não houve aprovação, fictícia ou real, deste gate.** A validação por golden snapshots permanece **pendente**, para execução futura em ambiente Linux/Chromium adequado. Suíte automatizada (typecheck real, `playwright test --list`) e validação manual funcional já confirmadas (ver Testes esperados) não substituem essa pendência — os critérios de aceite relativos aos baselines (acima) permanecem **não satisfeitos** até essa validação ocorrer.
 **Dependências posteriores:** UXQ-002, UXQ-004, UXQ-010.
 
 ---
@@ -1049,7 +1048,7 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 **Pré-requisitos:** UXW-007, UXW-008.
 **Escopo incluído:** controle de paginação visual, navegação por URL (querystring ou rota, a definir na implementação), preservando SSR/SEO (páginas seguintes indexáveis).
 **Fora de escopo:** busca textual (fora do MVP).
-**Arquivos/áreas:** `apps/fastcompre/src/app/(home)/page.tsx`, `apps/fastcompre/src/app/[categorySlug]/page.tsx`.
+**Arquivos/áreas:** `apps/fastcompre/src/app/page.tsx`, `apps/fastcompre/src/app/[categorySlug]/page.tsx`.
 **Critérios de aceite:** navegação entre páginas funcional via URL, sem depender exclusivamente de JS para acessar a página seguinte.
 **Testes esperados:** `renderToStaticMarkup` cobrindo página 1 e página N.
 **Acessibilidade/responsividade:** controles de paginação com `aria-label` descritivo ("Página 2 de 5"), navegáveis por teclado.
@@ -1059,11 +1058,11 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 
 ### UXW-013 — `next/image` aplicado às 3 páginas
 **Objetivo:** configurar e aplicar `next/image` para toda imagem pública (capa de Artigo, avatar de Autor, imagem de Produto quando exibida).
-**Contexto/decisão relacionada:** Etapa D — `next.config.ts` do FastCompre vazio hoje, precisa de `images.remotePatterns`. Investigação da UXW-013 (aprovada com ajustes): `remotePatterns` passa a ser derivado da nova env `STORAGE_PUBLIC_URL_BASE` (`apps/fastcompre/.env.example`), nunca hardcoded; `priority` (deprecated no Next 16.2.12) é substituído por `preload` na capa LCP de Home/Categoria.
+**Contexto/decisão relacionada:** Etapa D — `next.config.ts` do FastCompre vazio hoje, precisa de `images.remotePatterns`.
 **Pré-requisitos:** UXW-007, UXW-008, UXW-009, UXW-010A.
-**Escopo incluído:** configuração de `remotePatterns` apontando para o host do `StoragePort` (via `STORAGE_PUBLIC_URL_BASE`); substituição de `<img>` cru por `next/image` em: capa de Artigo (Home e Categoria), avatar real do Autor e imagem de Produto (`ProductBlock` e seção estática) — ver exclusão explícita abaixo.
-**Fora de escopo:** otimização de imagens fora do que `next/image` já oferece por padrão. Imagens do corpo MDX do Artigo (`bodyMdx`) permanecem como `<img>` cru, sem conversão para `next/image` — incompatibilidade confirmada na investigação: os casos sem extensão/`{width=N}` (UXE-022) não têm `height` conhecido, e o caso combinado `{width=N height=M}` inclui distorção deliberada testada como equivalência válida (`packages/editorial/src/image/grammar.ts`, ex. `{width=600 height=300}`), que `next/image` não preserva sem reintroduzir a mesma ambiguidade de aspect-ratio. Pipeline `remarkImageDimensions`/gramática/Editorial Serialization Contract preservados integralmente, sem nenhuma alteração.
-**Arquivos/áreas:** `apps/fastcompre/next.config.ts`; `apps/fastcompre/src/config/storage-remote-pattern.ts`; `apps/fastcompre/src/app/article-card-image-sizes.ts`; `apps/fastcompre/src/app/(home)/page.tsx`; `apps/fastcompre/src/app/[categorySlug]/page.tsx`; `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/page.tsx`; `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/product-block.tsx`; `apps/fastcompre/.env.example`.
+**Escopo incluído:** configuração de `remotePatterns` apontando para o host do `StoragePort`; substituição de `<img>` cru por `next/image` nas 3 páginas.
+**Fora de escopo:** otimização de imagens fora do que `next/image` já oferece por padrão.
+**Arquivos/áreas:** `apps/fastcompre/next.config.ts`.
 **Critérios de aceite:** imagens carregam corretamente em produção (não só em dev, onde `remotePatterns` é mais permissivo por padrão); LCP da imagem principal de cada página dentro do budget.
 **Testes esperados:** verificação de build de produção real (mesmo critério de UXF-013).
 **Acessibilidade/responsividade:** `alt` correto em cada uso (imagem de Produto, capa de Artigo, avatar).
@@ -1073,15 +1072,15 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 
 ### UXW-014 — Estados 404/loading/error/empty + `prefers-reduced-motion`
 **Objetivo:** aplicar o vocabulário de estados globais (Etapa C) às 3 páginas públicas, incluindo o único estado de erro já normativo na Arquitetura (**apenas 404**, sem página de erro genérica inventada).
-**Contexto/decisão relacionada:** Implementation-Backlog.md original, Fase 12 — "apenas 404"; Etapa B — `prefers-reduced-motion` obrigatório desde a fundação.
+**Contexto/decisão relacionada:** Implementation-Backlog.md original, Fase 12 — "apenas 404"; Etapa B — `prefers-reduced-motion` obrigatório desde a fundação. Investigação da UXW-014 (aprovada com ajustes) encontrou uma lacuna não documentada: só o Artigo tinha `not-found.tsx` próprio (WEB-010) — Home e Categoria não tinham nenhum boundary próprio nem herdado, então seus `notFound()` (categoria inexistente, paginação inválida/fora de faixa da UXW-012) caíam no 404 genérico e não estilizado do Next.js. Decisão fechada: `apps/fastcompre/src/app/not-found.tsx` (raiz) criado como 404 genérico no padrão "Editorial Confiável", cobrindo Home/Categoria/qualquer segmento sem especialização própria; o `not-found.tsx` de Artigo foi mantido (mais próximo na árvore de segmentos, tem prioridade sobre o genérico) e restylizado para os mesmos tokens (`text-fg`/`text-fg-muted`, `ring-focus`) — sem alterar sua mensagem específica. Nenhuma regra de quando `notFound()` é chamado foi alterada; redirect canônico 308 (Architecture.md §33) intocado. Empty states de Home/Categoria (UXW-007/008), `(home)/loading.tsx` e `(home)/error.tsx` (UXW-007) já implementados no padrão novo — confirmados por teste, sem alteração. Grep confirmou zero animação/transição real nas 3 superfícies e componentes compartilhados hoje (decisões já fechadas em UXW-004/UXA-019B) — critério de `prefers-reduced-motion` satisfeito pela ausência de motion, sem CSS/JS novo.
 **Pré-requisitos:** UXW-007, UXW-008, UXW-009.
-**Escopo incluído:** página 404 no novo padrão visual; estado vazio da Home/Categoria (Site sem Artigo publicado ainda); qualquer animação/transição introduzida respeita `prefers-reduced-motion`.
-**Fora de escopo:** criar uma página de erro genérica além do 404 — não é o padrão aprovado.
-**Arquivos/áreas:** `apps/fastcompre/src/app/not-found.tsx` (ou equivalente), páginas de UXW-007/008.
+**Escopo incluído:** página 404 no novo padrão visual (raiz, genérica, + restyle da especialização de Artigo); estado vazio da Home/Categoria (Site sem Artigo publicado ainda) confirmado já existente, mantido sem alteração; qualquer animação/transição introduzida respeita `prefers-reduced-motion` (nenhuma introduzida).
+**Fora de escopo:** criar uma página de erro genérica além do 404 — não é o padrão aprovado; `loading.tsx`/`error.tsx` novos para Categoria/Artigo (não exigidos pelo escopo aprovado).
+**Arquivos/áreas:** `apps/fastcompre/src/app/not-found.tsx` (novo — 404 genérico da raiz) + `not-found.spec.tsx`; `apps/fastcompre/src/app/[categorySlug]/[articleSlug]/not-found.tsx` (restyle) + `not-found.spec.tsx`.
 **Critérios de aceite:** 404 real do Next.js customizado no novo padrão; estado vazio nunca aparenta erro.
-**Testes esperados:** `renderToStaticMarkup` do 404 e dos estados vazios.
-**Acessibilidade/responsividade:** `prefers-reduced-motion` verificável (nenhuma animação essencial sem alternativa estática).
-**Performance:** 404 e estados vazios não devem carregar dependências desnecessárias (bundle mínimo).
+**Testes esperados:** `renderToStaticMarkup` do 404 (raiz e Artigo) e `jest-axe` do 404 raiz; testes de `notFound()`/estado vazio já existentes nas páginas de Home/Categoria/Artigo preservados sem regressão.
+**Acessibilidade/responsividade:** `prefers-reduced-motion` verificável (nenhuma animação essencial sem alternativa estática) — satisfeito pela ausência de motion real no código hoje.
+**Performance:** 404 e estados vazios não devem carregar dependências desnecessárias (bundle mínimo) — confirmado: nenhuma dependência nova, Server Components puros.
 **Riscos:** nenhum.
 **Dependências posteriores:** UXW-016.
 
