@@ -92,6 +92,32 @@ describe('Home', () => {
     return renderToStaticMarkup(await Home({ searchParams: Promise.resolve({ page: rawPage }) }));
   }
 
+  function article(overrides: {
+    id: string;
+    title: string;
+    coverImageUrl: string | null;
+    metaDescription?: string | null;
+  }) {
+    return {
+      id: overrides.id,
+      categorySlug: 'comparativos',
+      type: 'COMPARISON' as const,
+      title: overrides.title,
+      slug: overrides.title.toLowerCase().replace(/\s+/g, '-'),
+      metaDescription: overrides.metaDescription ?? null,
+      coverImageUrl: overrides.coverImageUrl,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  function extractImgTags(html: string): string[] {
+    return html.match(/<img[^>]*>/g) ?? [];
+  }
+
+  function countHeadingTags(html: string, level: 1 | 2): number {
+    return (html.match(new RegExp(`<h${level}[^>]*>`, 'g')) ?? []).length;
+  }
+
   it('renderiza os artigos retornados pela API pública', async () => {
     const html = await renderHomeWith({
       items: [
@@ -127,6 +153,150 @@ describe('Home', () => {
   });
 
   /**
+   * Refinamento visual pré-UXW-015 (desenho técnico aprovado pelo Product
+   * Owner, referência visual `testeLayout.png`) — hero editorial para
+   * `items[0]`. Cobre exatamente os três pontos fechados na aprovação:
+   * hero sem imagem em versão textual (nunca pula para outro artigo),
+   * `<h2>` do hero preservando um único `<h1>` na página, e o candidato a
+   * `preload` continuando independente da posição do hero.
+   */
+  describe('hero editorial (refinamento pré-UXW-015)', () => {
+    it('destaca items[0] como hero e preserva um único <h1> na página', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Artigo em destaque', coverImageUrl: 'https://example.com/1.jpg' }),
+          article({ id: '2', title: 'Segundo artigo', coverImageUrl: null }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+      });
+
+      // Um único <h1> na página (o wordmark "FastCompre") — o título do
+      // hero é <h2>, nunca um segundo <h1>.
+      expect(countHeadingTags(html, 1)).toBe(1);
+      expect(html).toContain('<h1 class="text-3xl font-semibold text-fg">FastCompre</h1>');
+
+      // items[0] é o hero: aparece antes de items[1] no HTML.
+      const heroIndex = html.indexOf('Artigo em destaque');
+      const secondIndex = html.indexOf('Segundo artigo');
+      expect(heroIndex).toBeGreaterThan(-1);
+      expect(secondIndex).toBeGreaterThan(heroIndex);
+    });
+
+    it('renderiza o hero em versão textual quando items[0].coverImageUrl é null, sem pular para outro artigo', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Hero sem imagem', coverImageUrl: null }),
+          article({ id: '2', title: 'Com imagem', coverImageUrl: 'https://example.com/2.jpg' }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+      });
+
+      // O hero continua sendo items[0] (aparece primeiro), mesmo sem
+      // imagem — nunca "promove" items[1] à posição de hero.
+      const heroIndex = html.indexOf('Hero sem imagem');
+      const secondIndex = html.indexOf('Com imagem');
+      expect(heroIndex).toBeGreaterThan(-1);
+      expect(secondIndex).toBeGreaterThan(heroIndex);
+
+      // Só a imagem de items[1] é renderizada (a única com coverImageUrl);
+      // o candidato a preload é ela, não o hero (que não tem imagem
+      // nenhuma para receber preload).
+      const imgTags = extractImgTags(html);
+      expect(imgTags).toHaveLength(1);
+      expect(imgTags[0]).toContain('src="https://example.com/2.jpg"');
+      expect(imgTags[0]).toContain('data-preload="true"');
+    });
+
+    it('não duplica items[0] na grade abaixo do hero', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Único artigo em destaque', coverImageUrl: null }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+
+      // Com um único artigo publicado, ele aparece só como hero — nenhuma
+      // grade abaixo, nenhum <h2> duplicado com o mesmo título.
+      const titleOccurrences = html.split('Único artigo em destaque').length - 1;
+      expect(titleOccurrences).toBe(1);
+      expect(countHeadingTags(html, 2)).toBe(1);
+    });
+
+    it('aplica font-editorial ao título do hero e ao título dos cards da listagem', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Título do hero', coverImageUrl: null }),
+          article({ id: '2', title: 'Título do card', coverImageUrl: null }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+      });
+
+      expect(html).toContain('<h2 class="font-editorial text-2xl font-semibold text-fg group-hover:text-accent md:text-3xl">Título do hero</h2>');
+      expect(html).toContain('<h2 class="font-editorial text-xl font-semibold text-fg group-hover:text-accent">Título do card</h2>');
+    });
+  });
+
+  /**
+   * Refinamento visual pós-`testeLayout.png` (decisão final do PO) — a
+   * pilha vertical de 1 coluna dos artigos restantes (abaixo do hero) virou
+   * um grid responsivo (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3`,
+   * `gap-10`). Cobre exatamente o que foi fechado nesta rodada:
+   * `<ul>/<li>` preservados, ordem do DOM preservada (nenhum `order` do
+   * CSS Grid/Flex em nenhum lugar — a ordem visual é sempre a ordem do
+   * `.map()`, que é a ordem em que a API pública já devolve os artigos).
+   */
+  describe('grid responsivo dos artigos restantes (refinamento pós-testeLayout.png)', () => {
+    it('renderiza os artigos restantes num <ul> com grid-cols-1 md:grid-cols-2 lg:grid-cols-3, preservando a ordem do DOM', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Hero', coverImageUrl: null }),
+          article({ id: '2', title: 'Primeiro do grid', coverImageUrl: null }),
+          article({ id: '3', title: 'Segundo do grid', coverImageUrl: null }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 3,
+        totalPages: 1,
+      });
+
+      expect(html).toContain('<ul class="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-10 lg:grid-cols-3">');
+
+      // Ordem do DOM preservada — nenhum `order` do CSS Grid/Flex é usado
+      // em nenhum lugar deste componente; a ordem dos <li> no HTML continua
+      // sendo exatamente a ordem de `remainingArticles` (mesmo `.map()` de
+      // antes desta tarefa).
+      const firstIndex = html.indexOf('Primeiro do grid');
+      const secondIndex = html.indexOf('Segundo do grid');
+      expect(firstIndex).toBeGreaterThan(-1);
+      expect(secondIndex).toBeGreaterThan(firstIndex);
+    });
+
+    it('não renderiza o <ul> do grid quando não há artigos além do hero', async () => {
+      const html = await renderHomeWith({
+        items: [article({ id: '1', title: 'Único artigo', coverImageUrl: null })],
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
+      });
+
+      expect(html).not.toContain('grid grid-cols-1');
+    });
+  });
+
+  /**
    * Correção de LCP (UXW-006): só a primeira imagem da listagem com
    * `coverImageUrl` pode receber prioridade de carregamento — nunca
    * `index === 0` cru, porque `coverImageUrl` é opcional. UXW-013 trocou o
@@ -136,29 +306,12 @@ describe('Home', () => {
    * `data-preload="true"`, já que um `<img>` não tem prop `preload` real —
    * os testes abaixo passam a verificar essa marca, não mais os atributos
    * antigos, mas a MESMA regra de negócio (só a primeira imagem real).
+   * Refinamento pré-UXW-015: o candidato a preload continua calculado
+   * sobre `items` inteiro, independente do hero (ver descrição da
+   * suíte acima) — estes testes continuam válidos sem alteração, já que
+   * `items[0]` aqui sempre tem imagem (logo é o próprio candidato).
    */
   describe('prioridade de carregamento da imagem LCP', () => {
-    function article(overrides: {
-      id: string;
-      title: string;
-      coverImageUrl: string | null;
-    }) {
-      return {
-        id: overrides.id,
-        categorySlug: 'comparativos',
-        type: 'COMPARISON' as const,
-        title: overrides.title,
-        slug: overrides.title.toLowerCase().replace(/\s+/g, '-'),
-        metaDescription: null,
-        coverImageUrl: overrides.coverImageUrl,
-        publishedAt: '2026-01-01T00:00:00.000Z',
-      };
-    }
-
-    function extractImgTags(html: string): string[] {
-      return html.match(/<img[^>]*>/g) ?? [];
-    }
-
     it('aplica preload somente na primeira imagem, mantendo as demais sem preload', async () => {
       const html = await renderHomeWith({
         items: [
@@ -217,7 +370,7 @@ describe('Home', () => {
       expect(html).not.toContain('data-preload');
     });
 
-    it('inclui o `sizes` derivado do layout real do card em toda imagem de capa', async () => {
+    it('inclui o `sizes` do hero (largura cheia do container) quando ele é a única imagem renderizada', async () => {
       const html = await renderHomeWith({
         items: [article({ id: '1', title: 'Primeiro artigo', coverImageUrl: 'https://example.com/1.jpg' })],
         page: 1,
@@ -227,7 +380,46 @@ describe('Home', () => {
       });
 
       const imgTags = extractImgTags(html);
-      expect(imgTags[0]).toContain('sizes="(min-width: 768px) 736px, calc(100vw - 32px)"');
+      expect(imgTags[0]).toContain('sizes="(min-width: 768px) 672px, calc(100vw - 32px)"');
+    });
+
+    /**
+     * Refinamento visual pós-`testeLayout.png` (decisão final do PO) —
+     * `ARTICLE_CARD_IMAGE_SIZES` foi recalibrado para descrever uma coluna
+     * do grid, não mais o container inteiro; o hero (fora do grid) passou
+     * a usar `HOME_HERO_IMAGE_SIZES`, um valor independente. Este teste
+     * verifica os dois `sizes` na mesma renderização, para deixar explícito
+     * que são valores DIFERENTES e cada imagem recebe o seu.
+     *
+     * Correção final de composição (decisão fechada do PO): ambos os
+     * valores foram recalibrados nesta rodada — o hero passou a ser uma
+     * composição em duas zonas (`HOME_HERO_IMAGE_SIZES`, 672px em vez de
+     * 736px) e o container/grid ficaram mais largos (`ARTICLE_CARD_IMAGE_SIZES`,
+     * 347px/476px em vez de 219px/348px) — ver `../article-card-image-sizes.ts`.
+     */
+    it('usa sizes diferentes para o hero (fora do grid) e para o card do grid (refinamento pós-testeLayout.png)', async () => {
+      const html = await renderHomeWith({
+        items: [
+          article({ id: '1', title: 'Hero', coverImageUrl: 'https://example.com/1.jpg' }),
+          article({ id: '2', title: 'Card do grid', coverImageUrl: 'https://example.com/2.jpg' }),
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+      });
+
+      const imgTags = extractImgTags(html);
+      expect(imgTags).toHaveLength(2);
+
+      // imgTags[0] — hero, composição em duas zonas a partir de md: (~60%
+      // do container no teto de max-w-6xl).
+      expect(imgTags[0]).toContain('sizes="(min-width: 768px) 672px, calc(100vw - 32px)"');
+      // imgTags[1] — card do grid, largura de uma coluna (476px em md:,
+      // 347px em lg: — ver `../article-card-image-sizes.ts`).
+      expect(imgTags[1]).toContain(
+        'sizes="(min-width: 1024px) 347px, (min-width: 768px) 476px, calc(100vw - 32px)"',
+      );
     });
 
     it('preserva o comportamento atual quando nenhum artigo tem coverImageUrl (nenhuma imagem, nenhum crash)', async () => {
@@ -356,7 +548,10 @@ describe('Home', () => {
    * cobrir os dois formatos de card num único gate de acessibilidade.
    * UXW-012 — `totalPages: 2` (em vez de `1`) faz os controles de
    * paginação novos entrarem neste mesmo gate, não só no spec isolado de
-   * `pagination.spec.tsx`.
+   * `pagination.spec.tsx`. Refinamento pré-UXW-015: o primeiro artigo
+   * populado aqui vira o hero (com imagem); o segundo vira o único card
+   * da grade abaixo (sem imagem) — mesmos dois formatos de card cobertos
+   * de antes, agora incluindo o hero no mesmo gate.
    */
   describe('acessibilidade (jest-axe) — Home populada', () => {
     it('não tem violação de acessibilidade com cards com e sem imagem, e paginação visível', async () => {

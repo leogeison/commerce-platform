@@ -107,6 +107,63 @@ describe('CategoryPage', () => {
     expect(html).toContain('01 de janeiro de 2026');
   });
 
+  /**
+   * Refinamento visual pós-`testeLayout.png` (decisão final do PO) — grid
+   * responsivo idêntico ao da Home (`grid-cols-1 md:grid-cols-2
+   * lg:grid-cols-3`, `gap-10`), mas SEM hero: decisão fechada de manter a
+   * Categoria "só grid", sem reproduzir o destaque da Home. `<ul>/<li>`
+   * preservados, ordem do DOM preservada (mesmo critério: sem `order` do
+   * CSS Grid/Flex controlando a posição visual).
+   */
+  describe('grid responsivo dos artigos (refinamento pós-testeLayout.png)', () => {
+    it('renderiza a listagem num grid responsivo, sem hero, com todos os artigos', async () => {
+      const html = await renderCategoryWith(
+        { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
+        {
+          items: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              categorySlug: 'fones-bluetooth',
+              type: 'COMPARISON',
+              title: 'Primeiro artigo',
+              slug: 'primeiro-artigo',
+              metaDescription: null,
+              coverImageUrl: null,
+              publishedAt: '2026-01-01T00:00:00.000Z',
+            },
+            {
+              id: '22222222-2222-4222-8222-222222222222',
+              categorySlug: 'fones-bluetooth',
+              type: 'COMPARISON',
+              title: 'Segundo artigo',
+              slug: 'segundo-artigo',
+              metaDescription: null,
+              coverImageUrl: null,
+              publishedAt: '2026-01-02T00:00:00.000Z',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 2,
+          totalPages: 1,
+        },
+      );
+
+      expect(html).toContain(
+        '<ul class="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-10 lg:grid-cols-3">',
+      );
+
+      // Ordem do DOM preservada: nenhum artigo é destacado/reordenado — a
+      // Categoria não tem hero, então o primeiro artigo da resposta é só o
+      // primeiro item do grid, na mesma ordem.
+      const firstIndex = html.indexOf('Primeiro artigo');
+      const secondIndex = html.indexOf('Segundo artigo');
+      expect(firstIndex).toBeGreaterThan(-1);
+      expect(secondIndex).toBeGreaterThan(-1);
+      expect(firstIndex).toBeLessThan(secondIndex);
+    });
+  });
+
   it('mostra estado vazio quando a categoria existe mas não tem artigos publicados', async () => {
     const html = await renderCategoryWith({ name: 'Cafeteiras', slug: 'cafeteiras' }, {
       items: [],
@@ -207,7 +264,7 @@ describe('CategoryPage', () => {
       expect(imgTags[0]).toContain('data-preload="true"');
     });
 
-    it('inclui o `sizes` derivado do layout real do card em toda imagem de capa', async () => {
+    it('inclui o `sizes` derivado do layout real do card em toda imagem de capa (refinamento pós-testeLayout.png: valor recalibrado para o grid, Categoria não tem hero)', async () => {
       const html = await renderCategoryWith(
         { name: 'Fones bluetooth', slug: 'fones-bluetooth' },
         {
@@ -220,7 +277,13 @@ describe('CategoryPage', () => {
       );
 
       const imgTags = extractImgTags(html);
-      expect(imgTags[0]).toContain('sizes="(min-width: 768px) 736px, calc(100vw - 32px)"');
+      // Categoria não tem hero (decisão fechada do desenho aprovado) — todo
+      // card, inclusive o primeiro, usa o `sizes` de coluna do grid
+      // (`ARTICLE_CARD_IMAGE_SIZES`, recalibrado nesta rodada), nunca o
+      // valor de container cheio usado pelo hero da Home.
+      expect(imgTags[0]).toContain(
+        'sizes="(min-width: 1024px) 347px, (min-width: 768px) 476px, calc(100vw - 32px)"',
+      );
     });
 
     it('preserva o comportamento atual quando nenhum artigo tem coverImageUrl (nenhuma imagem, nenhum crash)', async () => {

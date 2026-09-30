@@ -16,6 +16,37 @@ import { ArticleJsonLd } from './article-json-ld';
  */
 export const fetchCache = 'force-cache';
 
+/**
+ * `sizes` da capa/hero do Artigo — calibrado especificamente para o
+ * container real desta página (`<main>`, ver `ArticlePage` abaixo).
+ *
+ * RECALIBRADO na correção final de composição (decisão fechada do PO,
+ * pós-`testeLayout.png`): a superfície externa do Artigo (`<main>` —
+ * título, byline, capa, seção de Produtos) passou de `max-w-3xl` para
+ * `max-w-5xl`; só o corpo de texto corrido (`bodyMdx`/`MDXContent`) ganhou
+ * um wrapper interno separado que preserva `max-w-3xl` (ver JSX abaixo). A
+ * capa continua fora desse wrapper interno — ela ocupa a largura cheia da
+ * superfície externa, então precisa ser recalculada para `max-w-5xl`:
+ * `max-w-5xl` = 1024px de largura total (border-box); `px-4` = 16px de
+ * cada lado (32px no total) → largura de conteúdo de até 992px a partir de
+ * 1024px de viewport; abaixo disso, acompanha a viewport (`calc(100vw -
+ * 32px)`). Diferente do container de grid da Home/Categoria (`max-w-6xl`,
+ * cujo teto fica acima dos breakpoints do grid), aqui o teto do container
+ * (1024px) É o próprio ponto em que a capa para de crescer — não há
+ * grid/breakpoint intermediário nesta página, então basta um único
+ * `min-width` no teto do próprio container, mesma estrutura simples de
+ * sempre.
+ *
+ * Constante local a este arquivo, deliberadamente NÃO derivada de nem
+ * reaproveitada de `ARTICLE_CARD_IMAGE_SIZES` (Home/Categoria, container e
+ * proporção diferentes) nem de `HOME_HERO_IMAGE_SIZES` ((home)/page.tsx,
+ * composição em duas zonas — a capa do Artigo continua largura cheia,
+ * nunca dividida com o corpo de texto) — mesmo critério de separação de
+ * sempre: aqui há só este único consumidor real, sem abstração
+ * antecipada.
+ */
+const ARTICLE_HERO_IMAGE_SIZES = '(min-width: 1024px) 992px, calc(100vw - 32px)';
+
 interface ArticlePageProps {
   params: Promise<{ categorySlug: string; articleSlug: string }>;
 }
@@ -233,7 +264,14 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   );
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
+    // Correção final de composição (decisão fechada do PO, pós-
+    // `testeLayout.png`) — `max-w-3xl` → `max-w-5xl`: esta é a superfície
+    // EXTERNA/media do Artigo (título, byline, capa, seção de Produtos) —
+    // nenhuma delas é texto corrido longo sensível a largura de leitura. O
+    // corpo de texto real (`bodyMdx`/`MDXContent`) ganha seu próprio
+    // wrapper interno que preserva `max-w-3xl` (ver abaixo) — a largura de
+    // leitura do Artigo não muda, só a moldura ao redor dela.
+    <main className="mx-auto max-w-5xl px-4 py-12">
       {/* JSON-LD estrutural (Architecture.md §29/§33; UXW-005A) — derivado
           inteiramente de `article`, nunca persistido. Ver
           `article-json-ld.ts` para o racional completo. Intocado por
@@ -303,14 +341,79 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
         </div>
       )}
 
-      {/* `font-editorial` aplicado uma única vez aqui — herdado por todo
-          filho (h2–h6, p, ul/ol/li, blockquote, a inclusive) via cascata
-          normal de `font-family`; nenhuma exceção de fonte para o link
-          inline (decisão fechada desta tarefa). `ProductBlock` (UXW-011)
-          reverte essa herança explicitamente para `font-ui` — é um cartão
-          comercial, não conteúdo editorial (ver `product-block.tsx`). */}
-      <div className="mt-10 font-editorial text-fg">
-        <MDXContent components={{ ...mdxComponents, ProductBlock }} />
+      {/* Refinamento visual pré-UXW-015 (desenho técnico aprovado pelo
+          Product Owner, referência visual `testeLayout.png` — ver
+          `docs/UXW-visual-direction-decision.md`) — hero/capa de Artigo:
+          `article.coverImageUrl` (nullable, já existente em
+          `PublicArticle`) passa a ser renderizado entre a byline e o corpo
+          MDX. Omitido inteiramente quando `null` — mesmo critério
+          condicional já usado em todo o resto do site (Home/Categoria,
+          avatar de Autor, imagem de Produto), nunca placeholder.
+
+          `sizes={ARTICLE_HERO_IMAGE_SIZES}` — constante própria desta
+          página, calibrada sobre o container real do Artigo (`<main>`
+          acima), não reaproveitada de `ARTICLE_CARD_IMAGE_SIZES` (Home/
+          Categoria) — ver o comentário da constante no topo do arquivo.
+
+          Refinamento visual pós-`testeLayout.png` (decisão final do PO:
+          "refine proporção/espaçamento da capa sem tentar 'resolver por
+          CSS' um asset de catálogo") — dois ajustes PONTUAIS: proporção
+          `aspect-[3/2]` → `aspect-[16/9]` (mesma proporção `16:9` já usada
+          nos cards de Home/Categoria via `aspect-video` — nenhum token
+          novo) — uma capa mais baixa/panorâmica lê mais como módulo
+          editorial e menos como foto de produto ocupando o centro da
+          tela; e `mt-6` → `mt-8` (mesmo valor já usado em `H3`/blockquote
+          neste arquivo) — mais respiro entre a byline e a capa. Isto
+          melhora a MOLDURA da capa; não resolve o problema de asset em si
+          (a fotografia hoje disponível é de catálogo, fundo branco) —
+          isso permanece fora do alcance de CSS, registrado como
+          limitação real no relatório desta implementação, não escondido.
+
+          `width`/`height` (1024×576, 16:9) — RECALCULADO na correção
+          final de composição: o valor anterior (768×432) foi calibrado
+          para o teto antigo do container (`max-w-3xl`, 768px); agora que
+          a superfície externa é `max-w-5xl` (1024px), a capa pode
+          renderizar até 992px de largura real (ver `ARTICLE_HERO_
+          IMAGE_SIZES` no topo do arquivo) — manter o intrínseco antigo
+          serviria uma imagem menor que a área real em telas largas.
+          `1024` reaproveita o próprio valor de `max-w-5xl` (mesmo
+          critério já usado antes: o intrínseco antigo, 768, também vinha
+          do valor de `max-w-3xl`), `576 = 1024 × 9/16` mantém a proporção
+          exata. */}
+      {article.coverImageUrl && (
+        <Image
+          src={article.coverImageUrl}
+          alt=""
+          width={1024}
+          height={576}
+          sizes={ARTICLE_HERO_IMAGE_SIZES}
+          className="mt-8 aspect-[16/9] h-auto w-full rounded-control object-cover"
+        />
+      )}
+
+      {/* Correção final de composição (decisão fechada do PO, pós-
+          `testeLayout.png`) — wrapper interno `max-w-3xl mx-auto`: a
+          superfície externa (`<main>`) passou a `max-w-5xl`, mas o corpo
+          de texto corrido (`bodyMdx`/`MDXContent`) precisa continuar numa
+          largura de leitura confortável — a mesma de sempre, preservada
+          exatamente (`max-w-3xl`, nunca alargada junto com o resto da
+          página). `ProductBlock` inline (UXW-011, bloco `:::product`
+          dentro do corpo) renderiza como filho de `MDXContent`, então
+          herda esta mesma largura — preservação deliberada do
+          enquadramento já validado do Produto/Oferta (decisão fechada
+          desta rodada: "não amplie esse escopo novamente"), não uma
+          mudança nova. */}
+      <div className="mx-auto max-w-3xl">
+        {/* `font-editorial` aplicado uma única vez aqui — herdado por todo
+            filho (h2–h6, p, ul/ol/li, blockquote, a inclusive) via
+            cascata normal de `font-family`; nenhuma exceção de fonte para
+            o link inline (decisão fechada desta tarefa). `ProductBlock`
+            (UXW-011) reverte essa herança explicitamente para `font-ui` —
+            é um cartão comercial, não conteúdo editorial (ver
+            `product-block.tsx`). */}
+        <div className="mt-10 font-editorial text-fg">
+          <MDXContent components={{ ...mdxComponents, ProductBlock }} />
+        </div>
       </div>
 
       {staticSectionProducts.length > 0 && (
@@ -328,7 +431,25 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
               const isUnavailable = product.offers.every((offer) => !offer.inStock);
 
               return (
-                <li key={product.id} className="flex gap-4">
+                // Refinamento visual pós-`testeLayout.png` (Product/Offer,
+                // decisão final do PO — "refinamento puramente visual
+                // justificável"): moldura `rounded-control border
+                // border-outline bg-surface p-4 sm:p-6` reaproveitada de
+                // `ProductBlockFound` (`product-block.tsx`) — mesmo trio de
+                // tokens já documentado lá, sem `shadow` (mesma decisão:
+                // não ler como elemento flutuante/anúncio). Antes desta
+                // tarefa esta seção não tinha nenhuma moldura, inconsistente
+                // com o bloco inline logo acima na mesma página — nenhum
+                // dado/estrutura muda, só a apresentação visual do mesmo
+                // `<li>` que já existia. Sem `font-ui` explícito (diferente
+                // de `ProductBlockFound`): esta seção é irmã, não filha, do
+                // `<div className="mt-10 font-editorial ...">` do corpo
+                // MDX acima — nunca herda `font-editorial`, então não
+                // precisa reverter nada.
+                <li
+                  key={product.id}
+                  className="flex gap-4 rounded-control border border-outline bg-surface p-4 sm:p-6"
+                >
                   {/* UXW-013 — `alt=""`: `product.name` já é texto sempre
                       visível, incondicional, no `<h3>` logo ao lado (mesmo
                       contexto/bloco) — um `alt` não vazio aqui duplicaria o

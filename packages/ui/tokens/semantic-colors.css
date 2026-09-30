@@ -29,10 +29,14 @@
      Nunca usar como único indicador do estado desabilitado — sempre combinar
      com opacidade / cursor / aria-disabled no componente consumidor. */
   --color-text-disabled: var(--color-neutral-400);
-  /* Texto claro de uso geral sobre uma futura superfície escura. Declarado
-     para completude semântica; nenhum par de teste é exigido nesta tarefa
-     porque ainda não existe uma superfície semântica escura consumidora
-     (ver check-contrast.mjs e README.md). */
+  /* Texto claro sobre uma superfície escura. Declarado desde a UXF-001 para
+     completude semântica ("dark-mode-ready"), sem par de teste até esta
+     tarefa. Refinamento visual (Footer, rodada isolada) é o primeiro
+     consumidor real: `color-surface-inverse` (abaixo) é a primeira
+     superfície semântica escura do projeto — ver `check-contrast.mjs`,
+     par "texto claro (superfície escura) / superfície escura", que
+     substitui a isenção documentada que existia aqui antes deste par ter
+     um consumidor real. */
   --color-text-inverse: var(--color-neutral-0);
 
   /* Texto sobre preenchimentos coloridos (acento/erro) — tokens dedicados,
@@ -45,6 +49,16 @@
   --color-surface-page: var(--color-neutral-25);
   --color-surface-raised: var(--color-neutral-0);
   --color-surface-subtle: var(--color-neutral-50);
+  /* Refinamento visual (Footer, rodada isolada) — primeira superfície
+     semântica ESCURA do projeto, exatamente o consumidor real que
+     `color-text-inverse` (acima) já antecipava desde a UXF-001. Reaproveita
+     `--color-green-800` (colors.css) — já existente, já usado como
+     `--color-accent-fill-active` (estado pressed de botão/CTA) — nenhum
+     primitivo/HEX novo é criado; só um segundo papel semântico (superfície
+     de seção, não estado de interação) para o mesmo valor "verde-floresta
+     escuro" já declarado. `check-contrast.mjs` valida
+     `color-text-inverse`/`color-surface-inverse` >= 4.5:1 (texto normal). */
+  --color-surface-inverse: var(--color-green-800);
 
   /* ---- borda ---- */
   /* Decorativas — não carregam significado sozinhas, sem requisito de

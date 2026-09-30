@@ -170,6 +170,28 @@ describe('CategoryNav', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
 
+    /**
+     * Refinamento visual (rodada isolada, pós-correção final de
+     * composição) — trigger passou de texto visível "Categorias" para
+     * ícone hambúrguer + `aria-label="Categorias"`. O nome acessível
+     * (coberto pelo teste acima) não mudou, mas o MECANISMO mudou — este
+     * teste prova especificamente isso: o nome vem do `aria-label`, não de
+     * texto visível (`textContent` vazio), e o `<svg>` do ícone é
+     * `aria-hidden="true"` (puramente decorativo, nunca duplica o nome
+     * acessível na árvore).
+     */
+    it('nome acessível vem de aria-label (não de texto visível) — o ícone é decorativo (aria-hidden)', () => {
+      renderCategoryNav('/');
+
+      const trigger = screen.getByRole('button', { name: 'Categorias' });
+      expect(trigger.getAttribute('aria-label')).toBe('Categorias');
+      expect(trigger.textContent).toBe('');
+
+      const icon = trigger.querySelector('svg');
+      expect(icon).not.toBeNull();
+      expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    });
+
     it('clique no trigger abre o <dialog aria-label="Categorias"> e marca aria-expanded="true"', async () => {
       const user = userEvent.setup();
       renderCategoryNav('/');

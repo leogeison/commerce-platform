@@ -106,10 +106,20 @@ describe('ProductBlock (unidade)', () => {
 
     it('Oferta inStock:true vira link real; inStock:false permanece texto', () => {
       expect(html).toContain(`href="http://localhost:3000/r/test-site/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?articleId=${ARTICLE_ID}"`);
-      expect(html).toContain('AMAZON_BR — 199.90 BRL');
-      expect(html).toContain('MERCADO_LIVRE — 209.90 BRL (indisponível)');
+      // Refinamento visual pós-`testeLayout.png`: `product-offer-list.tsx`
+      // (`ProductOfferList`, reutilizado por `ProductBlock` desde a
+      // UXW-011) não expõe mais o valor bruto do backend
+      // (`AMAZON_BR — 199.90 BRL`) — passa a exibir rótulo/preço
+      // formatados, computados aqui via `Intl.NumberFormat`, não
+      // hardcoded.
+      expect(html).toContain(
+        `Amazon — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(199.9)}`,
+      );
+      expect(html).toContain(
+        `Mercado Livre — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(209.9)} (indisponível)`,
+      );
       // A Oferta indisponível nunca deve estar dentro de um <a>.
-      expect(html).not.toMatch(/<a[^>]*>[^<]*MERCADO_LIVRE/);
+      expect(html).not.toMatch(/<a[^>]*>[^<]*Mercado Livre/);
     });
 
     it('CTA tem rel de afiliado correto e indicação acessível de nova aba', () => {
@@ -136,8 +146,12 @@ describe('ProductBlock (unidade)', () => {
     it('mostra o aviso de indisponibilidade e nenhum <a> de CTA', () => {
       expect(html).toContain('Temporariamente indisponível');
       expect(html).not.toContain('<a ');
-      expect(html).toContain('AMAZON_BR — 199.90 BRL (indisponível)');
-      expect(html).toContain('MERCADO_LIVRE — 209.90 BRL (indisponível)');
+      expect(html).toContain(
+        `Amazon — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(199.9)} (indisponível)`,
+      );
+      expect(html).toContain(
+        `Mercado Livre — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(209.9)} (indisponível)`,
+      );
     });
 
     it('Product continua renderizado (nome/descrição/imagem)', () => {
@@ -333,7 +347,9 @@ describe('ProductBlock — integração real do plugin (remarkProductBlock) com 
     const html = renderMdxJsxElement(element, { ProductBlock });
 
     expect(html).toContain('Produto da integração MDX');
-    expect(html).toContain('149.90 BRL');
+    expect(html).toContain(
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(149.9),
+    );
   });
 
   it('prova V1/V2 (nível de wiring): o mesmo mdxJsxFlowElement (mesma transformação do plugin) reflete preço/disponibilidade diferentes ao renderizar com products V1 e V2 — nenhum dado comercial vem do AST/bodyMdx', async () => {
@@ -356,10 +372,14 @@ describe('ProductBlock — integração real do plugin (remarkProductBlock) com 
     const htmlV1 = renderMdxJsxElement(element, { ProductBlock: createProductBlockComponent([productV1], ARTICLE_ID) });
     const htmlV2 = renderMdxJsxElement(element, { ProductBlock: createProductBlockComponent([productV2], ARTICLE_ID) });
 
-    expect(htmlV1).toContain('149.90 BRL');
+    expect(htmlV1).toContain(
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(149.9),
+    );
     expect(htmlV1).not.toContain('Temporariamente indisponível');
 
-    expect(htmlV2).toContain('129.90 BRL');
+    expect(htmlV2).toContain(
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(129.9),
+    );
     expect(htmlV2).toContain('Temporariamente indisponível');
 
     expect(htmlV1).not.toEqual(htmlV2);

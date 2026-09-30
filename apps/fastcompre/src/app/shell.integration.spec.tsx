@@ -192,24 +192,31 @@ describe('Shell público — integração (SiteHeader + Home + SiteFooter)', () 
     mockListPublicArticles.mockResolvedValue(ARTICLES);
 
     // Server Components `async` resolvidos para elementos React reais
-    // (não HTML estático) — ver comentário no topo do arquivo.
+    // (não HTML estático) — ver comentário no topo do arquivo. `SiteFooter`
+    // (rodada isolada, refinamento visual) também passou a ser `async`
+    // (busca Categorias, mesmo padrão de `SiteHeader`), então segue a MESMA
+    // disciplina: `await SiteFooter()`, nunca `<SiteFooter />` como JSX.
     const header = await SiteHeader();
     const home = await Home();
+    const footer = await SiteFooter();
 
     const { rerender, container } = render(
       <Providers pathname="/">
         <>
           {header}
           {home}
-          <SiteFooter />
+          {footer}
         </>
       </Providers>,
     );
 
     // 1/2 — carregar página: Header (wordmark + menu de Categorias),
     // conteúdo da Home e divulgação de afiliação do Footer, todos
-    // presentes na mesma árvore.
-    expect(screen.getByRole('link', { name: 'FastCompre' })).toBeTruthy();
+    // presentes na mesma árvore. Refinamento visual (rodada isolada): o
+    // Footer redesenhado também tem seu próprio wordmark "FastCompre"
+    // (link para "/", mesmo texto do Header) — por isso `getAllByRole`
+    // (2 ocorrências), não mais `getByRole` (que exigiria unicidade).
+    expect(screen.getAllByRole('link', { name: 'FastCompre' })).toHaveLength(2);
     expect(screen.getByRole('navigation', { name: 'Categorias' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'FastCompre' })).toBeTruthy();
     expect(
@@ -259,7 +266,7 @@ describe('Shell público — integração (SiteHeader + Home + SiteFooter)', () 
         <>
           {header}
           {home}
-          <SiteFooter />
+          {footer}
         </>
       </Providers>,
     );
@@ -278,8 +285,9 @@ describe('Shell público — integração (SiteHeader + Home + SiteFooter)', () 
       within(persistentNav).getByRole('link', { name: 'Cafeteiras' }).getAttribute('aria-current'),
     ).toBeNull();
 
-    // 11 — Header/Home/Footer continuam presentes após o rerender.
-    expect(screen.getByRole('link', { name: 'FastCompre' })).toBeTruthy();
+    // 11 — Header/Home/Footer continuam presentes após o rerender. Mesmo
+    // ajuste da asserção inicial: 2 links "FastCompre" (Header + Footer).
+    expect(screen.getAllByRole('link', { name: 'FastCompre' })).toHaveLength(2);
     expect(screen.getByRole('heading', { level: 1, name: 'FastCompre' })).toBeTruthy();
     expect(
       screen.getByText(
@@ -305,13 +313,14 @@ describe('Shell público — integração (SiteHeader + Home + SiteFooter)', () 
 
     const header = await SiteHeader();
     const home = await Home();
+    const footer = await SiteFooter();
 
     const { container } = render(
       <Providers pathname="/">
         <>
           {header}
           {home}
-          <SiteFooter />
+          {footer}
         </>
       </Providers>,
     );
@@ -325,10 +334,12 @@ describe('Shell público — integração (SiteHeader + Home + SiteFooter)', () 
     expect(main).not.toBeNull();
     const homeScope = within(main as HTMLElement);
 
-    // <article>/<li> — estrutura semântica do card.
+    // <article> — estrutura semântica do card. Refinamento visual
+    // pré-UXW-015: com um único Artigo populado, ele é renderizado como
+    // hero (`items[0]`, fora de qualquer `<ul>`/`<li>` — ver `(home)/
+    // page.tsx`), não mais como item de uma lista; por isso este teste já
+    // não afirma mais que o `<article>` está dentro de um `<li>`.
     const cardArticle = homeScope.getByRole('article');
-    const listItem = homeScope.getByRole('listitem');
-    expect(listItem.contains(cardArticle)).toBe(true);
 
     // <h2> do artigo.
     expect(homeScope.getByRole('heading', { level: 2, name: article.title })).toBeTruthy();

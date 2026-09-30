@@ -11,6 +11,31 @@ interface CategoryNavProps {
 }
 
 /**
+ * Ícone hambúrguer do trigger mobile — `<svg>` local, decorativo
+ * (`aria-hidden="true"`; o nome acessível do botão vem de `aria-label`, não
+ * deste ícone). 3 linhas paralelas, geometria genérica (sem precedente de
+ * marca/ilustração de terceiros a reproduzir) — ver doc comment principal
+ * abaixo para o racional completo de não introduzir `lucide-react` aqui.
+ */
+function HamburgerIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      className="h-5 w-5"
+    >
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+/**
  * apps/fastcompre/src/app/category-nav.tsx
  *
  * UXW-003 — Menu global de Categorias do FastCompre. Client Component
@@ -55,18 +80,30 @@ interface CategoryNavProps {
  * customizado — mesmo critério de reaproveitamento já usado pelo Admin com
  * `lg`): fechado por medição empírica própria deste Header (Playwright/
  * Chromium contra o markup real, tokens reais de espaçamento/tipografia),
- * não herdado do breakpoint `lg` do Admin por analogia. Com o container do
- * Header limitado a `max-w-3xl` (768px), a navegação persistente nunca
- * chega a caber numa única linha para uma contagem realista de Categorias
- * (o comprimento útil do container já é insuficiente antes mesmo do
- * viewport crescer além de 768px) — por isso o critério objetivo usado não
- * foi "elimina quebra de linha", e sim "largura a partir da qual o número
- * de linhas do Header para de piorar conforme a tela estreita" (o platô
- * medido, nos cenários de 4/6/8 Categorias testados, foi alcançado o mais
- * tardar em 630px — `640px`/`sm` cobre os três com margem, sem introduzir
- * token novo). Abaixo de `320px` até `630px`, a navegação persistente
- * chegaria a ocupar de 4 a 7 linhas dependendo da contagem de Categorias —
- * é exatamente essa faixa que o drawer substitui por um único trigger.
+ * não herdado do breakpoint `lg` do Admin por analogia. A medição original
+ * foi feita com o container do Header limitado a `max-w-3xl` (768px): nessa
+ * largura, a navegação persistente nunca chegava a caber numa única linha
+ * para uma contagem realista de Categorias (o comprimento útil do
+ * container já era insuficiente antes mesmo do viewport crescer além de
+ * 768px) — por isso o critério objetivo usado não foi "elimina quebra de
+ * linha", e sim "largura a partir da qual o número de linhas do Header
+ * para de piorar conforme a tela estreita" (o platô medido, nos cenários de
+ * 4/6/8 Categorias testados, foi alcançado o mais tardar em 630px —
+ * `640px`/`sm` cobre os três com margem, sem introduzir token novo). Abaixo
+ * de `320px` até `630px`, a navegação persistente chegaria a ocupar de 4 a
+ * 7 linhas dependendo da contagem de Categorias — é exatamente essa faixa
+ * que o drawer substitui por um único trigger.
+ *
+ * Refinamento visual pós-`testeLayout.png` (correção final de composição)
+ * — o Header passou a usar `max-w-6xl` (1152px) em vez de `max-w-3xl`
+ * (768px, ver `site-header.tsx`). Isso NÃO invalida a medição acima: abaixo
+ * de 768px de viewport o container já era fluido em ambos os casos
+ * (`max-w-*` só limita o teto, nunca o comprimento abaixo dele), então o
+ * platô medido a 630px continua válido sem nova medição — o container mais
+ * largo só passa a fazer diferença ACIMA de 768px, faixa em que a
+ * navegação persistente já estava resolvida pela medição original. Alargar
+ * o Header só aumenta a margem de segurança acima do platô, nunca a
+ * reduz.
  *
  * Mesma fronteira Server/Client de antes: `SiteHeader` continua decidindo
  * só SE este componente é renderizado (Categorias presentes vs. erro/
@@ -116,11 +153,48 @@ interface CategoryNavProps {
  *   apenas o ambiente de teste (jsdom não implementa `matchMedia` — a
  *   suíte estuba isso por teste, nunca globalmente); em qualquer navegador
  *   real a checagem é sempre verdadeira.
- * - `aria-label="Categorias"` no `<dialog>`, trigger com texto visível
- *   "Categorias" (`aria-haspopup="dialog"`/`aria-expanded`/
- *   `aria-controls`), botão de fechamento com texto visível "Fechar" —
- *   copy fechada no desenho técnico, sem ícone (nenhuma dependência nova,
- *   `lucide-react` deliberadamente não introduzida em `apps/fastcompre`).
+ * - `aria-label="Categorias"` no `<dialog>` e no trigger (`aria-haspopup=
+ *   "dialog"`/`aria-expanded`/`aria-controls`); botão de fechamento com
+ *   texto visível "Fechar" — nenhuma mudança nesses dois.
+ *
+ * Refinamento visual (rodada isolada, pós-correção final de composição) —
+ * trigger mobile ganhou ícone hambúrguer, substituindo o texto visível
+ * "Categorias": `HamburgerIcon` abaixo é um `<svg>` local, puramente
+ * geométrico (3 linhas paralelas, nenhum traço reconhecível de marca/
+ * ilustração de terceiros) — `lucide-react` continua deliberadamente NÃO
+ * introduzida em `apps/fastcompre` (decisão já fechada, não reaberta aqui;
+ * `packages/ui` depende de `lucide-react` só para consumo do Admin). O
+ * ícone é `aria-hidden="true"` (puramente decorativo); o nome acessível do
+ * botão passa a vir de `aria-label="Categorias"` — mesmo texto que já era
+ * usado visualmente antes, então a busca por nome acessível em qualquer
+ * teste/leitor de tela não muda. Estado aberto/fechado continua comunicado
+ * de forma programática por `aria-expanded` (inalterado) — o ícone em si
+ * não alterna forma (hambúrguer → X) nesta rodada: o `<dialog>` modal já
+ * assume a interação assim que abre (foco move para "Fechar", texto visível
+ * dentro do diálogo), então uma segunda pista visual no próprio trigger não
+ * foi considerada necessária (decisão desta rodada; não é o mesmo critério
+ * usado pelo Admin, que não tem um trigger equivalente).
+ *
+ * Refinamento visual (2ª rodada isolada, alinhamento final com
+ * `testeLayout.png`) — dois ajustes puramente visuais no trigger, nenhum
+ * comportamento novo:
+ * - posição: `ml-auto` empurra o trigger para o canto direito do Header —
+ *   único filho visível do container flex do Header (`site-header.tsx`)
+ *   além do wordmark em telas `<sm:` (a `<nav>` persistente já é `hidden`
+ *   nessa faixa, e o `<dialog>` fechado não participa do layout) — por
+ *   isso resolvido inteiramente aqui, sem tocar `site-header.tsx`. Como
+ *   `ml-auto` não tem prefixo de breakpoint mas o próprio botão continua
+ *   `sm:hidden`, ele deixa de existir no layout a partir de `sm:` — o
+ *   desktop (`<nav>` persistente ao lado do wordmark) fica intocado.
+ * - cor: ícone em `text-accent` (verde-floresta médio, mesmo token do
+ *   wordmark/links de acento sitewide) no estado fechado, com
+ *   `hover:text-accent-hover`; no estado aberto (`isOpen`), reaproveita
+ *   EXATAMENTE o mesmo par já usado para o item de Categoria ativo
+ *   (`bg-accent-subtle text-accent-subtle-fg`, ver `renderCategoryLinks`
+ *   acima) — mesma linguagem visual de "estado ativo" já estabelecida,
+ *   não uma combinação nova. Nenhum token novo: `accent`/`accent-hover`/
+ *   `accent-subtle`/`accent-subtle-fg` já existiam e já tinham consumidor
+ *   real antes desta tarefa.
  *
  * Nenhuma animação/transição introduzida — abrir/fechar é estático, mesma
  * decisão já fechada pelo Admin na UXA-019B (se uma transição for
@@ -221,16 +295,21 @@ export function CategoryNav({ categories }: CategoryNavProps) {
     <>
       <button
         type="button"
-        className="sm:hidden rounded-control border border-outline bg-surface px-control-x py-control-y font-ui font-action text-body text-fg focus-visible:outline-none focus-visible:ring-2 ring-focus"
+        className={`sm:hidden ml-auto inline-flex items-center justify-center rounded-control border px-control-x py-control-y focus-visible:outline-none focus-visible:ring-2 ring-focus ${
+          isOpen
+            ? 'border-transparent bg-accent-subtle text-accent-subtle-fg'
+            : 'border-outline bg-surface text-accent hover:text-accent-hover'
+        }`}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-controls={drawerId}
+        aria-label="Categorias"
         onClick={() => {
           dialogRef.current?.showModal();
           setIsOpen(true);
         }}
       >
-        Categorias
+        <HamburgerIcon />
       </button>
 
       <nav aria-label="Categorias" className="hidden sm:block">

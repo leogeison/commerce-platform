@@ -65,11 +65,15 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
   // `apps/fastcompre` (`ARTICLE_CARD_IMAGE_SIZES`, abaixo, é a única
   // exceção deliberada — ver `../article-card-image-sizes.ts`: um valor de
   // layout puro, sem conhecimento de domínio, com dois consumidores reais
-  // simultâneos nesta própria tarefa).
+  // simultâneos nesta própria tarefa). Refinamento visual pré-UXW-015: a
+  // Categoria NÃO ganha um hero próprio (decisão fechada do desenho
+  // aprovado — só a Home destaca `items[0]`); esta rota segue reproduzindo
+  // fielmente o card da Home, agora incluindo `font-editorial` no título e
+  // o ajuste `h-auto` (ver JSX abaixo).
   const firstImageIndex = items.findIndex((article) => article.coverImageUrl);
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
+    <main className="mx-auto max-w-6xl px-4 py-12">
       <h1 className="text-3xl font-semibold text-fg">{category.name}</h1>
 
       {items.length === 0 ? (
@@ -77,7 +81,20 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
           Nenhum artigo publicado nesta categoria ainda.
         </p>
       ) : (
-        <ul className="mt-10 flex flex-col gap-10">
+        // Refinamento visual pós-`testeLayout.png` (decisão final do PO):
+        // mesmo grid responsivo da Home (`grid-cols-1 md:grid-cols-2
+        // lg:grid-cols-3`) — Categoria NÃO ganha um hero (decisão fechada,
+        // reafirmada nesta rodada: "não transforme Categoria em cópia do
+        // hero da Home"), então TODOS os artigos desta rota entram no
+        // grid, sem exceção de posição. `<ul>/<li>` preservados, ordem do
+        // DOM preservada (sem `order` do CSS Grid/Flex).
+        //
+        // `gap-6 md:gap-10` (correção final de composição, decisão fechada
+        // do PO) — mesmo ajuste de espaçamento mobile aplicado ao grid da
+        // Home (ver `(home)/page.tsx`): em `grid-cols-1` o gap só produz
+        // espaçamento vertical entre cards empilhados, e `gap-10` (40px)
+        // repetido lia como excessivo numa tela estreita.
+        <ul className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-10 lg:grid-cols-3">
           {items.map((article, index) => {
             const isLcpCandidate = index === firstImageIndex;
 
@@ -89,15 +106,21 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                 >
                   <article className="flex flex-col gap-4">
                     {article.coverImageUrl && (
-                      // `alt=""`: o título do artigo já está visível como
-                      // texto dentro deste mesmo link (o `<h2>` abaixo) — um
-                      // `alt` não vazio aqui duplicaria o título no nome
-                      // acessível do link inteiro. `width`/`height`
-                      // (640×360, mesmos valores da Home) são o tamanho
-                      // intrínseco real; `sizes` (`ARTICLE_CARD_IMAGE_SIZES`)
-                      // é a largura real do card, mesmo layout exato da
-                      // Home. Mesmo critério exato de `apps/fastcompre/src/
-                      // app/(home)/page.tsx` (UXW-007/UXW-013).
+                      // `alt=""`/`width`/`height`/`sizes`: mesmo critério
+                      // exato de `apps/fastcompre/src/app/(home)/page.tsx`
+                      // (UXW-007/UXW-013). `h-auto` junto de `aspect-video
+                      // w-full` (refinamento pré-UXW-015): corrige o
+                      // warning de dev do `next/image` sobre width/height
+                      // responsivo — `w-full` sobrescreve a largura via
+                      // CSS, mas nada declarava `height: auto`
+                      // explicitamente (o `aspect-video` do Tailwind define
+                      // `aspect-ratio`, que a heurística de dev do Next não
+                      // reconhece como equivalente). Não muda nada
+                      // visualmente — a caixa já era determinada pelo
+                      // `aspect-ratio` — só silencia o aviso. `sizes` vem
+                      // de `ARTICLE_CARD_IMAGE_SIZES`, recalibrado para o
+                      // grid nesta mesma rodada (ver
+                      // `../article-card-image-sizes.ts`).
                       <Image
                         src={article.coverImageUrl}
                         alt=""
@@ -105,11 +128,18 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                         height={360}
                         sizes={ARTICLE_CARD_IMAGE_SIZES}
                         preload={isLcpCandidate}
-                        className="aspect-video w-full rounded-control object-cover"
+                        className="aspect-video h-auto w-full rounded-control object-cover"
                       />
                     )}
                     <div>
-                      <h2 className="text-xl font-semibold text-fg group-hover:text-accent">
+                      {/* `font-editorial` (refinamento pré-UXW-015,
+                          decisão fechada do desenho aprovado): título do
+                          card passa a usar Source Serif 4, mesma leitura
+                          do Princípio Normativo 1 ("Source Serif 4 para
+                          conteúdo/títulos editoriais") aplicada de forma
+                          consistente à listagem — resumo/data continuam em
+                          Geist Sans (`font-ui`, herança padrão). */}
+                      <h2 className="font-editorial text-xl font-semibold text-fg group-hover:text-accent">
                         {article.title}
                       </h2>
                       {article.metaDescription && (

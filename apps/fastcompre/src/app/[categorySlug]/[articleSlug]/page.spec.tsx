@@ -221,13 +221,23 @@ describe('ArticlePage', () => {
     // Fone A: pelo menos uma oferta em estoque — lista normalmente, sem
     // "Temporariamente indisponível", mantendo "(indisponível)" na que
     // estiver fora de estoque.
+    // Refinamento visual pós-`testeLayout.png`: o preço bruto do backend
+    // (`199.90`) não aparece mais no HTML — `product-offer-list.tsx` agora
+    // formata via `Intl.NumberFormat('pt-BR', { style: 'currency', currency:
+    // offer.currency })`. O valor esperado é computado com a mesma API, não
+    // hardcoded (o separador decimal vira vírgula e há um espaço não-quebrável
+    // entre "R$" e o valor).
     expect(html).toContain('Fone A');
-    expect(html).toContain('199.90');
+    expect(html).toContain(
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(199.9),
+    );
 
     // Fone B: todas as ofertas fora de estoque — "Temporariamente
     // indisponível" E a lista de ofertas continuam, oferta marcada.
     expect(html).toContain('Fone B');
-    expect(html).toContain('149.90');
+    expect(html).toContain(
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(149.9),
+    );
 
     // Fone C: nenhuma oferta — só "Temporariamente indisponível", sem lista.
     expect(html).toContain('Fone C');
@@ -533,8 +543,16 @@ describe('ArticlePage', () => {
       expect(html).toContain('<h3 class="font-medium">Fone A (referenciado inline)</h3>');
       expect(html).toContain('<h3 class="font-medium">Fone B (só vinculado, nunca referenciado inline)</h3>');
       // Nenhum cartão inline de `ProductBlock` (`product-block.tsx`) foi
-      // renderizado — reconhecível pelo wrapper `rounded-control border`.
-      expect(html).not.toContain('rounded-control border border-outline bg-surface');
+      // renderizado. Refinamento visual pós-`testeLayout.png`: a seção
+      // estática (page.tsx) passou a reaproveitar o mesmo trio de tokens
+      // `rounded-control border border-outline bg-surface`, então esse
+      // marcador sozinho não distingue mais os dois. `ProductBlock` (achado
+      // ou not-found) é o único consumidor que soma `font-ui` ao lado de
+      // `p-4` (reverte a herança de `font-editorial` do corpo MDX — ver
+      // `product-block.tsx`); a seção estática nunca usa `font-ui` aqui
+      // (é irmã, não filha, do `<div class="font-editorial">`). Esse
+      // sufixo mais específico é o marcador correto.
+      expect(html).not.toContain('bg-surface p-4 font-ui');
     });
 
     it('bloco inline referencia um Produto de article.products[] e resolve com os dados reais dele', async () => {
@@ -549,9 +567,12 @@ describe('ArticlePage', () => {
 
       // Nome/preço reais do Fone A (article.products[0]) aparecem — a
       // fábrica `createProductBlockComponent(article.products, article.id)`
-      // de produção resolveu o `productId` contra o array real.
+      // de produção resolveu o `productId` contra o array real. Preço
+      // computado via `Intl.NumberFormat`, mesmo critério do teste acima.
       expect(html).toContain('Fone A (referenciado inline)');
-      expect(html).toContain('199.90');
+      expect(html).toContain(
+        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(199.9),
+      );
     });
 
     it('Produto referenciado por um bloco inline não se repete na seção estática; Produto só vinculado (nunca referenciado inline) continua na seção estática', async () => {
@@ -669,6 +690,66 @@ describe('ArticlePage', () => {
     await expect(renderArticleWith(article, 'categoria-errada')).rejects.toThrow(
       'NEXT_REDIRECT:/fones-bluetooth/melhor-fone',
     );
+  });
+
+  /**
+   * Refinamento visual pré-UXW-015 (desenho técnico aprovado pelo Product
+   * Owner, referência visual `testeLayout.png` — ver `docs/UXW-visual-
+   * direction-decision.md`) — hero/capa de Artigo (`article.coverImageUrl`,
+   * já existente em `PublicArticle`, nullable). Cobre os dois estados
+   * fechados na aprovação: com capa (hero renderizado, sem preload inicial)
+   * e sem capa (omitida inteiramente, nunca pulada para outro elemento nem
+   * substituída por placeholder) — mesmo critério já usado para avatar de
+   * Autor e imagem de Produto nesta mesma página.
+   */
+  describe('hero/capa de Artigo (refinamento pré-UXW-015)', () => {
+    function articleWithCover(coverImageUrl: string | null): PublicArticle {
+      return {
+        id: '11111111-1111-4111-8111-111111111111',
+        categorySlug: 'fones-bluetooth',
+        type: 'COMPARISON',
+        title: 'Melhor fone bluetooth 2026',
+        slug: 'melhor-fone',
+        metaDescription: null,
+        coverImageUrl,
+        publishedAt: '2026-01-01T00:00:00.000Z',
+        bodyMdx: '# Introdução',
+        products: [],
+        author: null,
+      };
+    }
+
+    it('renderiza a capa como hero quando article.coverImageUrl existe, sem preload inicial', async () => {
+      const html = await renderArticleWith(articleWithCover('https://example.com/capa.jpg'));
+
+      const imgTags = html.match(/<img[^>]*>/g) ?? [];
+      expect(imgTags).toHaveLength(1);
+      expect(imgTags[0]).toContain('src="https://example.com/capa.jpg"');
+      expect(imgTags[0]).toContain('alt=""');
+      // Correção final de composição (decisão fechada do PO, pós-
+      // `testeLayout.png`): `ARTICLE_HERO_IMAGE_SIZES` recalibrado para o
+      // novo teto do container (`max-w-5xl`, 992px de conteúdo), em vez do
+      // antigo `max-w-3xl` (736px) — ver `../[articleSlug]/page.tsx`.
+      expect(imgTags[0]).toContain('sizes="(min-width: 1024px) 992px, calc(100vw - 32px)"');
+      // Sem preload inicial (decisão fechada do desenho aprovado): o
+      // Artigo segue "LCP-por-texto" (UXW-006) até a medição de
+      // performance desta mesma implementação indicar o contrário.
+      expect(imgTags[0]).not.toContain('data-preload');
+
+      // Posição: a capa aparece antes do corpo MDX (marcador do mock em
+      // `mockArticleDependencies`) — hero acima do conteúdo, não abaixo.
+      const heroIndex = html.indexOf('src="https://example.com/capa.jpg"');
+      const bodyIndex = html.indexOf('Título interno do corpo');
+      expect(heroIndex).toBeGreaterThan(-1);
+      expect(bodyIndex).toBeGreaterThan(heroIndex);
+    });
+
+    it('não renderiza nenhuma imagem de capa quando article.coverImageUrl é null', async () => {
+      const html = await renderArticleWith(articleWithCover(null));
+
+      expect(html).not.toContain('<img');
+      expect(html).toContain('Melhor fone bluetooth 2026');
+    });
   });
 });
 

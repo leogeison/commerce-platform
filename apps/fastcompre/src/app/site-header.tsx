@@ -46,12 +46,22 @@ import { CategoryNav } from './category-nav';
  * `text-body`, `text-fg`, `text-accent`, `border-outline-subtle`,
  * `ring-focus`, `rounded-control`) — nenhum token novo introduzido, mesmo
  * critério já documentado naquele arquivo ("qualquer novo token exposto
- * aqui exige um consumidor real"). Largura de leitura (`max-w-3xl`) e
- * espaçamento (`px-4 py-4`) são Tailwind puro local, mesmo padrão já usado
- * nas 3 rotas públicas existentes (`page.tsx`) — não é um `Container` de
- * `packages/ui`: decisão explícita da UXW-001 de não promover enquanto não
- * existir um segundo consumidor real, e de manter qualquer largura/
- * container aqui local e reversível.
+ * aqui exige um consumidor real"). Espaçamento (`px-4 py-4`) é Tailwind
+ * puro local — não é um `Container` de `packages/ui`: decisão explícita da
+ * UXW-001 de não promover enquanto não existir um segundo consumidor real,
+ * e de manter qualquer largura/container aqui local e reversível.
+ *
+ * Refinamento visual pós-`testeLayout.png` (correção final de composição,
+ * decisão fechada do PO) — `max-w-3xl` (768px) → `max-w-6xl` (1152px):
+ * decisão de largura de container, não de largura de leitura de texto —
+ * este Header nunca teve parágrafo de texto corrido, só o wordmark e a
+ * navegação de Categorias, então ampliar não compromete legibilidade
+ * (mesmo racional documentado em `(home)/page.tsx` para a distinção
+ * "media/layout width" vs. "reading width"). Site-wide, Header/Footer/
+ * Home/Categoria passam a compartilhar `max-w-6xl`; só o Artigo usa um
+ * valor diferente (`max-w-5xl` na superfície externa, `max-w-3xl`
+ * preservado ao redor só do corpo de texto — ver `[articleSlug]/page.tsx`).
+ * Escala padrão do Tailwind, nenhum token novo.
  */
 export async function SiteHeader() {
   let categories: Awaited<ReturnType<typeof listPublicCategories>> = [];
@@ -65,7 +75,7 @@ export async function SiteHeader() {
 
   return (
     <header className="border-b border-outline-subtle">
-      <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-4">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-4">
         <Link
           href="/"
           className="rounded-control font-ui font-action text-body text-fg hover:text-accent focus-visible:outline-none focus-visible:ring-2 ring-focus"

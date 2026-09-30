@@ -112,10 +112,23 @@ describe('RootLayout — composição do header', () => {
    * evita a limitação de `react-dom/server` com componentes assíncronos
    * compostos como JSX (ver doc comment do describe acima) — `layout.tsx`
    * em si continua síncrono, só compõe o que importa.
+   *
+   * Refinamento visual (rodada isolada, pós-correção final de composição)
+   * — `SiteFooter` também passou a ser `async` (busca Categorias, mesmo
+   * padrão de `SiteHeader`). `layout.tsx` compõe `<SiteFooter />` do mesmo
+   * jeito (JSX direto) — sem também mocá-lo por um stub síncrono aqui,
+   * `renderToStaticMarkup(<RootLayout>...)` quebraria pela mesma limitação
+   * documentada acima, mesmo o teste não tendo nenhuma asserção sobre o
+   * footer. Ver `site-footer.spec.tsx` para o teste equivalente de ORDEM
+   * (`<SiteFooter />` depois de `{children}`), que segue mocando
+   * `./site-header` pelo mesmo motivo, na direção oposta.
    */
   it('compõe <SiteHeader /> antes do conteúdo da página em <body>', async () => {
     jest.doMock('./site-header', () => ({
       SiteHeader: () => <header data-testid="mock-header" />,
+    }));
+    jest.doMock('./site-footer', () => ({
+      SiteFooter: () => <footer data-testid="mock-footer" />,
     }));
 
     const { default: RootLayout } = await import('./layout');

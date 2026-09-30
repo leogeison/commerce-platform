@@ -188,3 +188,34 @@ O desenho técnico deve ser apresentado e aprovado antes de qualquer
 implementação — mesmo fluxo obrigatório já em vigor para todas as tarefas
 deste projeto. Nenhuma implementação de `UXW-001` (ou de qualquer outra
 tarefa `UXW-*`) foi autorizada até o momento deste registro.
+
+# Adendo — Referência visual do refinamento pré-UXW-015
+
+Registrado em 2026-09-27, decisão explícita do Product Owner (Léo Geison),
+tomada em conversa com o assistente, durante uma rodada de refinamento
+visual conduzida antes da retomada da UXW-015 (que ficou pausada por
+constatação do próprio Product Owner de que o estado visual real do
+FastCompre ainda não estava no nível desejado em relação a esta decisão).
+
+Nessa rodada, duas referências visuais candidatas foram apresentadas e
+comparadas (cobrindo Home, Categoria, Artigo, Header, Footer, bloco
+Produto/Oferta e mobile). O Product Owner elegeu **`testeLayout.png`**
+como a referência visual principal a orientar esse refinamento.
+
+Esta escolha:
+
+- não substitui nem reabre a decisão já registrada acima ("FastCompre —
+  Editorial Confiável"), nem os Princípios normativos (Seção 1) — é uma
+  referência visual adicional dentro da mesma direção já aprovada, não
+  uma nova direção;
+- preserva integralmente a natureza não pixel-perfect já registrada em
+  "Natureza da aprovação" e na Seção 3 deste documento: pixels exatos,
+  breakpoints exatos, textos/imagens específicos da referência e qualquer
+  funcionalidade ou dado nela sugerido que não exista no domínio/API atual
+  continuam não congelados;
+- orientou exclusivamente o desenho técnico do refinamento visual
+  pré-UXW-015 (hero editorial da Home, capa/hero do Artigo, tipografia
+  editorial nos títulos de listagem, maturidade visual dos cards de Home/
+  Categoria), aprovado e implementado nesta mesma rodada — não autoriza,
+  por si só, nenhuma tarefa `UXW-*` futura nem antecipa nenhum escopo
+  além do que foi explicitamente aprovado nesse desenho técnico.

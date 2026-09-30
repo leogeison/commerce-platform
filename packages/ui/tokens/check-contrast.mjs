@@ -155,6 +155,15 @@ const ASSERTED_PAIRS = [
   ['color-focus-ring', 'color-surface-raised', NON_TEXT_MIN, 'anel de foco / superfície elevada (não-texto)'],
   ['color-feedback-danger-fill', 'color-surface-raised', NON_TEXT_MIN, 'preenchimento/indicador de erro / superfície elevada (não-texto)'],
   ['color-feedback-warning-text', 'color-surface-subtle', NON_TEXT_MIN, 'ícone de warning / superfície sutil (não-texto) — UXA-019D, fundo real do Hourglass em "Aguardando publicação"'],
+  // Refinamento visual (Footer, rodada isolada) — primeiro consumidor real
+  // de `color-text-inverse`/`color-surface-inverse` (ver semantic-colors.css):
+  // texto claro do Footer (wordmark, tagline, coluna "Categorias", disclosure,
+  // copyright) sobre o novo fundo escuro do Footer.
+  ['color-text-inverse', 'color-surface-inverse', NORMAL_TEXT_MIN, 'texto claro (Footer) / superfície escura do Footer (verde-floresta)'],
+  // Anel de foco do Footer reaproveita o mesmo par texto-claro/superfície-
+  // escura acima (mesmos dois tokens, `ring-fg-inverse` no componente) —
+  // WCAG 1.4.11 (não-texto, >=3:1) já é coberto pelo limiar mais exigente
+  // de texto normal (>=4.5:1) testado acima; nenhum par adicional necessário.
 ];
 
 // Pares deliberadamente NÃO avaliados numericamente — listados para deixar
@@ -174,11 +183,6 @@ const DOCUMENTED_EXEMPTIONS = [
     'color-border-default',
     'color-surface-raised',
     'borda decorativa padrão (repouso de input), não carrega significado sozinha — sem requisito de contraste.',
-  ],
-  [
-    'color-text-inverse',
-    null,
-    'declarado para uso geral sobre uma futura superfície escura; sem par de teste nesta tarefa porque nenhuma superfície semântica escura consumidora existe ainda (o uso atual sobre preenchimentos de acento/erro é coberto por on-accent-text/on-danger-text, já testados acima).',
   ],
 ];
 
