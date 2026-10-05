@@ -39,7 +39,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${sourceSerif4.variable}`}
     >
-      <body>
+      <body className="flex flex-col">
         <SiteHeader />
         {children}
         <SiteFooter />

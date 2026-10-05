@@ -243,8 +243,8 @@ describe('Home', () => {
         totalPages: 1,
       });
 
-      expect(html).toContain('<h2 class="font-editorial text-2xl font-semibold text-fg group-hover:text-accent md:text-3xl">Título do hero</h2>');
-      expect(html).toContain('<h2 class="font-editorial text-xl font-semibold text-fg group-hover:text-accent">Título do card</h2>');
+      expect(html).toContain('<h2 id="home-hero-title-1" class="font-editorial text-2xl font-semibold text-fg group-hover:text-accent md:text-3xl">Título do hero</h2>');
+      expect(html).toContain('<h2 id="home-card-title-2" class="font-editorial text-xl font-semibold text-fg group-hover:text-accent">Título do card</h2>');
     });
   });
 
@@ -281,6 +281,31 @@ describe('Home', () => {
       const secondIndex = html.indexOf('Segundo do grid');
       expect(firstIndex).toBeGreaterThan(-1);
       expect(secondIndex).toBeGreaterThan(firstIndex);
+
+      // UXW-015 — correção de acessibilidade (regressão identificada
+      // durante a própria UXW-015): o `<a>` de cada card (hero E grid)
+      // precisa de `aria-labelledby` apontando para o `id` do seu próprio
+      // `<h2>` — sem isso, o Chromium não propaga o texto de um
+      // descendente `<article>` para o nome acessível do link ancestral
+      // (`<article>` tem role ARIA implícito "article", que bloqueia essa
+      // propagação — ver investigação da UXW-015). A tag inteira (`id`/
+      // `aria-labelledby` com o MESMO valor, na mesma asserção) prova a
+      // associação em si, não só a presença isolada de cada atributo.
+      expect(html).toContain(
+        '<a href="/comparativos/hero" aria-labelledby="home-hero-title-1" class="group mt-10 flex flex-col gap-4 rounded-control focus-visible:outline-none focus-visible:ring-2 ring-focus">',
+      );
+      expect(html).toContain(
+        '<h2 id="home-hero-title-1" class="font-editorial text-2xl font-semibold text-fg group-hover:text-accent md:text-3xl">Hero</h2>',
+      );
+
+      // Especificamente o link do GRID (não o hero) — o card afetado pela
+      // regressão original.
+      expect(html).toContain(
+        '<a href="/comparativos/primeiro-do-grid" aria-labelledby="home-card-title-2" class="group flex flex-col gap-4 rounded-control focus-visible:outline-none focus-visible:ring-2 ring-focus">',
+      );
+      expect(html).toContain(
+        '<h2 id="home-card-title-2" class="font-editorial text-xl font-semibold text-fg group-hover:text-accent">Primeiro do grid</h2>',
+      );
     });
 
     it('não renderiza o <ul> do grid quando não há artigos além do hero', async () => {

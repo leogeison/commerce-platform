@@ -174,6 +174,7 @@ export default async function Home({ searchParams }: HomeProps = {}) {
               sem garantia de contraste suficiente para texto por cima). */}
           <a
             href={`/${heroArticle.categorySlug}/${heroArticle.slug}`}
+            aria-labelledby={`home-hero-title-${heroArticle.id}`}
             className="group mt-10 flex flex-col gap-4 rounded-control focus-visible:outline-none focus-visible:ring-2 ring-focus"
           >
             <article className="flex flex-col gap-4 md:flex-row md:items-start md:gap-8">
@@ -207,7 +208,10 @@ export default async function Home({ searchParams }: HomeProps = {}) {
                     título `text-3xl` fixo lia como desproporcional numa
                     tela estreita; cresce de volta a `text-3xl` a partir
                     de `md:`, mesmo tamanho de sempre no desktop. */}
-                <h2 className="font-editorial text-2xl font-semibold text-fg group-hover:text-accent md:text-3xl">
+                <h2
+                  id={`home-hero-title-${heroArticle.id}`}
+                  className="font-editorial text-2xl font-semibold text-fg group-hover:text-accent md:text-3xl"
+                >
                   {heroArticle.title}
                 </h2>
                 {heroArticle.metaDescription && (
@@ -261,6 +265,7 @@ export default async function Home({ searchParams }: HomeProps = {}) {
                   <li key={article.id}>
                     <a
                       href={`/${article.categorySlug}/${article.slug}`}
+                      aria-labelledby={`home-card-title-${article.id}`}
                       className="group flex flex-col gap-4 rounded-control focus-visible:outline-none focus-visible:ring-2 ring-focus"
                     >
                       <article className="flex flex-col gap-4">
@@ -276,7 +281,10 @@ export default async function Home({ searchParams }: HomeProps = {}) {
                           />
                         )}
                         <div>
-                          <h2 className="font-editorial text-xl font-semibold text-fg group-hover:text-accent">
+                          <h2
+                            id={`home-card-title-${article.id}`}
+                            className="font-editorial text-xl font-semibold text-fg group-hover:text-accent"
+                          >
                             {article.title}
                           </h2>
                           {article.metaDescription && (

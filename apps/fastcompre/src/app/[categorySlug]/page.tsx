@@ -102,6 +102,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
               <li key={article.id}>
                 <a
                   href={`/${article.categorySlug}/${article.slug}`}
+                  aria-labelledby={`category-card-title-${article.id}`}
                   className="group flex flex-col gap-4 rounded-control focus-visible:outline-none focus-visible:ring-2 ring-focus"
                 >
                   <article className="flex flex-col gap-4">
@@ -139,7 +140,10 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
                           conteúdo/títulos editoriais") aplicada de forma
                           consistente à listagem — resumo/data continuam em
                           Geist Sans (`font-ui`, herança padrão). */}
-                      <h2 className="font-editorial text-xl font-semibold text-fg group-hover:text-accent">
+                      <h2
+                        id={`category-card-title-${article.id}`}
+                        className="font-editorial text-xl font-semibold text-fg group-hover:text-accent"
+                      >
                         {article.title}
                       </h2>
                       {article.metaDescription && (

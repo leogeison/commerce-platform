@@ -24,10 +24,36 @@
 /*
  * O Preflight do Tailwind (importado acima) já reseta `box-sizing`,
  * `margin` e `padding` universalmente — não repetimos isso aqui.
- * `height: 100%` não é coberto pelo Preflight (é decisão de layout do
- * projeto, não reset genérico), por isso permanece.
+ * `height`/`min-height` não são cobertos pelo Preflight (é decisão de
+ * layout do projeto, não reset genérico), por isso permanecem.
+ *
+ * Correção pós-inspeção visual (UXW-015) — `html { min-height: 100% }` +
+ * `body { min-height: 100vh }` (em vez de `min-height: 100%` no `body`,
+ * que dependeria de uma altura DEFINIDA do containing block — `html` com
+ * `min-height` não é uma altura definida, só um piso — e ficaria menos
+ * robusto): `body` passa a ter seu próprio piso de 100vh, independente do
+ * que `html` resolver. Combinado com `body` como flex column
+ * (`layout.tsx`) e a regra abaixo, o <main> de cada página cresce para
+ * ocupar o espaço restante entre Header e Footer, empurrando o Footer
+ * para o fim real da viewport quando o conteúdo é menor que ela — sem
+ * recortar conteúdo mais alto (`min-height`, nunca `height` fixo).
  */
-html,
+html {
+  min-height: 100%;
+}
+
 body {
-  height: 100%;
+  min-height: 100vh;
+}
+
+/*
+ * `<main>` é sempre filho direto de `<body>` em toda rota pública
+ * (Home/Categoria/Artigo/not-found/loading/error) — nenhuma delas tem
+ * wrapper intermediário. Esta regra faz CADA `<main>` crescer para
+ * ocupar o espaço restante, sem precisar tocar em nenhuma página
+ * individualmente, e sem limitar o crescimento quando o conteúdo é maior
+ * (`flex-basis: auto`).
+ */
+body > main {
+  flex: 1 0 auto;
 }

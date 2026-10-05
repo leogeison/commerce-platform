@@ -10,7 +10,9 @@
     "pretypecheck": "pnpm --filter @commerce-platform/contracts build && pnpm --filter @commerce-platform/ui build && pnpm --filter @commerce-platform/editorial build",
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:visual-baseline": "playwright test --config=e2e-visual/playwright.config.ts",
+    "test:visual-baseline:update": "playwright test --config=e2e-visual/playwright.config.ts --update-snapshots"
   },
   "dependencies": {
     "@commerce-platform/contracts": "workspace:*",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.0.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
