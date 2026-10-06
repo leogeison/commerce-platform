@@ -12,7 +12,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:visual-baseline": "playwright test --config=e2e-visual/playwright.config.ts",
-    "test:visual-baseline:update": "playwright test --config=e2e-visual/playwright.config.ts --update-snapshots"
+    "test:visual-baseline:update": "playwright test --config=e2e-visual/playwright.config.ts --update-snapshots",
+    "test:a11y": "playwright test --config=e2e-a11y/playwright.config.ts"
   },
   "dependencies": {
     "@commerce-platform/contracts": "workspace:*",
@@ -34,6 +35,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@jest/globals": "^30.0.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",

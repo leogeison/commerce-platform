@@ -148,3 +148,69 @@ jobs:
           # fastcompre acima: o artefato de CI não é deployado, então o
           # valor só precisa ser uma origem sintaticamente válida.
           NEXT_PUBLIC_API_URL: 'http://127.0.0.1:9999'
+
+  # UXQ-001 — job dedicado, separado do job unit/e2e/build acima (critério
+  # explícito do backlog: tempos de execução diferentes não devem ficar
+  # acoplados). Só prova o scaffold Playwright + `@axe-core/playwright`
+  # contra build real do Admin e do FastCompre — cenários completos
+  # (UXQ-002/UXQ-003) ainda não existem.
+  #
+  # Container pinado na MESMA versão de `@playwright/test` resolvida no
+  # lockfile (`1.62.1`, confirmado em `pnpm-lock.yaml`) — o Chromium já vem
+  # pré-instalado nessa imagem, então nenhum `playwright install` é
+  # necessário aqui (reuso do binário já resolvido pela própria imagem, em
+  # vez de um novo download).
+  #
+  # Sem serviço Postgres/Prisma/migrations: diferente do job acima, este
+  # job nunca builda `apps/api` nem depende de `@prisma/client` — Admin e
+  # FastCompre consomem a API só via HTTP (mockado pelos próprios
+  # harnesses de `e2e-a11y/`), nunca via Prisma direto.
+  a11y-playwright:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Mesma ordem/motivo já documentado no job `build-lint-typecheck`
+      # acima: Admin e FastCompre consomem `@commerce-platform/contracts`/
+      # `ui`/`editorial` a partir de `dist`, que não existe num checkout
+      # limpo. Explícito aqui (em vez de confiar só nos hooks `prebuild`
+      # de cada app) para que a ordem de preparação fique garantida e
+      # legível no próprio pipeline, evitando o tipo de problema de
+      # ambiente observado na verificação da UXW-016 (dependência local
+      # corrompida/incompleta mascarando o que de fato precisa existir
+      # antes do build).
+      - name: Build contracts
+        run: pnpm --filter @commerce-platform/contracts build
+
+      - name: Build UI package
+        run: pnpm --filter @commerce-platform/ui build
+
+      - name: Build editorial package
+        run: pnpm --filter @commerce-platform/editorial build
+
+      # Cada `test:a11y` sobe seu próprio build de produção real via
+      # `webServer` do Playwright (nunca `next dev`) — ver
+      # `apps/admin/e2e-a11y/playwright.config.ts` e
+      # `apps/fastcompre/e2e-a11y/playwright.config.ts`. Dois steps
+      # separados (não um `pnpm -r`) para que o relatório de CI aponte
+      # exatamente qual app falhou.
+      - name: Admin a11y smoke (Playwright + axe)
+        run: pnpm --filter admin test:a11y
+
+      - name: FastCompre a11y smoke (Playwright + axe)
+        run: pnpm --filter fastcompre test:a11y
