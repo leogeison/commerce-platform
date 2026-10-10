@@ -516,7 +516,7 @@ function CreateShortcuts({ siteSlug }: { siteSlug: string }) {
               <Icon aria-hidden="true" className="shrink-0" size={20} />
               <span className="font-action text-body-sm">{action.label}</span>
             </span>
-            <span className={`text-body-sm ${isPrimary ? 'text-fg-on-accent/80' : 'text-fg-secondary'}`}>
+            <span className={`text-body-sm ${isPrimary ? 'text-fg-on-accent' : 'text-fg-secondary'}`}>
               {subtitleForCreateAction(action.segment)}
             </span>
           </Link>
