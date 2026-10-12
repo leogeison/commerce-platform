@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { resetFixtureState } from '../e2e-visual/fixture-state-control';
 import { ARTICLE_TITLE } from '../e2e-visual/fixtures.mjs';
+import { WCAG_AA_CUMULATIVE_TAGS } from './wcag-tags';
 
 /**
  * UXQ-001 — prova mínima de infraestrutura no FastCompre: harness
@@ -41,8 +42,13 @@ import { ARTICLE_TITLE } from '../e2e-visual/fixtures.mjs';
  * continuaria sendo detectado pelo filtro de qualquer forma; manter o
  * `withRules` inalterado é a correção mínima (nenhum motivo para tocar o
  * teste que não falhou).
+ *
+ * UXQ-003 — `WCAG_AA_CUMULATIVE_TAGS` foi extraído para `./wcag-tags.ts`
+ * nesta tarefa (ver doc comment lá) — mesma constante, mesma política, só
+ * centralizada porque este app deixou de ter um único spec de a11y
+ * (`public-journey.a11y.spec.ts` passa a existir também, cenário UXQ-003).
+ * Nenhuma mudança de comportamento neste arquivo além da origem do import.
  */
-const WCAG_AA_CUMULATIVE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 test.describe('UXQ-001 — a11y smoke (FastCompre)', () => {
   test('Home (estado populado) carrega via build real e não reporta violação axe', async ({
