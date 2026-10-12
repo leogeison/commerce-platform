@@ -236,6 +236,43 @@ function getResizeZone(key: string): HTMLElement {
   return zone;
 }
 
+/**
+ * `fireEvent.pointerDown/pointerMove/pointerUp` do próprio
+ * `@testing-library/dom` NÃO entregam `clientX`/`clientY`/`pointerId` ao
+ * handler neste ambiente: `jsdom` 26.1.0 não implementa `PointerEvent`
+ * nativamente, então `createEvent()` (`@testing-library/dom`) cai para o
+ * construtor `Event` puro (`window.PointerEvent || window.Event`) — e o
+ * `EventInit` de `Event` só reconhece `bubbles`/`cancelable`/`composed`;
+ * qualquer outra chave do `init` (incluindo `clientX`/`clientY`/
+ * `pointerId`) é descartada silenciosamente pelo próprio construtor
+ * (confirmado por leitura direta do código-fonte instalado de `jsdom` —
+ * `EventImpl`, `lib/jsdom/living/events/Event-impl.js` — e de
+ * `@testing-library/dom`, `createEvent()`). Isso faz `resize-zones.tsx`
+ * calcular `deltaX`/`deltaY` como `NaN` (`event.clientX` chega
+ * `undefined`), corrompendo `width`/`height` — defeito de simulação de
+ * evento deste ambiente de teste, nunca de produção.
+ *
+ * `firePointerEvent` contorna isso sem nenhum polyfill global de
+ * `window.PointerEvent`: constrói um `Event` simples (`bubbles`/
+ * `cancelable`, os únicos campos que o `EventInit` de `Event` realmente
+ * processa) e atribui `clientX`/`clientY`/`pointerId` diretamente no
+ * objeto JÁ CONSTRUÍDO — atribuição direta de propriedade nunca passa
+ * pela filtragem do `EventInit`, então os três campos chegam intactos
+ * ao handler (os únicos que `resize-zones.tsx` de fato lê do evento).
+ * Disparado via `fireEvent(element, event)` (não
+ * `element.dispatchEvent`), para continuar dentro do wrapper/integração
+ * do Testing Library — usado só nos testes de arraste abaixo.
+ */
+function firePointerEvent(
+  element: HTMLElement,
+  type: 'pointerdown' | 'pointermove' | 'pointerup',
+  init: { pointerId: number; clientX: number; clientY: number },
+): void {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(event, init);
+  fireEvent(element, event);
+}
+
 describe('ImageNode — bloco atômico entre texto (DecoratorBlockNode)', () => {
   it('existe entre os dois parágrafos e renderiza <img> de verdade (portal de decorator via RichTextPlugin)', async () => {
     renderImageBlockEditor();
@@ -627,13 +664,13 @@ describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas d
     const zoneE = getResizeZone('e');
 
     act(() => {
-      fireEvent.pointerDown(zoneE, { pointerId: 1, clientX: 0, clientY: 0 });
+      firePointerEvent(zoneE, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 0 });
     });
     act(() => {
-      fireEvent.pointerMove(zoneE, { pointerId: 1, clientX: 40, clientY: 0 });
+      firePointerEvent(zoneE, 'pointermove', { pointerId: 1, clientX: 40, clientY: 0 });
     });
     act(() => {
-      fireEvent.pointerUp(zoneE, { pointerId: 1, clientX: 40, clientY: 0 });
+      firePointerEvent(zoneE, 'pointerup', { pointerId: 1, clientX: 40, clientY: 0 });
     });
 
     await waitFor(() => {
@@ -654,13 +691,13 @@ describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas d
     const zoneW = getResizeZone('w');
 
     act(() => {
-      fireEvent.pointerDown(zoneW, { pointerId: 1, clientX: 100, clientY: 0 });
+      firePointerEvent(zoneW, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 0 });
     });
     act(() => {
-      fireEvent.pointerMove(zoneW, { pointerId: 1, clientX: 60, clientY: 0 }); // dx=-40, signX=-1 → +40
+      firePointerEvent(zoneW, 'pointermove', { pointerId: 1, clientX: 60, clientY: 0 }); // dx=-40, signX=-1 → +40
     });
     act(() => {
-      fireEvent.pointerUp(zoneW, { pointerId: 1, clientX: 60, clientY: 0 });
+      firePointerEvent(zoneW, 'pointerup', { pointerId: 1, clientX: 60, clientY: 0 });
     });
 
     await waitFor(() => {
@@ -681,13 +718,13 @@ describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas d
     const zoneN = getResizeZone('n');
 
     act(() => {
-      fireEvent.pointerDown(zoneN, { pointerId: 1, clientX: 0, clientY: 100 });
+      firePointerEvent(zoneN, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 100 });
     });
     act(() => {
-      fireEvent.pointerMove(zoneN, { pointerId: 1, clientX: 0, clientY: 60 }); // dy=-40, signY=-1 → +40
+      firePointerEvent(zoneN, 'pointermove', { pointerId: 1, clientX: 0, clientY: 60 }); // dy=-40, signY=-1 → +40
     });
     act(() => {
-      fireEvent.pointerUp(zoneN, { pointerId: 1, clientX: 0, clientY: 60 });
+      firePointerEvent(zoneN, 'pointerup', { pointerId: 1, clientX: 0, clientY: 60 });
     });
 
     await waitFor(() => {
@@ -708,13 +745,13 @@ describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas d
     const zoneSE = getResizeZone('se');
 
     act(() => {
-      fireEvent.pointerDown(zoneSE, { pointerId: 1, clientX: 0, clientY: 0 });
+      firePointerEvent(zoneSE, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 0 });
     });
     act(() => {
-      fireEvent.pointerMove(zoneSE, { pointerId: 1, clientX: 40, clientY: 20 });
+      firePointerEvent(zoneSE, 'pointermove', { pointerId: 1, clientX: 40, clientY: 20 });
     });
     act(() => {
-      fireEvent.pointerUp(zoneSE, { pointerId: 1, clientX: 40, clientY: 20 });
+      firePointerEvent(zoneSE, 'pointerup', { pointerId: 1, clientX: 40, clientY: 20 });
     });
 
     await waitFor(() => {
@@ -738,13 +775,13 @@ describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas d
     const zoneE = getResizeZone('e');
 
     act(() => {
-      fireEvent.pointerDown(zoneE, { pointerId: 1, clientX: 0, clientY: 0 });
+      firePointerEvent(zoneE, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 0 });
     });
     act(() => {
-      fireEvent.pointerMove(zoneE, { pointerId: 1, clientX: 20, clientY: 0 });
+      firePointerEvent(zoneE, 'pointermove', { pointerId: 1, clientX: 20, clientY: 0 });
     });
     act(() => {
-      fireEvent.pointerUp(zoneE, { pointerId: 1, clientX: 20, clientY: 0 });
+      firePointerEvent(zoneE, 'pointerup', { pointerId: 1, clientX: 20, clientY: 0 });
     });
 
     await waitFor(() => {
@@ -768,15 +805,15 @@ describe('ImageNode — resize por borda/canto (UXE-022, Contract §10): zonas d
     const zoneSE = getResizeZone('se');
 
     act(() => {
-      fireEvent.pointerDown(zoneSE, { pointerId: 1, clientX: 0, clientY: 0 });
+      firePointerEvent(zoneSE, 'pointerdown', { pointerId: 1, clientX: 0, clientY: 0 });
     });
     act(() => {
       // Tentaria width=1100 (muito além de naturalWidth=650) e
       // height=800 (muito além de naturalHeight=320).
-      fireEvent.pointerMove(zoneSE, { pointerId: 1, clientX: 500, clientY: 500 });
+      firePointerEvent(zoneSE, 'pointermove', { pointerId: 1, clientX: 500, clientY: 500 });
     });
     act(() => {
-      fireEvent.pointerUp(zoneSE, { pointerId: 1, clientX: 500, clientY: 500 });
+      firePointerEvent(zoneSE, 'pointerup', { pointerId: 1, clientX: 500, clientY: 500 });
     });
 
     await waitFor(() => {

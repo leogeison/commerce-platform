@@ -93,7 +93,7 @@ jobs:
         run: pnpm --filter api test:coverage:domain
 
       - name: Admin tests
-        run: pnpm --filter admin test
+        run: pnpm --filter admin exec jest --runInBand
 
       - name: FastCompre tests
         run: pnpm --filter fastcompre test

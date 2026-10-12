@@ -237,6 +237,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     const { compileArticleBody } = await import('./compile-article-body');
     const { splitBodyIntoSegments } = await import('./split-body-into-segments');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     const body = ['Veja [este produto][produto].', '', PRODUCT_BLOCK, '', '[produto]: https://example.com', ''].join('\n');
     const segments = splitBodyIntoSegments(body);
@@ -248,7 +249,9 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     await compileArticleBody(body);
 
-    const compileCalls = evaluateMock.mock.calls.filter(([, options]) => !options.remarkPlugins);
+    const compileCalls = evaluateMock.mock.calls.filter(
+      ([, options]) => (options.remarkPlugins as unknown[] | undefined)?.[0] === remarkImageDimensions,
+    );
     expect(compileCalls).toHaveLength(2);
     const [usageCallArg] = compileCalls[0]!;
     const [definitionCallArg] = compileCalls[1]!;
@@ -266,6 +269,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     const { compileArticleBody } = await import('./compile-article-body');
     const { splitBodyIntoSegments } = await import('./split-body-into-segments');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     const body = ['[produto]: https://example.com', '', PRODUCT_BLOCK, '', 'Veja [este produto][produto].', ''].join('\n');
     const segments = splitBodyIntoSegments(body);
@@ -277,7 +281,9 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     await compileArticleBody(body);
 
-    const compileCalls = evaluateMock.mock.calls.filter(([, options]) => !options.remarkPlugins);
+    const compileCalls = evaluateMock.mock.calls.filter(
+      ([, options]) => (options.remarkPlugins as unknown[] | undefined)?.[0] === remarkImageDimensions,
+    );
     expect(compileCalls).toHaveLength(2);
     const [definitionCallArg] = compileCalls[0]!;
     const [usageCallArg] = compileCalls[1]!;
@@ -295,6 +301,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     const { compileArticleBody } = await import('./compile-article-body');
     const { splitBodyIntoSegments } = await import('./split-body-into-segments');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     const body = ['![Foto do produto][foto]', '', PRODUCT_BLOCK, '', '[foto]: https://example.com/foto.png', ''].join('\n');
     const segments = splitBodyIntoSegments(body);
@@ -306,7 +313,9 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     await compileArticleBody(body);
 
-    const compileCalls = evaluateMock.mock.calls.filter(([, options]) => !options.remarkPlugins);
+    const compileCalls = evaluateMock.mock.calls.filter(
+      ([, options]) => (options.remarkPlugins as unknown[] | undefined)?.[0] === remarkImageDimensions,
+    );
     const [usageCallArg] = compileCalls[0]!;
     const [definitionCallArg] = compileCalls[1]!;
 
@@ -323,6 +332,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     const { compileArticleBody } = await import('./compile-article-body');
     const { splitBodyIntoSegments } = await import('./split-body-into-segments');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     const body = [
       '[produto]: https://example.com/primeira',
@@ -343,7 +353,9 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     await compileArticleBody(body);
 
-    const compileCalls = evaluateMock.mock.calls.filter(([, options]) => !options.remarkPlugins);
+    const compileCalls = evaluateMock.mock.calls.filter(
+      ([, options]) => (options.remarkPlugins as unknown[] | undefined)?.[0] === remarkImageDimensions,
+    );
     const [firstSegmentCallArg] = compileCalls[0]!;
     const [secondSegmentCallArg] = compileCalls[1]!;
 
@@ -366,6 +378,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     const { compileArticleBody } = await import('./compile-article-body');
     const { splitBodyIntoSegments } = await import('./split-body-into-segments');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     // Bloco INVÁLIDO (corpo de 2 linhas, mas a 2a não é `productId:`) com
     // uma linha `[x]: url` dentro dele — e um uso de `[x]` fora do bloco,
@@ -384,7 +397,10 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     // A chamada de descoberta nunca viu a URL do bloco: a projeção já a
     // apagou antes de qualquer parse Markdown.
-    const discoveryCall = evaluateMock.mock.calls.find(([, options]) => Boolean(options.remarkPlugins));
+    const discoveryCall = evaluateMock.mock.calls.find(
+      ([, options]) =>
+        Boolean(options.remarkPlugins) && (options.remarkPlugins as unknown[] | undefined)?.[0] !== remarkImageDimensions,
+    );
     expect(discoveryCall).toBeDefined();
     const [projectionText] = discoveryCall!;
     expect(projectionText).not.toContain('https://example.com');
@@ -393,7 +409,9 @@ describe('compileArticleBody — resolução de reference definitions atravessan
     // Sem nenhuma definition real de "x" em lugar nenhum: o segmento de uso
     // chega ao evaluate() de compilação exatamente como estava — nunca
     // resolvido, nunca com uma tabela contendo a URL do bloco.
-    const compileCalls = evaluateMock.mock.calls.filter(([, options]) => !options.remarkPlugins);
+    const compileCalls = evaluateMock.mock.calls.filter(
+      ([, options]) => (options.remarkPlugins as unknown[] | undefined)?.[0] === remarkImageDimensions,
+    );
     const [usageCallArg] = compileCalls[0]!;
     expect(usageCallArg).toBe(usageSegment.markdown);
     expect(usageCallArg).not.toContain('https://example.com');
@@ -405,6 +423,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
     jest.doMock('react/jsx-runtime', () => ({ jsx: jest.fn(), jsxs: jest.fn(), Fragment: Symbol('fragment') }));
 
     const { compileArticleBody } = await import('./compile-article-body');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     const body = ['Veja [este produto][produto] e a imagem ![Foto][foto].', '', '[produto]: https://example.com', '[foto]: https://example.com/foto.png', ''].join(
       '\n',
@@ -414,7 +433,8 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     expect(evaluateMock).toHaveBeenCalledTimes(1);
     const [bodyArg, optionsArg] = evaluateMock.mock.calls[0]!;
-    expect(optionsArg.remarkPlugins).toBeUndefined();
+    expect(optionsArg.remarkPlugins).toHaveLength(1);
+    expect((optionsArg.remarkPlugins as unknown[])[0]).toBe(remarkImageDimensions);
     expect(bodyArg).toBe(body);
   });
 
@@ -425,6 +445,7 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     const { compileArticleBody } = await import('./compile-article-body');
     const { splitBodyIntoSegments } = await import('./split-body-into-segments');
+    const { remarkImageDimensions } = await import('./article-body-image/image-dimensions-remark-plugin');
 
     // O texto-fonte do bloco (opener + "version: 1" + "productId: <uuid>" +
     // closer, ~80 caracteres) é bem mais longo, em número de caracteres,
@@ -446,7 +467,9 @@ describe('compileArticleBody — resolução de reference definitions atravessan
 
     await compileArticleBody(body);
 
-    const compileCalls = evaluateMock.mock.calls.filter(([, options]) => !options.remarkPlugins);
+    const compileCalls = evaluateMock.mock.calls.filter(
+      ([, options]) => (options.remarkPlugins as unknown[] | undefined)?.[0] === remarkImageDimensions,
+    );
     const [usageCallArg] = compileCalls[0]!;
     const [definitionCallArg] = compileCalls[1]!;
 
