@@ -14,7 +14,12 @@ export default [
   },
   ...react,
   {
-    files: ["scripts/**/*.mjs", "packages/*/tokens/**/*.mjs", "spikes/lexical-editorial/**/*.mjs"],
+    files: [
+      "scripts/**/*.mjs",
+      "packages/*/tokens/**/*.mjs",
+      "spikes/lexical-editorial/**/*.mjs",
+      "apps/fastcompre/e2e-visual/**/*.mjs",
+    ],
     ...node[node.length - 1],
   },
   {

@@ -635,6 +635,21 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
     };
   }, [editor, isVisible, listboxId, activeDescendantId]);
 
+  // Reset de `position` ao ficar invisível: ajuste de estado derivado
+  // durante a própria renderização (mesmo padrão já usado acima para
+  // `resetSnapshot`/`activeIndex`,
+  // https://react.dev/learn/you-might-not-need-an-effect) — `isVisible` já
+  // é conhecido em tempo de renderização, sem precisar de nenhuma medição
+  // de DOM; só o cálculo real da posição (no `useLayoutEffect` abaixo)
+  // precisa de um efeito. Isolar esse reset aqui evita que o efeito chame
+  // `setState` incondicionalmente como seu primeiro passo
+  // (`react-hooks/set-state-in-effect`) — `position !== null` barra
+  // reentrada: uma vez zerado, não dispara de novo enquanto permanecer
+  // invisível.
+  if (!isVisible && position !== null) {
+    setPosition(null);
+  }
+
   // UXE-022 (Addendum 7) — posicionamento do popover: ancora no caret
   // (`getCaretRect()`), com fallback para o canto do editor quando o caret
   // não é mensurável (jsdom). Depois de renderizado, mede o card real
@@ -643,10 +658,9 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
   // abaixo (flip) — sem biblioteca nova. `positionTick` força recomputar em
   // scroll/resize (efeito logo abaixo); `query`/`results.length` cobrem
   // mudanças de texto/filtro que alteram a posição do caret ou a altura do
-  // card.
+  // card. Reset ao ficar invisível não vive mais aqui (ver bloco acima).
   useLayoutEffect(() => {
     if (!isVisible) {
-      setPosition(null);
       return;
     }
     const GAP = 4;

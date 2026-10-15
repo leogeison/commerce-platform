@@ -93,7 +93,9 @@ const server = createServer(async (req, res) => {
     // Node-side do teste (`fixture-state-control.ts`).
     if (req.method === 'POST' && url.pathname === '/__test-control__/fixture-state') {
       const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
+      for await (const chunk of req) {
+        chunks.push(chunk);
+      }
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
       if (body.state !== 'populated' && body.state !== 'empty') {
         return sendJson(res, 400, { error: 'INVALID_STATE' });
@@ -153,6 +155,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(MOCK_PUBLIC_API_PORT, '127.0.0.1', () => {
-  // eslint-disable-next-line no-console
   console.log(`[mock-public-api] listening on http://127.0.0.1:${MOCK_PUBLIC_API_PORT}`);
 });
