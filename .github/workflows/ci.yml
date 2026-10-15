@@ -142,6 +142,20 @@ jobs:
           SITE_URL: 'https://fastcompre.invalid'
           AFFILIATE_REDIRECT_URL: 'https://fastcompre.invalid'
           REVALIDATION_SECRET: 'fastcompre-invalid-ci-secret-000'
+          # UXW-013: `next.config.ts` chama `resolveStorageImagesConfig`
+          # (apps/fastcompre/src/config/storage-remote-pattern.ts) na
+          # avaliação do próprio módulo — e em produção (NODE_ENV=production,
+          # o que `next build` usa mesmo para builds locais) essa função
+          # lança se STORAGE_PUBLIC_URL_BASE estiver ausente/vazia ou não for
+          # uma URL http(s) válida, sem nenhum fallback de desenvolvimento
+          # (decisão intencional da UXW-013, preservada aqui — não
+          # enfraquecida por este step). A função só faz parsing de URL para
+          # montar `images.remotePatterns`; nenhum acesso real de rede/
+          # storage ocorre durante o build. Valor sintético abaixo usa o TLD
+          # reservado `.invalid` (RFC 2606), mesmo padrão já usado por
+          # SITE_URL/AFFILIATE_REDIRECT_URL acima: satisfaz o parser sem
+          # apontar para um host real, de produção ou roteável.
+          STORAGE_PUBLIC_URL_BASE: 'https://storage.fastcompre.invalid'
           # apps/admin valida NEXT_PUBLIC_API_URL da mesma forma (env.ts,
           # ADM-001) — `next build` executa esse parse ao prerenderizar
           # páginas como /login que importam api-client.ts. Mesma lógica do
