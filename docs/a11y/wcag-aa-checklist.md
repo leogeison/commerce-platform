@@ -1,6 +1,6 @@
 # Checklist manual WCAG 2.2 AA — Commerce Platform
 
-> Instrumento único compartilhado entre **UXQ-004** (Admin) e **UXQ-005** (FastCompre), conforme `UX-Implementation-Backlog.md` ("mesmo documento de UXQ-004"). Esta rodada preenche a **Metodologia comum** e a **Seção 2 — Admin (UXQ-004)**. A **Seção 3 — FastCompre (UXQ-005)** fica apenas identificada como pendente, sem critérios, resultados ou execução antecipada.
+> Instrumento único compartilhado entre **UXQ-004** (Admin) e **UXQ-005** (FastCompre), conforme `UX-Implementation-Backlog.md` ("mesmo documento de UXQ-004"). As duas verificações manuais estão registradas neste documento.
 >
 > Este documento é o instrumento em si — nenhuma linha de resultado é preenchida por quem o cria. O preenchimento de PASS/FAIL/N/A, evidências e o cabeçalho de execução é feito pelo Product Owner (ou quem executar a verificação manual), nunca antecipado aqui.
 
@@ -329,8 +329,8 @@ Resultado final: Concluída
 
 | Campo | Valor |
 |---|---|
-| Executor | |
-| Data | |
+| Executor | Léo Geison |
+| Data | 2026-10-16 |
 | SHA testado | `77cad6e9025d08de0bc18a1422254c3ec54db12c` |
 | Sistema operacional | Windows 11 Pro 25H2, build 26200.9457 |
 | Navegador | Chrome 155.0.8059.80 (64 bits) |
@@ -431,7 +431,7 @@ Preenchido só quando houver ao menos um `FAIL` nas tabelas da Seção 3.3. Cada
 Assinatura:
 
 ```
-Executor: ______________________________
-Data: __________________________________
-Resultado final: _______________________
+Executor: Léo Geison
+Data: 2026-10-16
+Resultado final: Concluída
 ```
