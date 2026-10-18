@@ -321,6 +321,117 @@ Resultado final: Concluída
 
 ---
 
-## 3. FastCompre — UXQ-005 (pendente)
+## 3. FastCompre — UXQ-005
 
-Seção reservada para a `UXQ-005` (checklist manual WCAG 2.2 AA — shell público, Home, Categoria, Artigo, incluindo CTA de afiliado e byline). **Não preenchida nesta rodada**: nenhum critério, jornada, tabela ou execução é antecipado aqui. Esta seção só é desenvolvida quando a `UXQ-005` for formalmente iniciada, em tarefa própria — com seu próprio pré-requisito (`UXW-016`), sem depender da `UXQ-004` estar assinada como `Concluída`. As duas tarefas não dependem uma da outra.
+> Reaproveita integralmente a **Metodologia comum (Seção 1)** já aprovada na UXQ-004 — nenhuma regra de legenda, fechamento, baseline, reflow/zoom, convenção de foco por padrão real de componente, landmarks ou evidência/tarefa de origem é redefinida aqui. Esta seção só acrescenta o que é específico do shell público e das 3 páginas do FastCompre.
+
+### 3.0 Cabeçalho de execução — FastCompre (UXQ-005)
+
+| Campo | Valor |
+|---|---|
+| Executor | |
+| Data | |
+| SHA testado | `77cad6e9025d08de0bc18a1422254c3ec54db12c` |
+| Sistema operacional | Windows 11 Pro 25H2, build 26200.9457 |
+| Navegador | Chrome 155.0.8059.80 (64 bits) |
+| Leitor de tela | NVDA 2026.2 |
+| Resultado final | `Concluída` |
+
+### 3.1 Pré-requisitos confirmados
+
+- `UXW-016` — Gate de fechamento UX-M04 (FastCompre Rebuilt): as 3 rotas públicas (Home, Categoria, Artigo) estão implementadas e funcionais, confirmado por leitura direta de `apps/fastcompre/src/app/(home)/page.tsx`, `[categorySlug]/page.tsx` e `[categorySlug]/[articleSlug]/page.tsx` — concluída.
+- `UXQ-003` — Cenários de acessibilidade camada 2 (FastCompre): fluxo crítico público completo (Home → Categoria → Artigo → clique de afiliado) já cobre, sem violação axe, exatamente a mesma superfície desta UXQ-005 (commit `9ed5326 test(a11y): cover FastCompre public journey`, `apps/fastcompre/e2e-a11y/public-journey.a11y.spec.ts`) — concluída. O próprio doc comment desse spec confirma: "pré-requisitos UXQ-001/UXW-016, ambos já concluídos".
+- Pré-requisito formal único da `UXQ-005` no backlog é `UXW-016` (`docs/UX-Implementation-Backlog.md`) — não depende da `UXQ-004` estar assinada; as duas tarefas correm em paralelo, confirmado.
+
+### 3.2 Mapa de jornadas cobertas
+
+| Jornada | Superfície | Rota(s) real(is) | Base |
+|---|---|---|---|
+| F1 | Shell (transversal) + Home | `/` — header (`site-header.tsx`/`category-nav.tsx`), footer (`site-footer.tsx`) | `UXQ-003` (`public-journey.a11y.spec.ts`) |
+| F2 | Categoria | `/:categorySlug` | `UXQ-003` (`public-journey.a11y.spec.ts`) |
+| F3 | Artigo + byline | `/:categorySlug/:articleSlug` | `UXQ-003` (`public-journey.a11y.spec.ts`) |
+| F4 | CTA de afiliado/redirecionamento | dentro de `/:categorySlug/:articleSlug` (`product-block.tsx`/`product-offer-list.tsx`) | `UXQ-003` (`public-journey.a11y.spec.ts`) |
+
+Critérios transversais do shell (header, footer, drawer mobile de Categorias, landmarks gerais, bypass de bloco repetido) são verificados **uma única vez em F1** — F2/F3/F4 não os repetem, só os itens específicos de cada superfície (mesmo critério já aplicado ao Shell/J8 na UXQ-004).
+
+### 3.3 Tabelas de verificação
+
+Legenda de categoria: mesma da Seção 2.3 (**TEC/ORD/VIS/CMP/TRAP/SKL/NOM/MSG/RFL/LDT**), não redefinida aqui. Mesmas sete colunas, mesma convenção de registro de viewport/zoom no campo **Evidência/Observação** (Seção 1.6).
+
+#### F1 — Shell (transversal) + Home
+
+Pontos de referência: `/` (estado populado, mesma fixture de `UXQ-003`) — header (wordmark "FastCompre" + nav de Categorias persistente `sm+`/drawer `<sm`), hero + grade de Artigos, paginação (quando houver mais de uma página), footer (wordmark, nav "Categorias no rodapé", disclosure, copyright).
+
+Achado de código fechado antes da escrita deste checklist: **não existe skip link explícito no shell público** (confirmado por leitura de `layout.tsx` e `site-header.tsx` — nenhum mecanismo de bypass textual, diferente do Admin). O item F1-04 reflete isso como comportamento esperado real (bypass via navegação por landmarks), não como uma lacuna a ser corrigida nesta tarefa.
+
+| # | Critério | Passo de execução | Resultado esperado | PASS/FAIL/N/A | Evidência/Observação | Tarefa de origem (se FAIL) |
+|---|---|---|---|---|---|---|
+| F1-01 | TEC | A partir do topo de `/`, `Tab` sequencialmente pelo Header (link "FastCompre", depois os links de Categoria da navegação persistente, viewport ≥640px), pelo conteúdo da Home (link do hero, links dos cards, controles de paginação) e pelo Footer (link "FastCompre", links de Categoria do rodapé), sem usar o mouse. | Todo controle interativo é alcançável em sequência via teclado, sem nenhum pulado. | PASS |  | |
+| F1-02 | ORD/VIS | Comparar a sequência de `Tab` do item anterior com a ordem visual (Header → Home → Footer); observar o indicador de foco a cada parada. | Ordem de tabulação corresponde à ordem visual; indicador de foco visível com contraste adequado em todo elemento focado, nunca suprimido. | PASS |  | |
+| F1-03 | CMP | Em largura <640px, abrir o drawer mobile de Categorias via teclado (ativar o trigger `aria-label="Categorias"`); observar o foco inicial; pressionar `Tab` repetidamente; depois pressionar `Escape`. | Drawer é um `<dialog>` nativo aberto via `showModal()` — mesmo mecanismo já validado no Admin (Seção 1.7, `<dialog>` + `showModal()`), confirmado por leitura de `category-nav.tsx`: foco inicial no botão "Fechar" (`autoFocus`); `Tab` fica nativamente contido no conteúdo do diálogo, sem alcançar nada fora dele; `Escape` fecha nativamente (evento `cancel`) e o foco retorna automaticamente ao trigger que abriu o drawer. Fechamento por clique no backdrop **não** é esperado (deliberadamente não implementado, decisão fechada da UXW-004) — isso não é FAIL. | PASS |  | |
+| F1-04 | SKL | Com NVDA ativo (ou navegação por landmarks via teclado), verificar se é possível alcançar `<main>` sem percorrer every controle do Header via `Tab`. | Não existe skip link explícito neste shell (confirmado por leitura do código) — o mecanismo de bypass real é a navegação por landmarks: `<header>`, `<nav aria-label="Categorias">`, `<main>` e `<footer>` são landmarks reais e nomeados, diretamente alcançáveis pela navegação por landmarks do leitor de tela (ex.: tecla `d` do NVDA). Isso é o comportamento esperado — ausência de skip link não é, por si só, FAIL. | PASS |  | |
+| F1-05 | NOM | Inspecionar nomes acessíveis: link "FastCompre" (Header e Footer), itens de Categoria (nav persistente, drawer e rodapé), link do hero (`aria-labelledby` para o título do Artigo), links dos cards de Artigo (`aria-labelledby`), trigger do drawer (`aria-label="Categorias"`). | Nome acessível de cada controle corresponde ao título real do Artigo/nome da Categoria ou ao rótulo visível — nenhum nome genérico ("clique aqui"/sem nome). | PASS |  | |
+| F1-06 | MSG | Inspecionar o H1 da Home ("FastCompre") e o estado da página atual nos controles de paginação (quando houver mais de uma página). | H1 único por página (Architecture.md §33); página atual da paginação é um `<span aria-current="page">`, nunca um link para si mesma — nome acessível (`Página N de M`) distinto dos demais itens (`Ir para a página N`). | PASS |  | |
+| F1-07 | RFL | A partir de 1280 CSS px de largura inicial (nav persistente de Categorias visível), aplicar zoom do navegador até 400%. | O viewport CSS efetivo pode cruzar o breakpoint `640px` do shell durante o zoom — isso é esperado, não um defeito em si; o layout substitui a nav persistente pelo trigger do drawer sem perda de conteúdo, funcionalidade ou foco, e sem exigir rolagem bidimensional. É FAIL: conteúdo cortado, funcionalidade perdida, foco perdido, ou rolagem simultânea horizontal e vertical. | PASS | Viewport inicial: 1280 CSS px; Zoom: 400%. | |
+| F1-08 | RFL | Repetir com o drawer mobile aberto (<640px). | Mesmo resultado esperado do item anterior. | PASS | Viewport inicial: 1280 CSS px; Zoom: 400%. | |
+| F1-09 | LDT | Com NVDA ativo, percorrer: abrir `/` → Header (wordmark, nav de Categorias) → H1 "FastCompre" → hero → cards → paginação (se houver) → Footer (Categorias, disclosure, copyright). | Cada etapa é compreensível e executável só pelo áudio, incluindo a distinção entre os dois landmarks "Categorias" (Header) e "Categorias no rodapé" (Footer). | PASS |  | |
+
+#### F2 — Categoria
+
+Pontos de referência: `/:categorySlug` (estado populado), alcançada por navegação real a partir do link de Categoria do Header (nunca `page.goto()`, mesmo precedente de `UXQ-003`). Critérios transversais do shell já verificados em **F1** não são repetidos aqui.
+
+| # | Critério | Passo de execução | Resultado esperado | PASS/FAIL/N/A | Evidência/Observação | Tarefa de origem (se FAIL) |
+|---|---|---|---|---|---|---|
+| F2-01 | TEC/ORD/VIS | Em `/:categorySlug`, `Tab` pelos cards de Artigo e pelos controles de paginação (quando houver mais de uma página), sem mouse; comparar com a ordem visual; observar o indicador de foco a cada parada. | Todo link/controle alcançável via teclado, na ordem visual, com foco sempre visível. | PASS |  | |
+| F2-02 | NOM | Inspecionar o H1 (nome da Categoria) e os nomes acessíveis dos links de card (`aria-labelledby` para o título do Artigo). | H1 corresponde exatamente ao nome real da Categoria; nome acessível de cada card corresponde ao título do Artigo, nunca genérico. | PASS |  | |
+| F2-03 | RFL | Em `/:categorySlug`, aplicar zoom do navegador até 400% a partir da largura inicial registrada (1280 CSS px). | Grade de Artigos e paginação permanecem utilizáveis, sem corte de conteúdo e sem rolagem horizontal da página inteira. | PASS | Viewport inicial: 1280 CSS px; Zoom: 400%. | |
+| F2-04 | LDT | Com NVDA ativo, percorrer: chegar a `/:categorySlug` (via link de Categoria do Header, não `page.goto()`) → H1 (nome da Categoria) → cards de Artigo → paginação (se houver). | Cada etapa é compreensível e executável só pelo áudio, incluindo a confirmação do nome da Categoria alcançada. | PASS |  | |
+
+#### F3 — Artigo + byline
+
+Pontos de referência: `/:categorySlug/:articleSlug` (estado populado), alcançado por navegação real a partir do link do card de Artigo na Categoria (nunca `page.goto()`, mesmo precedente de `UXQ-003`). Critérios transversais do shell já verificados em **F1** não são repetidos aqui.
+
+| # | Critério | Passo de execução | Resultado esperado | PASS/FAIL/N/A | Evidência/Observação | Tarefa de origem (se FAIL) |
+|---|---|---|---|---|---|---|
+| F3-01 | TEC/ORD/VIS | Em `/:categorySlug/:articleSlug`, `Tab` pelos links inline do corpo MDX (quando houver) e pelos CTAs de Oferta (bloco de Produto inline e seção estática "Produtos" ao final), sem mouse; comparar com a ordem visual (de cima para baixo); observar o indicador de foco a cada parada. | Todo controle interativo (links do corpo, CTAs de Oferta) alcançável via teclado, na ordem visual, com foco sempre visível. | PASS |  | |
+| F3-02 | NOM | Inspecionar: H1 (título do Artigo); byline — avatar real (`alt=""`) ou iniciais de fallback (`aria-hidden="true"`), nome do Autor sempre como texto visível ao lado; headings do corpo MDX (escala H2–H6 remapeada, Architecture.md §33); heading "Produtos" da seção estática. | Avatar/iniciais da byline são puramente decorativos (nunca duplicam o nome no leitor de tela); nome do Autor sempre anunciado uma única vez; hierarquia de headings coerente (nenhum segundo H1 na página). | PASS |  | |
+| F3-03 | MSG | Em um Artigo sem Autor vinculado (`article.author` nulo), verificar a byline. | A byline inteira é omitida (nenhum elemento vazio/quebrado renderizado) — comportamento condicional, nunca um fallback visual sem dado real. Marcar N/A se a fixture executada não cobrir um Artigo sem Autor. | PASS |  | |
+| F3-04 | RFL | Em `/:categorySlug/:articleSlug`, aplicar zoom até 400% a partir da largura inicial registrada (1280 CSS px), observando especificamente a byline, a capa e o wrapper interno do corpo (`max-w-3xl`). | Título, byline, capa, corpo de texto e seção "Produtos" permanecem legíveis e utilizáveis, sem corte de conteúdo e sem rolagem horizontal. | PASS | Viewport inicial: 1280 CSS px; Zoom: 400%. | |
+| F3-05 | LDT | Com NVDA ativo, percorrer: chegar ao Artigo (via link de card na Categoria, não `page.goto()`) → H1 → data → byline → corpo MDX → seção "Produtos". | Cada etapa é compreensível e executável só pelo áudio, incluindo a distinção entre o nome do Autor (texto sempre visível) e o avatar/iniciais (decorativos). | PASS |  | |
+
+#### F4 — CTA de afiliado / redirecionamento
+
+Pontos de referência: CTAs de Oferta dentro do Artigo (bloco de Produto inline, `product-block.tsx`, e seção estática "Produtos", `page.tsx`) — ambos reutilizam exatamente o mesmo `ProductOfferList` (`product-offer-list.tsx`), confirmado por leitura do código: nenhum padrão de foco distinto entre os dois pontos de renderização.
+
+| # | Critério | Passo de execução | Resultado esperado | PASS/FAIL/N/A | Evidência/Observação | Tarefa de origem (se FAIL) |
+|---|---|---|---|---|---|---|
+| F4-01 | TEC | Localizar um CTA de Oferta em estoque (bloco de Produto inline ou seção estática "Produtos") via `Tab`; ativá-lo pelo teclado (`Enter`), sem mouse. | CTA alcançável e ativável sem mouse, com o mesmo comportamento em ambos os pontos de renderização (`ProductOfferList` compartilhado). | PASS |  | |
+| F4-02 | NOM | Inspecionar o nome acessível do CTA e o texto de uma Oferta fora de estoque. | Nome acessível do CTA = `{Marketplace} — {Preço formatado}` seguido de um trecho `sr-only` "(abre em nova aba)"; Oferta fora de estoque é texto simples, nunca um link/controle interativo. | PASS |  | |
+| F4-03 | CMP | Ativar o CTA (teclado ou mouse) e observar o comportamento resultante. | O `<a>` é um link real (`target="_blank"`, `rel="sponsored nofollow noopener noreferrer"`), sem handler/JS controlando a navegação (Server Component puro, sem `onClick`) — abre uma nova aba/guia para a cadeia de redirecionamento (`GET /r/:siteSlug/:offerId?articleId=...`); foco e composição da página de origem (Artigo) não são alterados pela abertura da nova aba. | PASS |  | |
+| F4-04 | LDT | Com NVDA ativo, localizar um CTA de Oferta em estoque e uma Oferta fora de estoque, sem olhar a tela. | O CTA é anunciado com o rótulo do marketplace, o preço e a indicação "(abre em nova aba)" antes da ativação; a Oferta fora de estoque é anunciada como texto comum, nunca como um controle inoperante. | PASS |  | |
+
+### 3.4 Histórico de achados e retestes — FastCompre (UXQ-005)
+
+Preenchido só quando houver ao menos um `FAIL` nas tabelas da Seção 3.3. Cada achado gera uma linha; cada reteste (após correção na tarefa de origem) gera uma nova linha vinculada ao mesmo item.
+
+| Item (#) | Achado (resumo) | Tarefa de origem | Status | Reteste (data/resultado) |
+|---|---|---|---|---|
+| | | | | |
+
+> Nenhuma correção de código é feita dentro da `UXQ-005`. Um achado aqui é devolvido à tarefa de origem; a correção e o reteste acontecem lá, e só então a linha correspondente na Seção 3.3 muda de `FAIL` para `PASS`.
+
+### 3.5 Fechamento — FastCompre (UXQ-005)
+
+- [x] Todas as linhas das tabelas F1–F4 (Seção 3.3) estão preenchidas com `PASS` ou `N/A` justificado.
+- [x] Zero `FAIL` pendente na Seção 3.4.
+- [x] Cabeçalho de execução (Seção 3.0) preenchido por completo.
+
+**Resultado final desta seção:** `Concluída` só é válido quando as três condições acima são verdadeiras. Caso contrário, o estado é `Em andamento — bloqueada`, e a tarefa não pode ser assinada como concluída, independentemente de achados já triados/em correção.
+
+Assinatura:
+
+```
+Executor: ______________________________
+Data: __________________________________
+Resultado final: _______________________
+```
