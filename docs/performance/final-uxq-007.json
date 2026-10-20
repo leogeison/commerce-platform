@@ -1,0 +1,302 @@
+{
+  "status": "ok",
+  "metadata": {
+    "lighthouseVersion": "13.4.1",
+    "chromeUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "formFactor": "mobile",
+    "throttlingMethod": "simulate",
+    "throttling": {
+      "rttMs": 150,
+      "throughputKbps": 1638.4,
+      "requestLatencyMs": 562.5,
+      "downloadThroughputKbps": 1474.5600000000002,
+      "uploadThroughputKbps": 675,
+      "cpuSlowdownMultiplier": 4
+    },
+    "navigationMode": true,
+    "runsPerRoute": 5,
+    "retryPolicy": "1 retry por slot (máx. 2 tentativas); falha do slot após retry => rota insufficient-data",
+    "aggregation": "median-per-metric (nunca median-run)",
+    "disableStorageReset": false,
+    "baseUrl": "http://localhost:3002",
+    "categorySlug": "eletronicos-para-viagem",
+    "articleSlug": "carregador-usb-c-65w-gan-vale-a-pena",
+    "cruxRequested": false,
+    "cruxFormFactor": null,
+    "publicOriginForCrux": null,
+    "executionMachine": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "Intel(R) Core(TM) i5-9400F CPU @ 2.90GHz",
+      "totalMemGb": 15.92,
+      "nodeVersion": "v22.20.0"
+    },
+    "executedAt": "2026-10-18T15:25:24.908Z"
+  },
+  "raw": {
+    "lighthouseRuns": [
+      {
+        "route": "/",
+        "slot": 1,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2738.7721,
+        "cls": 0,
+        "tbt": 49,
+        "ttfb": 19
+      },
+      {
+        "route": "/",
+        "slot": 2,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2787.3899,
+        "cls": 0,
+        "tbt": 104.5,
+        "ttfb": 13
+      },
+      {
+        "route": "/",
+        "slot": 3,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2705.1102,
+        "cls": 0,
+        "tbt": 39.5,
+        "ttfb": 15
+      },
+      {
+        "route": "/",
+        "slot": 4,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2716.4726,
+        "cls": 0,
+        "tbt": 48.5,
+        "ttfb": 14
+      },
+      {
+        "route": "/",
+        "slot": 5,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2768.741,
+        "cls": 0,
+        "tbt": 31.5,
+        "ttfb": 11
+      },
+      {
+        "route": "/[categorySlug]",
+        "slot": 1,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2703.0589,
+        "cls": 0,
+        "tbt": 45,
+        "ttfb": 10
+      },
+      {
+        "route": "/[categorySlug]",
+        "slot": 2,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2610.95,
+        "cls": 0,
+        "tbt": 50,
+        "ttfb": 12
+      },
+      {
+        "route": "/[categorySlug]",
+        "slot": 3,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2717.4519999999998,
+        "cls": 0,
+        "tbt": 129,
+        "ttfb": 10
+      },
+      {
+        "route": "/[categorySlug]",
+        "slot": 4,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2690.2014,
+        "cls": 0,
+        "tbt": 38,
+        "ttfb": 10
+      },
+      {
+        "route": "/[categorySlug]",
+        "slot": 5,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2609.8922,
+        "cls": 0,
+        "tbt": 51,
+        "ttfb": 9
+      },
+      {
+        "route": "/[categorySlug]/[articleSlug]",
+        "slot": 1,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2717.8835,
+        "cls": 0,
+        "tbt": 50.5,
+        "ttfb": 16
+      },
+      {
+        "route": "/[categorySlug]/[articleSlug]",
+        "slot": 2,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2734.5941326573247,
+        "cls": 0,
+        "tbt": 95,
+        "ttfb": 13
+      },
+      {
+        "route": "/[categorySlug]/[articleSlug]",
+        "slot": 3,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2714.5606,
+        "cls": 0,
+        "tbt": 74,
+        "ttfb": 19
+      },
+      {
+        "route": "/[categorySlug]/[articleSlug]",
+        "slot": 4,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2645.5325117275347,
+        "cls": 0.03252954455441173,
+        "tbt": 48,
+        "ttfb": 13
+      },
+      {
+        "route": "/[categorySlug]/[articleSlug]",
+        "slot": 5,
+        "attempt": 1,
+        "status": "success",
+        "error": null,
+        "lcp": 2694.2807999999995,
+        "cls": 0,
+        "tbt": 40,
+        "ttfb": 15
+      }
+    ],
+    "cruxQueries": [
+      {
+        "route": "/",
+        "tier": null,
+        "status": "not requested"
+      },
+      {
+        "route": "/[categorySlug]",
+        "tier": null,
+        "status": "not requested"
+      },
+      {
+        "route": "/[categorySlug]/[articleSlug]",
+        "tier": null,
+        "status": "not requested"
+      }
+    ]
+  },
+  "aggregated": {
+    "/": {
+      "status": "ok",
+      "lcp": {
+        "median": 2738.7721,
+        "unit": "ms"
+      },
+      "cls": {
+        "median": 0,
+        "unit": "unitless"
+      },
+      "tbt": {
+        "median": 48.5,
+        "unit": "ms"
+      },
+      "ttfb": {
+        "median": 14,
+        "unit": "ms"
+      },
+      "inp": {
+        "value": null,
+        "unit": "ms",
+        "status": "not requested",
+        "source": null,
+        "scope": null
+      }
+    },
+    "/[categorySlug]": {
+      "status": "ok",
+      "lcp": {
+        "median": 2690.2014,
+        "unit": "ms"
+      },
+      "cls": {
+        "median": 0,
+        "unit": "unitless"
+      },
+      "tbt": {
+        "median": 50,
+        "unit": "ms"
+      },
+      "ttfb": {
+        "median": 10,
+        "unit": "ms"
+      },
+      "inp": {
+        "value": null,
+        "unit": "ms",
+        "status": "not requested",
+        "source": null,
+        "scope": null
+      }
+    },
+    "/[categorySlug]/[articleSlug]": {
+      "status": "ok",
+      "lcp": {
+        "median": 2714.5606,
+        "unit": "ms"
+      },
+      "cls": {
+        "median": 0,
+        "unit": "unitless"
+      },
+      "tbt": {
+        "median": 50.5,
+        "unit": "ms"
+      },
+      "ttfb": {
+        "median": 15,
+        "unit": "ms"
+      },
+      "inp": {
+        "value": null,
+        "unit": "ms",
+        "status": "not requested",
+        "source": null,
+        "scope": null
+      }
+    }
+  }
+}

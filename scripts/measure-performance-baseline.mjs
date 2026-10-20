@@ -65,8 +65,19 @@
  *     --category-slug=<slug real> --article-slug=<slug real> \
  *     [--base-url=http://localhost:3002] \
  *     [--public-origin=https://fastcompre.com.br]   # opt-in de INP/CrUX
+ *     [--out-prefix=docs/performance/final-uxq-007]  # opt-in de destino de saída
  *
  *   CRUX_API_KEY=<chave>  # obrigatório no ambiente se --public-origin for usado
+ *
+ *   --out-prefix (opcional): redireciona a saída para "<prefix>.json" e
+ *   "<prefix>.md" (caminho relativo à raiz do monorepo, ou absoluto),
+ *   SEM alterar nenhuma outra decisão congelada deste script (Lighthouse,
+ *   preset, navigation mode, runs/retry/agregação, métricas, budgets).
+ *   Sem a flag, o comportamento é idêntico ao original: sempre
+ *   `docs/performance/baseline-uxf-013.json`/`.md` — nunca sobrescrito
+ *   por engano por uma execução que pretendia medir outra coisa (ex.:
+ *   UXQ-007 reexecutando a mesma metodologia da UXF-013 para comparação,
+ *   sem apagar a baseline original usada por UXF-014).
  */
 
 import fs from 'node:fs';
@@ -89,12 +100,13 @@ const MAX_ATTEMPTS_PER_SLOT = 2; // tentativa inicial + 1 retry
 // CLI args
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = {
     baseUrl: 'http://localhost:3002',
     categorySlug: null,
     articleSlug: null,
     publicOrigin: null,
+    outPrefix: null,
   };
 
   for (const raw of argv) {
@@ -116,6 +128,9 @@ function parseArgs(argv) {
         break;
       case 'public-origin':
         args.publicOrigin = value;
+        break;
+      case 'out-prefix':
+        args.outPrefix = value;
         break;
       default:
         throw new Error(`Argumento desconhecido: --${key}`);
@@ -411,9 +426,9 @@ function formatInp(inp) {
   return inp.status; // "not requested" | "unavailable"
 }
 
-function generateMarkdown(report) {
+function generateMarkdown(report, options = {}) {
   const lines = [];
-  lines.push('# UXF-013 — Baseline de performance do FastCompre (estado atual)');
+  lines.push(options.title ?? '# UXF-013 — Baseline de performance do FastCompre (estado atual)');
   lines.push('');
   lines.push(`Gerado em: ${report.metadata.executedAt}`);
   lines.push(`Status geral: **${report.status}**`);
@@ -456,6 +471,23 @@ function generateMarkdown(report) {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+// --out-prefix redireciona a saída (ex.: UXQ-007 reexecutando a mesma
+// metodologia para comparação, sem sobrescrever a baseline original da
+// UXF-013). Sem a flag, os caminhos de saída são exatamente os de sempre
+// (docs/performance/baseline-uxf-013.json/.md) — nenhuma outra decisão
+// congelada do script (Lighthouse, preset, navigation mode, runs/retry/
+// agregação, métricas, budgets) é afetada por esta função.
+export function resolveOutputTargets(args) {
+  const outJsonPath = args.outPrefix ? `${path.resolve(ROOT, args.outPrefix)}.json` : OUT_JSON;
+  const outMdPath = args.outPrefix ? `${path.resolve(ROOT, args.outPrefix)}.md` : OUT_MD;
+  const outDirPath = args.outPrefix ? path.dirname(outJsonPath) : OUT_DIR;
+  const markdownOptions = args.outPrefix
+    ? { title: '# UXQ-007 — Medição final de performance do FastCompre' }
+    : undefined;
+
+  return { outJsonPath, outMdPath, outDirPath, markdownOptions };
+}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -558,11 +590,13 @@ async function main() {
     aggregated,
   };
 
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.writeFileSync(OUT_JSON, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-  fs.writeFileSync(OUT_MD, generateMarkdown(report), 'utf8');
+  const { outJsonPath, outMdPath, outDirPath, markdownOptions } = resolveOutputTargets(args);
 
-  console.log(`\nRelatório escrito em:\n  ${path.relative(ROOT, OUT_JSON)}\n  ${path.relative(ROOT, OUT_MD)}`);
+  fs.mkdirSync(outDirPath, { recursive: true });
+  fs.writeFileSync(outJsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(outMdPath, generateMarkdown(report, markdownOptions), 'utf8');
+
+  console.log(`\nRelatório escrito em:\n  ${path.relative(ROOT, outJsonPath)}\n  ${path.relative(ROOT, outMdPath)}`);
 
   if (anyRouteFailed) {
     console.error('\nUma ou mais rotas ficaram "insufficient-data" — baseline não é oficial.');
@@ -570,7 +604,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`\nErro: ${err.message}`);
-  process.exitCode = 1;
-});
+const isMainModule =
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isMainModule) {
+  main().catch((err) => {
+    console.error(`\nErro: ${err.message}`);
+    process.exitCode = 1;
+  });
+}
