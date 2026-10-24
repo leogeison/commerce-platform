@@ -56,6 +56,46 @@ O critério efetivo de LCP por página (UXF-014, Seção 4) exige respeitar simu
 - TBT é apenas diagnóstico nesta tarefa, sem critério de aprovação próprio.
 - **A UXQ-008 passa a ser aplicável**, conforme seu pré-requisito no backlog: "corrigir qualquer página que não atinja o budget definido em UXF-014, identificada em UXQ-007".
 
+## UXQ-008 — Encerramento (desvio de performance aceito pelo PO)
+
+Registrado em: 2026-10-24
+
+**Status: ENCERRADA — desvio conhecido e documentado, sem budget atingido.** Esta seção não substitui nem revisa a medição normativa acima; registra o resultado da investigação de causa e a decisão do PO que encerra a tarefa.
+
+### Resultado
+
+- Home, Categoria e Artigo **continuam acima do budget de LCP** (Camada B) nas 5/5 execuções por rota já registradas na medição normativa acima — 15/15 runs da UXQ-007 acima do budget.
+- **Nenhuma correção pequena, segura e empiricamente sustentada, capaz de recuperar o déficit de ~350–410 ms, foi identificada** dentro do escopo de ajuste de baixo risco desta tarefa.
+- **O budget da UXF-014 permanece INALTERADO.** Não houve, em nenhum momento desta tarefa, relaxamento, reinterpretação ou revisão do budget.
+
+### Candidatos investigados e/ou testados (evidência já coletada, não repetida aqui em detalhe)
+
+| Candidato | Resultado |
+|---|---|
+| Imagens | Não são o elemento LCP em nenhuma das 3 rotas (confirmado via `lcp-discovery-insight` vazio nas capturas de produção) |
+| Webfonts | Download concluído em <250 ms em todas as capturas; sem evidência de causa dominante |
+| `experimental.inlineCss` | Testado empiricamente — regressão uniforme de ~153–161 ms nas 3 rotas; rejeitado |
+| CSS render-blocking → não bloqueante (experimento A/B via proxy local) | Redução observada porém insuficiente (Home ~−68 ms, Categoria ~−38 ms, Artigo ~−17 ms); **0/15 runs PASS**; regressão de CLS em Home/Categoria; descartado como solução |
+| JS/hidratação | Long task de hidratação ocorre >1 s depois do LCP observado em todas as 5 capturas de produção; sem evidência temporal de bloqueio do paint real |
+| Utilities CSS mortas (inspeção do CSS compilado) | Apenas `.animate-spin` (~45 bytes não comprimidos) sem consumidor real; impacto não mensurável frente ao déficit — alteração revertida, não mantida |
+
+### Decisão do PO
+
+O PO optou formalmente por **aceitar o FAIL de LCP como desvio conhecido e documentado**, permitindo o fechamento do MVP neste momento, sem alterar o budget e sem abrir uma intervenção arquitetural maior nesta tarefa. Esta decisão:
+
+- **NÃO significa que o budget foi atendido** — é uma exceção explícita do PO, não um PASS técnico.
+- Não altera o budget da UXF-014.
+- Não implementa nenhuma correção adicional além das já testadas e descartadas/revertidas acima.
+- Deixa qualquer eventual intervenção arquitetural maior (ex.: divisão do CSS global por rota, revisão da composição do shell compartilhado, infraestrutura de entrega) para trabalho futuro separado, fora desta tarefa.
+
+### Consequência para a UXQ-009
+
+- **O budget da UXF-014 continua não atendido** para Home, Categoria e Artigo (ver "Resultado frente ao budget (UXF-014)" acima) — esta seção não altera esse fato.
+- **O critério técnico original de performance da UXQ-009** ("budget cumprido e documentado") **não poderá ser satisfeito literalmente** com base nesta medição.
+- O PO aprovou uma **exceção/waiver formal** para permitir o fechamento do MVP, registrada nesta seção — não uma revisão do critério original.
+- A UXQ-009, quando executada, **deve registrar o gate como fechado por exceção explícita do PO**, nunca como "budget PASS" — a redação do fechamento da UXQ-009 deve deixar isso inequívoco.
+- Esta exceção **não reclassifica os resultados de LCP como aprovados** e **não altera retroativamente a UXF-014** nem a medição normativa da UXQ-007 acima.
+
 ## Metadados de reprodução (UXQ-007 deve usar a mesma configuração)
 
 ```json
