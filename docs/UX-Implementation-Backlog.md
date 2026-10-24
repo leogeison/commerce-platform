@@ -1103,7 +1103,7 @@ Bloco comum: nenhuma tarefa desta seção altera SEO estrutural já congelado (U
 **Escopo incluído:** verificação de que o budget de performance de UXF-014 é atingido nas 3 páginas nesta implementação (medição intermediária); suíte completa verde.
 **Fora de escopo:** a medição final consolidada (UXQ-007).
 **Arquivos/áreas:** nenhum novo — verificação.
-**Critérios de aceite:** 3 páginas em produção, funcionalmente completas e testadas — isso por si só já fecha **UX-M04**, independentemente do resultado de performance. Se o budget de UXF-014 não for atingido em alguma página, **UX-M04 fecha mesmo assim**, mas o desvio é registrado formalmente (página, métrica, valor medido vs. budget) como entrada obrigatória de `UXQ-007`; esse registro **bloqueia explicitamente o fechamento de UX-M05** (via `UXQ-008`/`UXQ-009`) até ser resolvido. O budget em si nunca é alterado por este registro — só a data em que é formalmente verificado como cumprido.
+**Critérios de aceite:** 3 páginas em produção, funcionalmente completas e testadas — isso por si só já fecha **UX-M04**, independentemente do resultado de performance. Se o budget de UXF-014 não for atingido em alguma página, **UX-M04 fecha mesmo assim**, mas o desvio é registrado formalmente (página, métrica, valor medido vs. budget) como entrada obrigatória de `UXQ-007`; esse registro **bloqueia explicitamente o fechamento de UX-M05** (via `UXQ-008`/`UXQ-009`) até ser resolvido ou até waiver formal do PO (ver `UXQ-009`). O budget em si nunca é alterado por este registro — só a data em que é formalmente verificado como cumprido.
 **Testes esperados:** suíte completa das 3 páginas.
 **Performance:** critério de aceite central da tarefa, com a distinção acima entre o que fecha UX-M04 (completude funcional/visual) e o que fecha UX-M05 (cumprimento do budget).
 **Riscos:** se o budget não for atingido aqui, é sinal antecipado para UXQ-008 — registrar imediatamente em vez de esperar até E12 para descobrir, exatamente para que UX-M05 não seja pego de surpresa.
@@ -1223,6 +1223,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 **Critérios de aceite:** budget cumprido e documentado; UX-M05 Quality Gate Passed fechado (junto de UXQ-006).
 **Testes esperados:** o relatório final de UXQ-007 (ou UXQ-008, se houve ajuste).
 **Riscos:** nenhum.
+**Status de fechamento (2026-10-24):** ENCERRADA por waiver formal do PO, sustentado pela investigação da UXQ-008 (`docs/performance/final-uxq-007.md`, seção "UXQ-008 — Encerramento"). O critério técnico original acima ("budget cumprido") **não foi satisfeito** — Home, Categoria e Artigo permanecem em FAIL de LCP frente ao budget da UXF-014. `UX-M05 Quality Gate Passed` fecha administrativamente por esta exceção explícita, com a performance residual conhecida e documentada — **não** uma reclassificação dos resultados como PASS, e **sem** alteração dos valores/budgets da UXF-014.
 **Dependências posteriores:** UXQ-014.
 
 ### UXQ-010 — Reexecução consolidada da regressão visual
@@ -1374,7 +1375,7 @@ UXQ (Quality)
 | **UX-M02 Admin Rebuilt** | UXA-020 | UX-M01 |
 | **UX-M03 Editorial Platform Ready** | UXE-016 + UXE-021 | UX-M01, UX-M02 (compartilha shell/painel) |
 | **UX-M04 FastCompre Rebuilt** | UXW-016 | UX-M01 — **fecha independentemente do resultado de performance**; desvio de budget, se houver, é só registrado (ver UXW-016), não bloqueia este milestone |
-| **UX-M05 Quality Gate Passed** | UXQ-006 + UXQ-009 | UX-M02, UX-M03, UX-M04 — **bloqueado** até qualquer desvio de budget registrado em UXW-016 ser resolvido via UXQ-008/UXQ-009 |
+| **UX-M05 Quality Gate Passed** | UXQ-006 + UXQ-009 | UX-M02, UX-M03, UX-M04 — fechado em 2026-10-24 por **exceção/waiver formal do PO** (via UXQ-009), com o desvio de budget registrado em UXW-016 **não resolvido tecnicamente** (ver `docs/performance/final-uxq-007.md`) |
 | **UX-M06 UI/UX Complete** | UXQ-014 | **Dependência explícita declarada:** UX-M01 + UX-M02 + UX-M03 + UX-M04 + UX-M05 + E13 (UXQ-010 a UXQ-013) |
 
 ## Caminhos críticos concorrentes
@@ -1416,7 +1417,7 @@ UXQ (Quality)
 7. `UXW-001` e `UXW-002` podem começar assim que `UXF-010` estiver pronto (`UXW-001` também depende de `UXF-001A`, nesta revisão), sem esperar a trilha Admin. `UXW-003` (e, por dependência transitiva, `UXW-004`, `UXW-005`, `UXW-005A` e `UXW-006`) passa a depender também de `UXF-010A` — o pré-requisito corretivo registrado nesta revisão — e só pode começar depois de `UXF-010A` fechar, ainda que `UXF-010` já esteja pronto. `UXW-005A` (nesta revisão) é um passo corretivo entre `UXW-005` e `UXW-006` — implementa o JSON-LD estrutural de `Article`/`Product` que a investigação da própria `UXW-006` encontrou ausente; `UXW-006` fica bloqueada até `UXW-005A` fechar. Dentro de `UXW-007…016`, aproveitar que `UXW-012` e `UXW-014` não dependem do ramo `UXW-010→011→013` — podem ser adiantadas. `UXW-011` continua sendo o ponto de espera real (depende de `UXE-018`).
 8. Cada tarefa que produz um baseline visual (`UXA-020`, `UXE-016`, `UXW-015`) deve capturá-lo no momento indicado — não adiar para o final.
 9. `UXQ-001` (scaffold) pode nascer assim que houver o primeiro fluxo real testável (tipicamente logo após `UXA-012` ou `UXW-006`) — **não espera `UXA-016`/`UXE-016`/`UXW-016`**; só os cenários completos (`UXQ-002`/`UXQ-003`) esperam essas superfícies. `UXQ-004`/`UXQ-005` (checklists manuais) nem dependem do scaffold — podem começar em paralelo a ele.
-10. Registrar imediatamente em `UXW-016` qualquer desvio de performance encontrado — isso não impede `UX-M04` de fechar, mas é entrada obrigatória de `UXQ-007`/`UXQ-008` e bloqueia `UX-M05` até resolvido.
+10. Registrar imediatamente em `UXW-016` qualquer desvio de performance encontrado — isso não impede `UX-M04` de fechar, mas é entrada obrigatória de `UXQ-007`/`UXQ-008` e bloqueia `UX-M05` até resolvido ou até waiver formal do PO (ver `UXQ-009`).
 11. Fechar `UX-M05` (`UXQ-006`+`UXQ-009`) antes de iniciar `UXQ-010` em diante.
 12. `UXQ-014` é sempre a última tarefa do ciclo — sua própria definição de pronto exige os cinco milestones anteriores e `E13` explicitamente registrados, não apenas implicados pelo grafo técnico.
 13. Se, durante a implementação de qualquer tarefa, surgir uma contradição real com o que está aqui documentado (achado técnico nas Etapas A–D, resultado inesperado do spike, budget de performance inatingível mesmo após ajuste, sintaxe do bloco editorial se revelando instável) — **interromper e trazer para aprovação, nunca decidir silenciosamente**, mesma disciplina usada em todo este ciclo de planejamento.
