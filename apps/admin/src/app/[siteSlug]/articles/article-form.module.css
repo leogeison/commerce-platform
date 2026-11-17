@@ -891,6 +891,7 @@
 
 .previewContent {
   max-width: 65ch;
+  color: var(--color-text-primary);
 }
 
 .previewContent > *:first-child {
@@ -899,6 +900,130 @@
 
 .previewContent > *:last-child {
   margin-bottom: 0;
+}
+
+/*
+ * UXE-009A — Fidelidade visual do Preview do Artigo. O Tailwind Preflight
+ * (`@import "tailwindcss"` em `globals.css`, `@layer base`) zera margens e
+ * paddings, remove marcadores de lista e neutraliza headings e links — o
+ * conteúdo compilado aparecia como texto cru. As regras abaixo reproduzem,
+ * só na apresentação, o ritmo vertical e a hierarquia do renderer público
+ * (`mdxComponents` em `apps/fastcompre/.../[articleSlug]/page.tsx`), com os
+ * mesmos valores — sem importar nada do FastCompre e sem tocar no HTML que
+ * o MDX produz (`compileArticleBody`, `components={{ h1: 'h2' }}`).
+ *
+ * - Seletores de ELEMENTO são descendentes (não `>`) de propósito: o
+ *   renderer público mapeia por tipo de elemento em qualquer profundidade
+ *   (todo `p` recebe `mt-4`, inclusive `li > p` de listas "loose" de
+ *   conteúdo legado e `blockquote > p`).
+ * - Regras sem camada de CSS Module vencem o Preflight (`@layer base`).
+ * - `.previewContent > *:first-child { margin-top: 0 }` (acima) é mantida
+ *   deliberadamente: no público a margem do primeiro bloco colapsa com o
+ *   `mt-10` do contêiner do corpo e nunca soma espaço próprio — aqui o
+ *   espaço acima do conteúdo é definido pelo painel, mesmo efeito.
+ * - Divergências deliberadas: fonte (o Admin não usa a serif editorial —
+ *   `packages/ui/tokens/typography.css`), largura do contêiner, conteúdo
+ *   resumido do card de Produto e cores do painel do Preview.
+ * - Link: `--color-accent-text` é o token semântico de "texto/link de
+ *   acento" (`packages/ui/tokens/README.md`, par validado em
+ *   `check-contrast.mjs`). Como ele já é o tom do hover público, o estado
+ *   de hover é indicado por sublinhado mais espesso (não só por cor).
+ */
+.previewContent p {
+  margin-top: 1rem;
+  line-height: 1.625;
+}
+
+.previewContent h2 {
+  margin-top: 2.5rem;
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+}
+
+.previewContent h3 {
+  margin-top: 2rem;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+
+.previewContent h4 {
+  margin-top: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+
+.previewContent h5 {
+  margin-top: 1.5rem;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+}
+
+.previewContent h6 {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--color-text-muted);
+}
+
+.previewContent ul,
+.previewContent ol {
+  margin-top: 1rem;
+  padding-left: 1.5rem;
+}
+
+.previewContent ul {
+  list-style-type: disc;
+}
+
+.previewContent ol {
+  list-style-type: decimal;
+}
+
+.previewContent li {
+  line-height: 1.5rem;
+}
+
+/* Mesmo mecanismo de `space-y-2` no Tailwind v4: margem final em todos os itens, exceto o último. */
+.previewContent ul > li:not(:last-child),
+.previewContent ol > li:not(:last-child) {
+  margin-bottom: 0.5rem;
+}
+
+.previewContent blockquote {
+  margin-top: 1.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-border-default);
+  color: var(--color-text-secondary);
+}
+
+.previewContent a {
+  color: var(--color-accent-text);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.previewContent a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.previewContent a:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 0;
+}
+
+/* Bloco Produto/Oferta (raiz de `ProductBlockPreview` em todos os estados, ou o erro de bloco malformado): `mt-8` do card público. */
+.previewContent > .previewProductBlock:not(:first-child),
+.previewContent > .previewProductBlockLoading:not(:first-child),
+.previewContent > .previewProductBlockError:not(:first-child) {
+  margin-top: 2rem;
 }
 
 /*
