@@ -140,6 +140,8 @@ test.describe('Editor — baseline visual de composição completa (UXE-022)', (
     const composition = page.getByTestId('article-editor-composition');
     await expect(composition.getByRole('heading', { name: 'Guia rápido de escolha' })).toBeVisible();
 
+    // Geist via `next/font` (`display: swap`) — nunca capturar a fonte de fallback.
+    await page.evaluate(() => document.fonts.ready);
     await expect(composition).toHaveScreenshot('editor-composition-desktop.png');
   });
 
@@ -152,6 +154,7 @@ test.describe('Editor — baseline visual de composição completa (UXE-022)', (
     const composition = page.getByTestId('article-editor-composition');
     await expect(composition.getByRole('heading', { name: 'Guia rápido de escolha' })).toBeVisible();
 
+    await page.evaluate(() => document.fonts.ready);
     await expect(composition).toHaveScreenshot('editor-composition-tablet.png');
   });
 
@@ -164,6 +167,7 @@ test.describe('Editor — baseline visual de composição completa (UXE-022)', (
     const composition = page.getByTestId('article-editor-composition');
     await expect(composition.getByRole('heading', { name: 'Guia rápido de escolha' })).toBeVisible();
 
+    await page.evaluate(() => document.fonts.ready);
     await expect(composition).toHaveScreenshot('editor-composition-mobile.png');
   });
 });

@@ -196,6 +196,8 @@ test.describe('Editor — baseline visual (UXE-016)', () => {
     const bodyField = page.getByTestId('article-body-field');
     await expect(bodyField.getByRole('textbox', { name: 'Corpo (Markdown)' })).toBeVisible();
 
+    // Geist via `next/font` (`display: swap`) — nunca capturar a fonte de fallback.
+    await page.evaluate(() => document.fonts.ready);
     await expect(bodyField).toHaveScreenshot('editor-empty.png');
   });
 
@@ -207,6 +209,7 @@ test.describe('Editor — baseline visual (UXE-016)', () => {
     const bodyField = page.getByTestId('article-body-field');
     await expect(bodyField.getByRole('heading', { name: 'Guia rápido de escolha' })).toBeVisible();
 
+    await page.evaluate(() => document.fonts.ready);
     await expect(bodyField).toHaveScreenshot('editor-content.png');
   });
 
@@ -221,6 +224,7 @@ test.describe('Editor — baseline visual (UXE-016)', () => {
     // carrega nome/preço embutidos no próprio bodyMdx.
     await expect(bodyField.getByText(PRODUCT_FIXTURE.name)).toBeVisible();
 
+    await page.evaluate(() => document.fonts.ready);
     await expect(bodyField).toHaveScreenshot('editor-product-block.png');
   });
 });

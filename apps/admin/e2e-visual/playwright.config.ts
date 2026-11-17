@@ -47,6 +47,12 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // `devices['Desktop Chrome']` traz seu próprio `viewport`
+        // (1280×720), que sobrescreve o `use.viewport` de nível raiz
+        // (`use` de projeto tem precedência). Reafirmado aqui, depois do
+        // spread, para o viewport efetivo ser sempre 1440×900 — mesma
+        // correção já aplicada em `apps/fastcompre/e2e-visual/playwright.config.ts`.
+        viewport: { width: 1440, height: 900 },
         // Chromium do próprio ambiente de geração (Linux), em vez do
         // download padrão do Playwright — mesmo binário usado para
         // qualquer outra automação de browser deste ambiente.

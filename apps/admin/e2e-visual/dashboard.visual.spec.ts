@@ -143,6 +143,8 @@ test.describe('Dashboard — baseline visual (UXA-020)', () => {
     await expect(page.getByRole('link', { name: POPULATED_ARTICLES.PENDING_REVIEW.title })).toBeVisible();
     await expect(page.getByRole('link', { name: POPULATED_ARTICLES.PUBLISHED.title })).toBeVisible();
 
+    // Geist via `next/font` (`display: swap`) — nunca capturar a fonte de fallback.
+    await page.evaluate(() => document.fonts.ready);
     await expect(page).toHaveScreenshot('dashboard-populated.png', { fullPage: true });
   });
 
@@ -154,6 +156,7 @@ test.describe('Dashboard — baseline visual (UXA-020)', () => {
     await expect(page.getByText('Nenhum Artigo aguardando publicação.')).toBeVisible();
     await expect(page.getByText('Nenhum Artigo publicado recentemente.')).toBeVisible();
 
+    await page.evaluate(() => document.fonts.ready);
     await expect(page).toHaveScreenshot('dashboard-empty.png', { fullPage: true });
   });
 });
