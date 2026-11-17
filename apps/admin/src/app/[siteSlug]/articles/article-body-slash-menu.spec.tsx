@@ -22,11 +22,26 @@
  * consultas ASCII simples e não ambíguas para este conjunto de itens.
  */
 
-import { describe, expect, it, jest } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import { $getRoot, $getSelection, $isRangeSelection, getNearestEditorFromDOMNode } from 'lexical';
+import {
+  $createLineBreakNode,
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isRangeSelection,
+  $isTextNode,
+  getNearestEditorFromDOMNode,
+  KEY_ENTER_COMMAND,
+  PASTE_COMMAND,
+  UNDO_COMMAND,
+  type LexicalEditor,
+  type LexicalNode,
+} from 'lexical';
 import { ArticleBodyEditor } from './article-body-editor';
 import { ProductLookupProvider } from './product-lookup-context';
 
@@ -629,5 +644,361 @@ describe('ArticleBodySlashMenu', () => {
     } finally {
       rectSpy.mockRestore();
     }
+  });
+});
+
+/**
+ * Caminho B do gatilho `/` — `/query` logo após um `LineBreakNode` dentro de
+ * um `ParagraphNode` (Shift+Enter, ou paste de HTML terminando em `<br>`).
+ * Bug reproduzido: depois de colar conteúdo, o caret ficava numa "linha
+ * vazia" visual que é, na verdade, uma quebra dentro do MESMO parágrafo — o
+ * texto do bloco (`"Linha 1\n/"`) nunca casava com o caminho A.
+ *
+ * Estados positivos usam os comandos reais do Lexical (`KEY_ENTER_COMMAND`
+ * com `shiftKey`, `PASTE_COMMAND` tratado pelo `RichTextPlugin`,
+ * `UNDO_COMMAND` do `HistoryPlugin`). Estados negativos que exigiriam
+ * digitar DEPOIS de o menu já estar aberto são montados diretamente pela
+ * API pública do Lexical — com o menu aberto, Enter/Shift+Enter é consumido
+ * pelo próprio menu (comportamento pré-existente, fora deste escopo).
+ */
+describe('ArticleBodySlashMenu — "/" após quebra de linha num parágrafo (caminho B)', () => {
+  // jsdom não implementa `DragEvent` nem `ClipboardEvent`; o handler de
+  // paste do `RichTextPlugin` (`eventFiles`, @lexical/utils) referencia as
+  // duas classes para distinguir drop de paste. Shims mínimos, só durante
+  // este bloco, removidos ao final — nenhum efeito sobre os demais testes.
+  type EventGlobals = { DragEvent?: unknown; ClipboardEvent?: unknown };
+  const shimmed: Array<keyof EventGlobals> = [];
+  beforeAll(() => {
+    const globals = globalThis as EventGlobals;
+    if (typeof globals.DragEvent === 'undefined') {
+      globals.DragEvent = class DragEvent extends Event {};
+      shimmed.push('DragEvent');
+    }
+    if (typeof globals.ClipboardEvent === 'undefined') {
+      globals.ClipboardEvent = class ClipboardEvent extends Event {
+        readonly clipboardData: unknown;
+        constructor(type: string, init: { clipboardData?: unknown } = {}) {
+          super(type);
+          this.clipboardData = init.clipboardData ?? null;
+        }
+      };
+      shimmed.push('ClipboardEvent');
+    }
+  });
+  afterAll(() => {
+    for (const name of shimmed) {
+      delete (globalThis as EventGlobals)[name];
+    }
+  });
+
+  function getEditor(editorRoot: HTMLElement): LexicalEditor {
+    const editor = getNearestEditorFromDOMNode(editorRoot);
+    if (!editor) {
+      throw new Error('nenhuma instância de LexicalEditor encontrada a partir do DOM.');
+    }
+    return editor;
+  }
+
+  function describeNode(node: LexicalNode): string {
+    if ($isTextNode(node)) {
+      return JSON.stringify(node.getTextContent());
+    }
+    if ($isElementNode(node)) {
+      const tag = 'getTag' in node && typeof node.getTag === 'function' ? `:${String(node.getTag())}` : '';
+      return `${node.getType()}${tag}[${node.getChildren().map(describeNode).join(',')}]`;
+    }
+    return node.getType();
+  }
+
+  function readBlocks(editorRoot: HTMLElement): string {
+    return getEditor(editorRoot)
+      .getEditorState()
+      .read(() => $getRoot().getChildren().map(describeNode).join(' | '));
+  }
+
+  function typeAtSelection(editorRoot: HTMLElement, text: string): void {
+    getEditor(editorRoot).update(
+      () => {
+        const selection = $getSelection();
+        if ($isRangeSelection(selection)) {
+          selection.insertText(text);
+        }
+      },
+      { discrete: true },
+    );
+  }
+
+  function pressShiftEnter(editorRoot: HTMLElement): void {
+    const editor = getEditor(editorRoot);
+    editor.dispatchCommand(KEY_ENTER_COMMAND, new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }));
+    editor.update(() => {}, { discrete: true });
+  }
+
+  function pasteClipboard(editorRoot: HTMLElement, data: Record<string, string>): void {
+    const editor = getEditor(editorRoot);
+    const clipboardData = { types: Object.keys(data), getData: (type: string) => data[type] ?? '', files: [], items: [] };
+    const event = new ClipboardEvent('paste', { clipboardData: clipboardData as unknown as DataTransfer });
+    editor.dispatchCommand(PASTE_COMMAND, event);
+    editor.update(() => {}, { discrete: true });
+  }
+
+  /** "Texto" ⇧⏎ `slashText`, com comandos reais. */
+  async function typeTextShiftEnterSlash(editorRoot: HTMLElement, slashText: string) {
+    act(() => {
+      insertTextIntoEmptyLexicalEditor(editorRoot, 'Texto');
+    });
+    act(() => {
+      pressShiftEnter(editorRoot);
+    });
+    act(() => {
+      typeAtSelection(editorRoot, slashText);
+    });
+  }
+
+  /** Monta um único parágrafo com os filhos dados e põe o caret em (índice do filho, offset). */
+  function setParagraph(editorRoot: HTMLElement, parts: Array<string | 'LB'>, caret: { child: number; offset: number }) {
+    getEditor(editorRoot).update(
+      () => {
+        const paragraph = $createParagraphNode();
+        for (const part of parts) {
+          paragraph.append(part === 'LB' ? $createLineBreakNode() : $createTextNode(part));
+        }
+        $getRoot().clear().append(paragraph);
+        const target = paragraph.getChildren()[caret.child];
+        if (!$isTextNode(target)) {
+          throw new Error('caret precisa estar num TextNode');
+        }
+        target.select(caret.offset, caret.offset);
+      },
+      { discrete: true },
+    );
+  }
+
+  it('paste de HTML terminando em <br> + "/" na linha visual vazia abre o menu; confirmar "Título 2" preserva o conteúdo colado', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+
+    act(() => {
+      pasteClipboard(editor, { 'text/html': '<span>Linha 1</span><br>', 'text/plain': 'Linha 1\n' });
+    });
+    // Evidência do cenário real: a "linha vazia" é uma quebra dentro do MESMO parágrafo.
+    expect(readBlocks(editor)).toBe('paragraph["Linha 1",linebreak]');
+
+    act(() => {
+      typeAtSelection(editor, '/');
+    });
+    await screen.findByRole('listbox');
+
+    // Lista, Lista numerada, Título 1, Título 2.
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
+
+    expect(await screen.findByRole('heading', { level: 2 })).toBeInTheDocument();
+    expect(readBlocks(editor)).toBe('paragraph["Linha 1"] | heading:h2[]');
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('Linha 1\n\n## '));
+  });
+
+  it('Shift+Enter + "/" num parágrafo abre o menu (com a query depois da quebra)', async () => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue: '' });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+
+    await typeTextShiftEnterSlash(editor, '/lista');
+
+    expect(readBlocks(editor)).toBe('paragraph["Texto",linebreak,"/lista"]');
+    const options = await waitFor(() => {
+      const found = screen.getAllByRole('option');
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    expect(options[0]).toHaveTextContent('Lista');
+  });
+
+  it('Escape fecha o menu do caminho B sem alterar o documento', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    await typeTextShiftEnterSlash(editor, '/tit');
+    await screen.findByRole('listbox');
+    const before = readBlocks(editor);
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(readBlocks(editor)).toBe(before);
+    expect(readBlocks(editor)).toBe('paragraph["Texto",linebreak,"/tit"]');
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('Texto\n/tit'));
+  });
+
+  it('Undo depois de confirmar restaura integralmente a estrutura anterior (parágrafo, quebra e "/")', async () => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue: '' });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    await typeTextShiftEnterSlash(editor, '/');
+    await screen.findByRole('listbox');
+    const before = readBlocks(editor);
+    expect(before).toBe('paragraph["Texto",linebreak,"/"]');
+
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
+    expect(readBlocks(editor)).toBe('paragraph["Texto"] | heading:h2[]');
+
+    act(() => {
+      getEditor(editor).dispatchCommand(UNDO_COMMAND, undefined);
+    });
+
+    await waitFor(() => expect(readBlocks(editor)).toBe(before));
+  });
+
+  it('parágrafo que começa pela quebra ([quebra, "/x"]): reaproveita o próprio parágrafo, sem deixar parágrafo vazio sobrando', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      setParagraph(editor, ['LB', '/'], { child: 1, offset: 1 });
+    });
+    await screen.findByRole('listbox');
+
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
+
+    expect(readBlocks(editor)).toBe('heading:h2[]');
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('## '));
+  });
+
+  it('remove só a quebra imediatamente anterior a "/query" — quebras anteriores do usuário são preservadas', async () => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue: '' });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      setParagraph(editor, ['Texto', 'LB', 'LB', '/'], { child: 3, offset: 1 });
+    });
+    await screen.findByRole('listbox');
+
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
+
+    expect(readBlocks(editor)).toBe('paragraph["Texto",linebreak] | heading:h2[]');
+  });
+
+  it.each([
+    ['"texto /x" (barra no meio da frase)', ['Texto', 'LB', 'texto /x'] as Array<string | 'LB'>, { child: 2, offset: 8 }],
+    ['"1/2"', ['Texto', 'LB', '1/2'] as Array<string | 'LB'>, { child: 2, offset: 3 }],
+    ['"/x" numa linha intermediária, com conteúdo depois no mesmo parágrafo', ['A', 'LB', '/x', 'LB', 'B'] as Array<string | 'LB'>, { child: 2, offset: 2 }],
+    ['cursor no meio de "/tit"', ['Texto', 'LB', '/tit'] as Array<string | 'LB'>, { child: 2, offset: 2 }],
+  ])('não abre: %s', async (_label, parts, caret) => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue: '' });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      setParagraph(editor, parts, caret);
+    });
+    const before = readBlocks(editor);
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(readBlocks(editor)).toBe(before);
+  });
+
+  it.each([
+    ['Heading', '## Texto', 'heading:h2["Texto",linebreak,"/tit"]'],
+    ['Quote', '> Texto', 'quote["Texto",linebreak,"/tit"]'],
+  ])('%s com Shift+Enter + "/tit" não entra no caminho B: menu não abre e a estrutura não muda', async (_label, initialValue, expected) => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      getEditor(editor).update(() => $getRoot().getFirstChildOrThrow().selectEnd(), { discrete: true });
+    });
+    act(() => {
+      pressShiftEnter(editor);
+    });
+    act(() => {
+      typeAtSelection(editor, '/tit');
+    });
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(readBlocks(editor)).toBe(expected);
+  });
+
+  it('Lista com Shift+Enter + "/tit" num item: menu não abre, a lista não é dividida e nenhum parágrafo aparece entre os itens', async () => {
+    const user = userEvent.setup();
+    await renderEditor({ initialValue: '- Item A\n- Item B' });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    act(() => {
+      getEditor(editor).update(
+        () => {
+          const list = $getRoot().getFirstChildOrThrow();
+          if (!$isElementNode(list)) {
+            throw new Error('esperado ListNode');
+          }
+          list.getFirstChildOrThrow().selectEnd();
+        },
+        { discrete: true },
+      );
+    });
+    act(() => {
+      pressShiftEnter(editor);
+    });
+    act(() => {
+      typeAtSelection(editor, '/tit');
+    });
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(readBlocks(editor)).toBe('list:ul[listitem["Item A",linebreak,"/tit"],listitem["Item B"]]');
+  });
+
+  it('"Imagem" no caminho B: o fluxo recebe o blockKey de um parágrafo vazio novo, após o conteúdo preservado — a imagem o substitui', async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn<typeof fetch>(async (input) => {
+      if (String(input).includes('/uploads/images')) {
+        return { ok: true, status: 201, text: () => Promise.resolve(JSON.stringify({ url: 'https://cdn.exemplo.com/b.png' })) } as Response;
+      }
+      return { ok: false, status: 404, text: () => Promise.resolve('{}') } as Response;
+    });
+    const onChange = jest.fn();
+    await renderEditor({ initialValue: '', onChange });
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    await typeTextShiftEnterSlash(editor, '/imagem');
+    const options = await screen.findAllByRole('option');
+    await user.click(options[options.length - 1]!);
+
+    // Síncrono: "/imagem" e a quebra saíram; o alvo é um parágrafo vazio logo após "Texto".
+    expect(readBlocks(editor)).toBe('paragraph["Texto"] | paragraph[]');
+
+    await user.upload(screen.getByLabelText('Selecionar arquivo de imagem'), new File(['x'], 'b.png', { type: 'image/png' }));
+    await screen.findByRole('dialog');
+    await user.click(screen.getByRole('radio', { name: /Decorativa/ }));
+    await user.click(screen.getByRole('button', { name: 'Inserir imagem' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('Texto\n\n![](<https://cdn.exemplo.com/b.png>)\n'));
+  });
+
+  it('"Bloco Produto-Oferta" no caminho B: o fluxo recebe o blockKey de um parágrafo vazio novo, após o conteúdo preservado — o bloco o substitui', async () => {
+    const user = userEvent.setup();
+    const { onChange, productId } = await renderEditorWithLinkedProduct();
+    const editor = screen.getByRole('textbox', { name: 'Corpo (Markdown)' });
+    await user.click(editor);
+    await typeTextShiftEnterSlash(editor, '/produto');
+    const option = await screen.findByRole('option', { name: 'Bloco Produto-Oferta' });
+    await user.click(option);
+
+    expect(readBlocks(editor)).toBe('paragraph["Texto"] | paragraph[]');
+
+    await user.selectOptions(await screen.findByLabelText('Produto vinculado'), productId);
+    await user.click(screen.getByRole('button', { name: 'Inserir bloco' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.stringContaining(`Texto\n\n:::product\nversion: 1\nproductId: ${productId}\n:::`)));
   });
 });

@@ -4,16 +4,23 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
+  $createParagraphNode,
   $getSelection,
+  $isLineBreakNode,
+  $isParagraphNode,
   $isRangeSelection,
+  $isTextNode,
   COMMAND_PRIORITY_HIGH,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
+  type ElementNode,
   type LexicalEditor,
   type NodeKey,
+  type RangeSelection,
+  type TextNode,
 } from 'lexical';
 import { $createHeadingNode, $createQuoteNode, type HeadingTagType } from '@lexical/rich-text';
 import { $createListItemNode, $createListNode } from '@lexical/list';
@@ -94,6 +101,11 @@ import styles from './article-form.module.css';
  * começa com "/"). Ao confirmar um item, o texto `/query` digitado é
  * removido (`blockElement.clear()`) antes do novo bloco ser criado — o
  * usuário nunca vê o texto do comando sobrar no conteúdo final.
+ * Exceção restrita (caminho B, `$getSlashLineAfterLineBreak`): num
+ * `ParagraphNode`, `/query` logo após um `LineBreakNode` (Shift+Enter ou
+ * paste de HTML terminando em `<br>`) também abre o menu; ao confirmar, só
+ * `/query` e essa quebra saem e o item vira um bloco novo após o parágrafo,
+ * preservando o conteúdo anterior (`$resolveSlashTargetBlock`).
  *
  * UXE-022 (Addendum 7, investigação; implementação nesta rodada) — o menu
  * deixou de ser um bloco estático abaixo da área editável e passou a ser um
@@ -223,13 +235,86 @@ function matchesSlashQuery(label: string, query: string): boolean {
   return queryIndex === normalizedQuery.length;
 }
 
+/**
+ * Caminho B do gatilho `/` — linha visual vazia DENTRO de um parágrafo,
+ * criada por `LineBreakNode` (Shift+Enter, ou paste de HTML terminando em
+ * `<br>`: Google Docs/e-mail/página web). Nesse caso o caminho A (texto do
+ * bloco inteiro casando `^/(\S*)$`, com `anchor.offset` comparado ao tamanho
+ * do bloco) nunca casa: o texto do bloco inclui o conteúdo anterior à quebra
+ * (ex.: `"Linha 1\n/"`) e `anchor.offset` é relativo ao `TextNode`, não ao
+ * bloco.
+ *
+ * Deliberadamente restrito a `ParagraphNode` (decisão aprovada): em
+ * `ListNode`/`ListItemNode`, inserir um parágrafo irmão divide a lista
+ * (`ListItemNode.insertAfter` em `@lexical/list`); `HeadingNode`/`QuoteNode`
+ * não têm bug comprovado e ficam fora. Exige, todas juntas: cursor num
+ * `TextNode` filho direto e último filho do parágrafo, irmão anterior
+ * `LineBreakNode`, texto do node casando `^/(\S*)$` e cursor no fim do node —
+ * por isso "texto /x", "1/2", `/query` numa linha intermediária ou cursor no
+ * meio de `/query` nunca casam.
+ */
+function $getSlashLineAfterLineBreak(
+  selection: RangeSelection,
+  blockElement: ElementNode,
+): { query: string; slashNode: TextNode } | null {
+  if (!$isParagraphNode(blockElement)) {
+    return null;
+  }
+  const node = selection.anchor.getNode();
+  if (!$isTextNode(node)) {
+    return null;
+  }
+  const parent = node.getParent();
+  if (parent === null || !parent.is(blockElement) || node.getNextSibling() !== null) {
+    return null;
+  }
+  if (!$isLineBreakNode(node.getPreviousSibling()) || selection.anchor.offset !== node.getTextContentSize()) {
+    return null;
+  }
+  const match = /^\/(\S*)$/.exec(node.getTextContent());
+  return match ? { query: match[1] ?? '', slashNode: node } : null;
+}
+
+/**
+ * Bloco-alvo dos `apply` do menu. Caminho A (`/query` ocupando o bloco
+ * inteiro): devolve exatamente o mesmo bloco de antes (`$getBlockElement`),
+ * comportamento inalterado. Caminho B (ver `$getSlashLineAfterLineBreak`):
+ * remove SÓ o node `/query` e o `LineBreakNode` imediatamente anterior —
+ * todo o conteúdo anterior do parágrafo é preservado — e devolve um bloco
+ * vazio: o próprio parágrafo, se ficou vazio (ele começava pela quebra), ou
+ * um `ParagraphNode` vazio novo, inserido logo depois dele. Roda dentro do
+ * mesmo `editor.update()` do `apply` (um único passo de undo); os `apply`
+ * continuam operando (`clear()`/`replace()`) só sobre esse bloco vazio, e
+ * Imagem/Produto recebem o `blockKey` dele (`replace-empty`).
+ */
+function $resolveSlashTargetBlock(selection: RangeSelection): ElementNode | null {
+  const blockElement = $getBlockElement(selection.anchor.getNode());
+  if (!blockElement) {
+    return null;
+  }
+  const lineMatch = $getSlashLineAfterLineBreak(selection, blockElement);
+  if (!lineMatch) {
+    return blockElement;
+  }
+  lineMatch.slashNode.getPreviousSibling()?.remove();
+  lineMatch.slashNode.remove();
+  if (blockElement.isEmpty()) {
+    blockElement.select();
+    return blockElement;
+  }
+  const paragraph = $createParagraphNode();
+  blockElement.insertAfter(paragraph);
+  paragraph.select();
+  return paragraph;
+}
+
 function applyHeadingFromEmptyBlock(editor: LexicalEditor, tag: HeadingTagType): void {
   editor.update(() => {
     const selection = $getSelection();
     if (!$isRangeSelection(selection)) {
       return;
     }
-    const blockElement = $getBlockElement(selection.anchor.getNode());
+    const blockElement = $resolveSlashTargetBlock(selection);
     if (!blockElement) {
       return;
     }
@@ -255,7 +340,7 @@ function applyQuoteFromEmptyBlock(editor: LexicalEditor): void {
     if (!$isRangeSelection(selection)) {
       return;
     }
-    const blockElement = $getBlockElement(selection.anchor.getNode());
+    const blockElement = $resolveSlashTargetBlock(selection);
     if (!blockElement) {
       return;
     }
@@ -272,7 +357,7 @@ function applyListFromEmptyBlock(editor: LexicalEditor, listType: 'bullet' | 'nu
     if (!$isRangeSelection(selection)) {
       return;
     }
-    const blockElement = $getBlockElement(selection.anchor.getNode());
+    const blockElement = $resolveSlashTargetBlock(selection);
     if (!blockElement) {
       return;
     }
@@ -389,7 +474,7 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
           if (!$isRangeSelection(selection)) {
             return;
           }
-          const blockElement = $getBlockElement(selection.anchor.getNode());
+          const blockElement = $resolveSlashTargetBlock(selection);
           if (!blockElement) {
             return;
           }
@@ -414,7 +499,7 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
           if (!$isRangeSelection(selection)) {
             return;
           }
-          const blockElement = $getBlockElement(selection.anchor.getNode());
+          const blockElement = $resolveSlashTargetBlock(selection);
           if (!blockElement) {
             return;
           }
@@ -490,7 +575,13 @@ export function ArticleBodySlashMenu({ disabled = false, onRequestImage, onReque
           setQuery(match[1]);
           setIsOpen(true);
         } else {
-          setIsOpen(false);
+          const lineMatch = $getSlashLineAfterLineBreak(selection, blockElement);
+          if (lineMatch) {
+            setQuery(lineMatch.query);
+            setIsOpen(true);
+          } else {
+            setIsOpen(false);
+          }
         }
       });
     });
