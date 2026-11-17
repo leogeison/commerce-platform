@@ -1249,6 +1249,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 **Critérios de aceite:** suíte executa contra as 5 superfícies; divergência não-intencional bloqueia o fechamento; divergência intencional (mudança aprovada depois do baseline nascer) tem o baseline atualizado com registro do motivo.
 **Testes esperados:** a própria suíte comparativa.
 **Riscos:** nenhum.
+**Status de fechamento (2026-11-17):** suíte comparativa executada contra as 5 superfícies, sem `--update-snapshots` — Admin (Dashboard + Editor) 8/8 e FastCompre (Home + Categoria + Artigo) 5/5, no mesmo ambiente de captura. Os 5 baselines públicos (`home-populated`, `home-empty`, `category-populated`, `category-empty`, `article-populated`) foram deliberadamente regenerados por normalização do ambiente de captura: a divergência inicial (1–2% dos pixels) foi investigada e atribuída exclusivamente à fonte de fallback do sistema, diferente entre o ambiente original dos baselines e o ambiente local de referência atual (Ubuntu nativo, Chromium do Playwright 1.62.1), sem nenhuma mudança em `apps/fastcompre/src` desde a captura original (`ea5ecf6`). Nenhum budget, regra ou comportamento do produto foi alterado.
 **Dependências posteriores:** UXQ-013.
 
 ### UXQ-011 — QA visual manual final
