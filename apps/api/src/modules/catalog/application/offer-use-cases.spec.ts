@@ -33,7 +33,7 @@ describe('CreateOfferUseCase', () => {
     const input = {
       siteId: SITE_ID,
       productId: PRODUCT_ID,
-      marketplace: 'AMAZON_BR' as const,
+      marketplace: 'AMAZON' as const,
       price: '199.90',
       affiliateUrl: 'https://amazon.com.br/x',
     };
@@ -50,7 +50,7 @@ describe('CreateOfferUseCase', () => {
     const result = await useCase.execute({
       siteId: SITE_ID,
       productId: PRODUCT_ID,
-      marketplace: 'AMAZON_BR' as const,
+      marketplace: 'AMAZON' as const,
       price: '199.90',
       affiliateUrl: 'https://amazon.com.br/x',
     });

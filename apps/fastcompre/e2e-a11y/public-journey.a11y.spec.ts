@@ -48,7 +48,7 @@ import { WCAG_AA_CUMULATIVE_TAGS } from './wcag-tags';
  *    navegação acontece nessa nova `Page`, que só existe depois do clique;
  * 2. o clique é no `<a>` real do CTA (`rel="sponsored nofollow noopener
  *    noreferrer"`, único na página — exatamente uma Oferta em estoque na
- *    fixture, `OFFER_ID`/`AMAZON_BR`) — nunca substituído por
+ *    fixture, `OFFER_ID`/`AMAZON`) — nunca substituído por
  *    `page.goto()`, que não provaria que o `href` real do DOM está
  *    correto;
  * 3. a popup real é capturada via `page.waitForEvent('popup')`, armado

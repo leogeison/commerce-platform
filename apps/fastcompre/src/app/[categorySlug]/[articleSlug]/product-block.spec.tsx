@@ -75,7 +75,7 @@ describe('ProductBlock (unidade)', () => {
   describe('found — Ofertas mistas (1 inStock:true + 1 inStock:false)', () => {
     const product = buildProduct({
       offers: [
-        { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', marketplace: 'AMAZON_BR', price: '199.90', currency: 'BRL', inStock: true },
+        { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', marketplace: 'AMAZON', price: '199.90', currency: 'BRL', inStock: true },
         { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', marketplace: 'MERCADO_LIVRE', price: '209.90', currency: 'BRL', inStock: false },
       ],
     });
@@ -109,7 +109,7 @@ describe('ProductBlock (unidade)', () => {
       // Refinamento visual pós-`testeLayout.png`: `product-offer-list.tsx`
       // (`ProductOfferList`, reutilizado por `ProductBlock` desde a
       // UXW-011) não expõe mais o valor bruto do backend
-      // (`AMAZON_BR — 199.90 BRL`) — passa a exibir rótulo/preço
+      // (`AMAZON — 199.90 BRL`) — passa a exibir rótulo/preço
       // formatados, computados aqui via `Intl.NumberFormat`, não
       // hardcoded.
       expect(html).toContain(
@@ -136,7 +136,7 @@ describe('ProductBlock (unidade)', () => {
   describe('found — todas as Ofertas inStock:false', () => {
     const product = buildProduct({
       offers: [
-        { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', marketplace: 'AMAZON_BR', price: '199.90', currency: 'BRL', inStock: false },
+        { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', marketplace: 'AMAZON', price: '199.90', currency: 'BRL', inStock: false },
         { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', marketplace: 'MERCADO_LIVRE', price: '209.90', currency: 'BRL', inStock: false },
       ],
     });
@@ -179,7 +179,7 @@ describe('ProductBlock (unidade)', () => {
     const otherProduct = buildProduct({
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Produto que não deveria vazar',
-      offers: [{ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', marketplace: 'AMAZON_BR', price: '1.00', currency: 'BRL', inStock: true }],
+      offers: [{ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', marketplace: 'AMAZON', price: '1.00', currency: 'BRL', inStock: true }],
     });
     const ProductBlock = createProductBlockComponent([otherProduct], ARTICLE_ID);
     const html = renderToStaticMarkup(<ProductBlock productId="33333333-3333-4333-8333-333333333333" />);
@@ -205,7 +205,7 @@ describe('ProductBlock (unidade)', () => {
 describe('ProductBlock — acessibilidade (jest-axe)', () => {
   it('found com Ofertas mistas: sem violação', async () => {
     const product = buildProduct({
-      offers: [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', marketplace: 'AMAZON_BR', price: '199.90', currency: 'BRL', inStock: true }],
+      offers: [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', marketplace: 'AMAZON', price: '199.90', currency: 'BRL', inStock: true }],
     });
     const ProductBlock = createProductBlockComponent([product], ARTICLE_ID);
     const { container } = render(<ProductBlock productId={product.id} />);
@@ -340,7 +340,7 @@ describe('ProductBlock — integração real do plugin (remarkProductBlock) com 
     const product = buildProduct({
       id: INTEGRATION_PRODUCT_ID,
       name: 'Produto da integração MDX',
-      offers: [{ id: INTEGRATION_OFFER_ID, marketplace: 'AMAZON_BR', price: '149.90', currency: 'BRL', inStock: true }],
+      offers: [{ id: INTEGRATION_OFFER_ID, marketplace: 'AMAZON', price: '149.90', currency: 'BRL', inStock: true }],
     });
     const ProductBlock = createProductBlockComponent([product], ARTICLE_ID);
 
@@ -358,12 +358,12 @@ describe('ProductBlock — integração real do plugin (remarkProductBlock) com 
     const productV1 = buildProduct({
       id: INTEGRATION_PRODUCT_ID,
       name: 'Produto da integração MDX',
-      offers: [{ id: INTEGRATION_OFFER_ID, marketplace: 'AMAZON_BR', price: '149.90', currency: 'BRL', inStock: true }],
+      offers: [{ id: INTEGRATION_OFFER_ID, marketplace: 'AMAZON', price: '149.90', currency: 'BRL', inStock: true }],
     });
     const productV2 = buildProduct({
       id: INTEGRATION_PRODUCT_ID,
       name: 'Produto da integração MDX',
-      offers: [{ id: INTEGRATION_OFFER_ID, marketplace: 'AMAZON_BR', price: '129.90', currency: 'BRL', inStock: false }],
+      offers: [{ id: INTEGRATION_OFFER_ID, marketplace: 'AMAZON', price: '129.90', currency: 'BRL', inStock: false }],
     });
 
     // Mesmo `element` (resultado de uma única transformação do plugin

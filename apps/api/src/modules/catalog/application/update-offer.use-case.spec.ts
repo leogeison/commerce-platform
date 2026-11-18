@@ -15,7 +15,7 @@ function buildFakeRepository(result: unknown) {
 
 describe('UpdateOfferUseCase', () => {
   it('delega ao repository com siteId, productId, id e todos os campos, e devolve o resultado tal como recebido', async () => {
-    const fakeOffer = { id: OFFER_ID, marketplace: 'AMAZON_BR' } as unknown as Offer;
+    const fakeOffer = { id: OFFER_ID, marketplace: 'AMAZON' } as unknown as Offer;
     const { repository, updateBySite } = buildFakeRepository({ ok: true, offer: fakeOffer });
     const useCase = new UpdateOfferUseCase(repository);
 
@@ -23,7 +23,7 @@ describe('UpdateOfferUseCase', () => {
       siteId: SITE_ID,
       productId: PRODUCT_ID,
       id: OFFER_ID,
-      marketplace: 'AMAZON_BR',
+      marketplace: 'AMAZON',
       price: '199.90',
       currency: 'USD',
       affiliateUrl: 'https://example.com/aff',
@@ -34,7 +34,7 @@ describe('UpdateOfferUseCase', () => {
       siteId: SITE_ID,
       productId: PRODUCT_ID,
       id: OFFER_ID,
-      marketplace: 'AMAZON_BR',
+      marketplace: 'AMAZON',
       price: '199.90',
       currency: 'USD',
       affiliateUrl: 'https://example.com/aff',

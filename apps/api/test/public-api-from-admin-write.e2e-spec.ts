@@ -106,7 +106,7 @@ describe('Integração Admin → API pública (e2e — QA-005)', () => {
       data: {
         siteId: site.id,
         productId: product.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/qa005-produto',
       },

@@ -156,7 +156,7 @@ describe('PATCH /admin/sites/:siteSlug/products/:productId/offers/:id (e2e)', ()
       data: {
         siteId: site.id,
         productId: product.id,
-        marketplace: overrides.marketplace ?? Marketplace.AMAZON_BR,
+        marketplace: overrides.marketplace ?? Marketplace.AMAZON,
         price: overrides.price ?? '99.90',
         affiliateUrl: overrides.affiliateUrl ?? 'https://example.com/original',
         inStock: overrides.inStock ?? true,

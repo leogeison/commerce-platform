@@ -208,7 +208,7 @@ function articleDetail() {
         offers: [
           {
             id: OFFER_ID,
-            marketplace: 'AMAZON_BR',
+            marketplace: 'AMAZON',
             price: '349.90',
             currency: 'BRL',
             inStock: true,

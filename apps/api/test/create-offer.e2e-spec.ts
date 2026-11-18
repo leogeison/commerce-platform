@@ -130,7 +130,7 @@ describe('POST /admin/sites/:siteSlug/products/:productId/offers (e2e)', () => {
       .set('Cookie', cookieHeader())
       .set('Origin', ADMIN_ORIGIN)
       .send({
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '199.90',
         currency: 'USD',
         affiliateUrl: 'https://amazon.com.br/produto/exemplo',
@@ -141,7 +141,7 @@ describe('POST /admin/sites/:siteSlug/products/:productId/offers (e2e)', () => {
     expect(offerAdminSchema.safeParse(response.body).success).toBe(true);
     expect(response.body.siteId).toBe(siteA.id);
     expect(response.body.productId).toBe(productA.id);
-    expect(response.body.marketplace).toBe(Marketplace.AMAZON_BR);
+    expect(response.body.marketplace).toBe(Marketplace.AMAZON);
     expect(response.body.price).toBe('199.90');
     expect(response.body.currency).toBe('USD');
     expect(response.body.inStock).toBe(false);

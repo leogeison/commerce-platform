@@ -133,7 +133,7 @@ describe('POST /admin/sites/:siteSlug/articles/:id/publish (e2e)', () => {
       data: {
         siteId: siteA.id,
         productId: product.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/produto',
       },

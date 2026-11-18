@@ -43,7 +43,7 @@ const FULL_ARTICLE: PublicArticle = {
       offers: [
         {
           id: '33333333-3333-4333-8333-333333333333',
-          marketplace: 'AMAZON_BR',
+          marketplace: 'AMAZON',
           price: '199.90',
           currency: 'BRL',
           inStock: true,

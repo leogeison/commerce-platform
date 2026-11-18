@@ -25,10 +25,9 @@ import { affiliateRedirectHref } from './affiliate-redirect-href';
  *   nesta tarefa;
  * - `Article.publisher.logo`: OMITIDO — não existe nenhum asset de logo no
  *   projeto;
- * - `Offer.seller`: OMITIDO — os enums atuais de `marketplace`
- *   (`MERCADO_LIVRE`/`AMAZON_BR`/`AMAZON_INTL`/`ALIEXPRESS`) são
- *   provisórios, a revisar antes de produção; nenhum mapeamento de nome
- *   comercial nem refatoração do enum nesta tarefa.
+ * - `Offer.seller`: OMITIDO — nenhum mapeamento de nome comercial do enum
+ *   `Marketplace` para `seller` é feito aqui; incluí-lo exige decisão e
+ *   tarefa próprias.
  *
  * `@graph` com um nó `Article` e um nó `Product` por item real de
  * `article.products[]` (nunca zero, nunca inventado) — `Article.mentions`

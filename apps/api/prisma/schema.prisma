@@ -121,10 +121,14 @@ model Product {
 }
 
 enum Marketplace {
+  AMAZON
   MERCADO_LIVRE
-  AMAZON_BR
-  AMAZON_INTL
+  SHOPEE
   ALIEXPRESS
+  MAGALU
+  HOTMART
+  BRAIP
+  KIWIFY
 }
 
 model Offer {

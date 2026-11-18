@@ -35,7 +35,7 @@ import type { Marketplace, PublicOffer } from '@commerce-platform/contracts';
  * Refinamento visual pós-`testeLayout.png` (decisão final do PO) — texto de
  * cada Oferta deixa de expor o valor bruto do backend
  * (`{offer.marketplace} — {offer.price} {offer.currency}`, ex.
- * "AMAZON_BR — 220.00 BRL") e passa a exibir um rótulo/preço formatado
+ * "AMAZON — 220.00 BRL") e passa a exibir um rótulo/preço formatado
  * PURAMENTE de apresentação (ver `formatMarketplaceLabel`/
  * `formatOfferPrice` abaixo). O valor usado no link (`offer.id`, via
  * `affiliateRedirectHref`) e o valor de `offer.marketplace`/`offer.price`/
@@ -47,19 +47,23 @@ import type { Marketplace, PublicOffer } from '@commerce-platform/contracts';
 /**
  * Rótulo de exibição de cada `Marketplace` — lido diretamente do enum real
  * (`packages/contracts/src/common/marketplace.ts`, `marketplaceSchema`,
- * schema Prisma `enum Marketplace`): os 4 valores atualmente suportados,
+ * schema Prisma `enum Marketplace`): os 8 valores atualmente suportados,
  * um a um, nenhum inventado e nenhuma antecipação de marketplace futuro
  * ainda não existente no contrato. `Record<Marketplace, string>` — se um
- * 5º valor for adicionado ao enum no futuro, o TypeScript recusa compilar
+ * novo valor for adicionado ao enum no futuro, o TypeScript recusa compilar
  * este arquivo até o rótulo ser adicionado aqui também; essa é a única
  * forma de "antecipação" envolvida, e é uma checagem de compilação, não um
  * comportamento de runtime especulativo.
  */
 const MARKETPLACE_LABELS: Record<Marketplace, string> = {
+  AMAZON: 'Amazon',
   MERCADO_LIVRE: 'Mercado Livre',
-  AMAZON_BR: 'Amazon',
-  AMAZON_INTL: 'Amazon (internacional)',
+  SHOPEE: 'Shopee',
   ALIEXPRESS: 'AliExpress',
+  MAGALU: 'Magalu',
+  HOTMART: 'Hotmart',
+  BRAIP: 'Braip',
+  KIWIFY: 'Kiwify',
 };
 
 /**
@@ -86,8 +90,8 @@ function formatMarketplaceLabel(marketplace: Marketplace): string {
  * `currency` NÃO é tratado como fixo em `BRL`: no contrato público
  * (`public-offer.ts`) é `z.string().min(1)`, e no schema Prisma
  * (`apps/api/prisma/schema.prisma`) é `String @default("BRL")` — um
- * default, não uma restrição; `Marketplace.AMAZON_INTL` já sugere que uma
- * Oferta real pode legitimamente vir em outra moeda. Por isso
+ * default, não uma restrição; uma Oferta real pode legitimamente vir em
+ * outra moeda (ex.: `AMAZON` ou `ALIEXPRESS` fora do Brasil). Por isso
  * `Intl.NumberFormat` usa `offer.currency` dinamicamente, nunca `'BRL'`
  * fixo no código.
  *

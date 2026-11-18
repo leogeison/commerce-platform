@@ -62,7 +62,7 @@ describe('RevalidateAffectedArticlesUseCase (integração)', () => {
       data: {
         siteId: siteA.id,
         productId: productA.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '10.00',
         affiliateUrl: 'https://loja.test.com/produto-a',
       },

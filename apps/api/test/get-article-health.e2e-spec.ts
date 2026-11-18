@@ -138,7 +138,7 @@ describe('GET /admin/sites/:siteSlug/articles/:id/health (e2e)', () => {
       data: {
         siteId: site.id,
         productId: product.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/produto',
       },

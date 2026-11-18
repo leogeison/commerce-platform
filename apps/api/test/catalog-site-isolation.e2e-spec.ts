@@ -232,7 +232,7 @@ describe('Bloqueio de acesso cruzado no Catalog (e2e, dedicado — CAT-022)', ()
         path: () => `/admin/sites/${siteB.slug}/products/${productB.id}/offers`,
         needsOrigin: true,
         body: () => ({
-          marketplace: Marketplace.AMAZON_BR,
+          marketplace: Marketplace.AMAZON,
           price: '10.00',
           affiliateUrl: 'https://amazon.com.br/produto/forjado',
         }),

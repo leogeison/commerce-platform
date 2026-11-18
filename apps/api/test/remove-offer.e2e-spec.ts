@@ -121,7 +121,7 @@ describe('DELETE /admin/sites/:siteSlug/products/:productId/offers/:id (e2e)', (
       data: {
         siteId: site.id,
         productId: product.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/trk010-produto-a',
       },

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Marketplaces suportados por uma `Offer` (schema Prisma, `enum Marketplace`,
- * `apps/api/prisma/schema.prisma`). Os quatro valores abaixo são os
+ * `apps/api/prisma/schema.prisma`). Os oito valores abaixo são os
  * exatamente definidos lá — nenhum inventado aqui.
  *
  * Movido de `admin/common/` para cá na PUB-001 (CTR-010): passou a ter
@@ -12,10 +12,14 @@ import { z } from 'zod';
  * nome exportado de antes — só o local mudou.
  */
 export const marketplaceSchema = z.enum([
+  'AMAZON',
   'MERCADO_LIVRE',
-  'AMAZON_BR',
-  'AMAZON_INTL',
+  'SHOPEE',
   'ALIEXPRESS',
+  'MAGALU',
+  'HOTMART',
+  'BRAIP',
+  'KIWIFY',
 ]);
 
 export type Marketplace = z.infer<typeof marketplaceSchema>;

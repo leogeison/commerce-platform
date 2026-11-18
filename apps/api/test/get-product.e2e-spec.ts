@@ -236,7 +236,7 @@ describe('GET /admin/sites/:siteSlug/products/:id (e2e)', () => {
     const product = await createProduct(siteA, 'Monitor', 'monitor');
     const first = await createOffer(siteA, product, {
       price: '900.00',
-      marketplace: Marketplace.AMAZON_BR,
+      marketplace: Marketplace.AMAZON,
     });
     const second = await createOffer(siteA, product, {
       price: '950.00',

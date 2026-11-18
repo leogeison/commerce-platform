@@ -111,7 +111,7 @@ describe('Ciclo editorial completo de Article (e2e — QA-004)', () => {
       data: {
         siteId: site.id,
         productId: product.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/qa004-produto',
       },

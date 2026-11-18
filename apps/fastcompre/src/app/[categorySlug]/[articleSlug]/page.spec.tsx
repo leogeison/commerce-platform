@@ -169,7 +169,7 @@ describe('ArticlePage', () => {
           offers: [
             {
               id: '33333333-3333-4333-8333-333333333333',
-              marketplace: 'AMAZON_BR',
+              marketplace: 'AMAZON',
               price: '199.90',
               currency: 'BRL',
               inStock: true,
@@ -192,7 +192,7 @@ describe('ArticlePage', () => {
           offers: [
             {
               id: '66666666-6666-4666-8666-666666666666',
-              marketplace: 'AMAZON_BR',
+              marketplace: 'AMAZON',
               price: '149.90',
               currency: 'BRL',
               inStock: false,
@@ -292,7 +292,7 @@ describe('ArticlePage', () => {
           offers: [
             {
               id: '33333333-3333-4333-8333-333333333333',
-              marketplace: 'AMAZON_BR',
+              marketplace: 'AMAZON',
               price: '199.90',
               currency: 'BRL',
               inStock: true,
@@ -493,7 +493,7 @@ describe('ArticlePage', () => {
             offers: [
               {
                 id: '33333333-3333-4333-8333-333333333333',
-                marketplace: 'AMAZON_BR',
+                marketplace: 'AMAZON',
                 price: '199.90',
                 currency: 'BRL',
                 inStock: true,
@@ -516,7 +516,7 @@ describe('ArticlePage', () => {
             offers: [
               {
                 id: '66666666-6666-4666-8666-666666666666',
-                marketplace: 'AMAZON_BR',
+                marketplace: 'AMAZON',
                 price: '149.90',
                 currency: 'BRL',
                 inStock: true,

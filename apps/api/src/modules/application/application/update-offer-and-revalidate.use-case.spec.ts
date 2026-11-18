@@ -29,7 +29,7 @@ describe('UpdateOfferAndRevalidateUseCase', () => {
     siteSlug: 'fastcompre',
     productId: 'product-1',
     offerId: 'offer-1',
-    marketplace: 'AMAZON_BR' as const,
+    marketplace: 'AMAZON' as const,
     price: '199.90',
     currency: 'USD',
     affiliateUrl: 'https://example.com/aff',
@@ -48,7 +48,7 @@ describe('UpdateOfferAndRevalidateUseCase', () => {
       siteId: 'site-1',
       productId: 'product-1',
       id: 'offer-1',
-      marketplace: 'AMAZON_BR',
+      marketplace: 'AMAZON',
       price: '199.90',
       currency: 'USD',
       affiliateUrl: 'https://example.com/aff',
@@ -59,7 +59,7 @@ describe('UpdateOfferAndRevalidateUseCase', () => {
   });
 
   it('atualização bem-sucedida: aciona REV-005 com siteId/siteSlug/offerId corretos e devolve a Oferta atualizada', async () => {
-    const offer = { id: 'offer-1', marketplace: 'AMAZON_BR' } as Offer;
+    const offer = { id: 'offer-1', marketplace: 'AMAZON' } as Offer;
     const { useCase, revalidateAffectedArticlesUseCase } = build({ ok: true, offer });
 
     const result = await useCase.execute(input);

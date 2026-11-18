@@ -76,7 +76,7 @@ describe('Bloqueio de acesso cruzado no Tracking (e2e, dedicado — TRK-008)', (
       data: {
         siteId: siteA.id,
         productId: productA.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/trk008-produto-a',
       },

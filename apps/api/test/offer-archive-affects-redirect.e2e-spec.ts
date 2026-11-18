@@ -103,7 +103,7 @@ describe('Arquivamento de Oferta (Admin) afeta o redirect público (e2e — QA-0
       data: {
         siteId: site.id,
         productId: product.id,
-        marketplace: Marketplace.AMAZON_BR,
+        marketplace: Marketplace.AMAZON,
         price: '99.90',
         affiliateUrl: 'https://loja.test.com/qa006-produto',
       },
