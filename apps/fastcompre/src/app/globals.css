@@ -22,6 +22,17 @@
 }
 
 /*
+ * Fonte base efetiva do documento (correção UXQ-011, achado A1): sem isto,
+ * todo elemento sem `font-ui`/`font-editorial` explícito herdava a pilha
+ * padrão do Preflight (`ui-sans-serif`/`system-ui`), nunca Geist. Herança
+ * comum — `font-editorial` (Source Serif 4) e qualquer outro utilitário
+ * explícito em um descendente continuam prevalecendo.
+ */
+html {
+  font-family: var(--font-family-sans);
+}
+
+/*
  * O Preflight do Tailwind (importado acima) já reseta `box-sizing`,
  * `margin` e `padding` universalmente — não repetimos isso aqui.
  * `height`/`min-height` não são cobertos pelo Preflight (é decisão de

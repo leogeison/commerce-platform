@@ -18,6 +18,16 @@
     -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/*
+ * Fonte base efetiva do documento (correção UXQ-011, achado A1): sem isto,
+ * todo elemento sem `font-ui` explícito herdava a pilha padrão do Preflight
+ * (`ui-sans-serif`/`system-ui`), nunca Geist. Herança comum — qualquer
+ * utilitário explícito em um descendente continua prevalecendo.
+ */
+html {
+  font-family: var(--font-family-sans);
+}
+
 html,
 body {
   height: 100%;
