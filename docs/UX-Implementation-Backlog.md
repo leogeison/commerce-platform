@@ -1275,6 +1275,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 **Critérios de aceite:** 77 specs e2e originais + os novos specs de UXF-010/011/012 todos verdes, sem nenhum ajuste que mude comportamento não relacionado à Etapa E.
 **Testes esperados:** a própria suíte e2e completa.
 **Riscos:** este é o teste que prova a restrição mais importante do ciclo inteiro — qualquer falha aqui interrompe o fechamento, não é contornável.
+**Status de fechamento (2026-11-18):** suíte e2e completa da API verde — 78/78 suítes, 665 testes (77 originais + `public-categories`, UXF-010); unit da API 62/62 suítes, 416 testes; suítes de isolamento multi-tenant (`multi-tenant-isolation`, `site-isolation`, `catalog-site-isolation`, `editorial-site-isolation`, `tracking-site-isolation`, `provision-tenant`) incluídas e verdes; nenhum `skip`/`only`/`todo` na suíte. Todas as alterações históricas nos specs originais desde o início do ciclo foram rastreadas a tarefas aprovadas da Etapa E (UXF-010A, UXF-011, UXF-012, UXA-017, UXA-018), sem ajuste que mude comportamento não relacionado à Etapa E. Nenhuma regressão funcional encontrada. Divergência documental D1 (finalidade de upload `ARTICLE_BODY_IMAGE`, aprovada na UXE-010, ausente da `Architecture.md` §29) reconciliada documentalmente em `Architecture.md` §29, sem alteração de política de upload, limites, MIME, Roles ou comportamento.
 **Dependências posteriores:** UXQ-013.
 
 ### UXQ-013 — Verificação final de CI

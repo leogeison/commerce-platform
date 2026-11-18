@@ -755,8 +755,8 @@ Formatação, validação, geração de client e a primeira migration (`prisma f
 
 ## 29. Decisões sobre Uploads
 
-- Não existe entidade `Media` — o upload retorna uma URL, atribuída diretamente ao campo do recurso que a usa (`imageUrl` do Produto, `coverImageUrl` do Artigo, `avatarUrl` do Autor). Consequência aceita: a mesma imagem enviada duas vezes gera dois uploads distintos, sem reuso — trade-off aceito pela simplicidade no MVP.
-- Endpoint único: `POST /admin/sites/:siteSlug/uploads/images`, Role mínima `EDITOR`, entrada multipart com arquivo e finalidade (`PRODUCT`, `ARTICLE_COVER` ou `AUTHOR_AVATAR`), resposta `{ url }`.
+- Não existe entidade `Media` — o upload retorna uma URL, atribuída diretamente ao campo do recurso que a usa (`imageUrl` do Produto, `coverImageUrl` do Artigo, `avatarUrl` do Autor). Exceção: na finalidade `ARTICLE_BODY_IMAGE` (UXE-010), a URL retornada é persistida dentro do próprio `Article.bodyMdx`, como imagem do corpo do Artigo, sem campo dedicado. Consequência aceita: a mesma imagem enviada duas vezes gera dois uploads distintos, sem reuso — trade-off aceito pela simplicidade no MVP.
+- Endpoint único: `POST /admin/sites/:siteSlug/uploads/images`, Role mínima `EDITOR`, entrada multipart com arquivo e finalidade (`PRODUCT`, `ARTICLE_COVER`, `AUTHOR_AVATAR` ou `ARTICLE_BODY_IMAGE`), resposta `{ url }`.
 - Formatos permitidos e limite de tamanho são uma **decisão explícita e documentada**, separada da implementação da validação.
 - Validação real de MIME (assinatura de arquivo/magic bytes), não apenas extensão ou `Content-Type` declarado.
 - Nome do arquivo é sempre gerado pelo servidor — nunca o nome original do arquivo enviado.
