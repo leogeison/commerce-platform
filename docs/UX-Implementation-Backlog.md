@@ -1301,6 +1301,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 **Critérios de aceite:** os cinco milestones + E13 explicitamente listados como concluídos, com data e referência à tarefa de fechamento de cada um.
 **Testes esperados:** nenhum novo — herda todos os testes já verdes das dependências.
 **Riscos:** nenhum.
+**Status de fechamento (2026-11-18):** UX-M06 UI/UX Complete formalmente concluído. Milestones, na ordem, sem nenhum pulado: UX-M01 (UXF-009 + UXF-010/011/012/014), UX-M02 (UXA-020), UX-M03 (UXE-016 + UXE-021) e UX-M04 (UXW-016) — conclusão técnica ocorrida anteriormente, sem data histórica de fechamento versionada; 2026-11-18 é apenas a data de formalização documental desse estado já concluído, não a data em que cada milestone terminou; UX-M05 (UXQ-006 + UXQ-009) — fechado em 2026-10-24 por waiver formal do PO, mantido exatamente como registrado (desvio de LCP não resolvido tecnicamente, não reclassificado como PASS); E13 — UXQ-010 (2026-11-17), UXQ-011, UXQ-012 e UXQ-013 (2026-11-18), conforme seus registros de fechamento.
 **Dependências posteriores:** nenhuma — é o fechamento do ciclo.
 
 ---
@@ -1389,12 +1390,12 @@ UXQ (Quality)
 
 | Milestone | Fecha com | Depende de |
 |---|---|---|
-| **UX-M01 Foundations Ready** | UXF-009 + UXF-010/011/012 + UXF-014 | Nada além do estado atual do MVP |
-| **UX-M02 Admin Rebuilt** | UXA-020 | UX-M01 |
-| **UX-M03 Editorial Platform Ready** | UXE-016 + UXE-021 | UX-M01, UX-M02 (compartilha shell/painel) |
-| **UX-M04 FastCompre Rebuilt** | UXW-016 | UX-M01 — **fecha independentemente do resultado de performance**; desvio de budget, se houver, é só registrado (ver UXW-016), não bloqueia este milestone |
+| **UX-M01 Foundations Ready** | UXF-009 + UXF-010/011/012 + UXF-014 | Nada além do estado atual do MVP — concluído; formalizado documentalmente em 2026-11-18 (data histórica de fechamento não versionada) |
+| **UX-M02 Admin Rebuilt** | UXA-020 | UX-M01 — concluído; formalizado documentalmente em 2026-11-18 (data histórica de fechamento não versionada) |
+| **UX-M03 Editorial Platform Ready** | UXE-016 + UXE-021 | UX-M01, UX-M02 (compartilha shell/painel) — concluído; formalizado documentalmente em 2026-11-18 (data histórica de fechamento não versionada) |
+| **UX-M04 FastCompre Rebuilt** | UXW-016 | UX-M01 — **fecha independentemente do resultado de performance**; desvio de budget, se houver, é só registrado (ver UXW-016), não bloqueia este milestone — concluído; formalizado documentalmente em 2026-11-18 (data histórica de fechamento não versionada) |
 | **UX-M05 Quality Gate Passed** | UXQ-006 + UXQ-009 | UX-M02, UX-M03, UX-M04 — fechado em 2026-10-24 por **exceção/waiver formal do PO** (via UXQ-009), com o desvio de budget registrado em UXW-016 **não resolvido tecnicamente** (ver `docs/performance/final-uxq-007.md`) |
-| **UX-M06 UI/UX Complete** | UXQ-014 | **Dependência explícita declarada:** UX-M01 + UX-M02 + UX-M03 + UX-M04 + UX-M05 + E13 (UXQ-010 a UXQ-013) |
+| **UX-M06 UI/UX Complete** | UXQ-014 | **Dependência explícita declarada:** UX-M01 + UX-M02 + UX-M03 + UX-M04 + UX-M05 + E13 (UXQ-010 a UXQ-013) — **formalmente concluído em 2026-11-18** pela UXQ-014 |
 
 ## Caminhos críticos concorrentes
 
