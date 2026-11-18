@@ -1,99 +1,110 @@
 # Commerce Platform
 
-Motor multi-marca de conteúdo e afiliação. A primeira marca é o **FastCompre** (fastcompre.com), voltado ao público brasileiro. As decisões de arquitetura e o plano de implementação estão em `Architecture.md` e `Implementation-Backlog.md` (documentos oficiais do projeto, mantidos fora deste repositório nesta fase).
+Motor multi-marca de conteúdo e afiliação. A primeira marca é o **FastCompre** (fastcompre.com), voltado ao público brasileiro.
+
+As decisões de arquitetura, os backlogs e os contratos normativos do projeto estão versionados em [`docs/`](#documentação).
 
 ## Status
 
-Fases 1 a 15 do backlog concluídas e o marco `MVP-M01` (produto ponta a ponta, do login administrativo à navegação pública e ao clique de afiliado) atingido. O backlog atual está encerrado. Ver [Roadmap](#roadmap).
+- **MVP concluído:** fases 1 a 15 do `docs/Implementation-Backlog.md`, com o marco `MVP-M01` atingido (produto ponta a ponta, do login administrativo à navegação pública e ao clique de afiliado).
+- **Ciclo UI/UX concluído:** marcos `UX-M01` a `UX-M06` do `docs/UX-Implementation-Backlog.md`, com `UX-M06 UI/UX Complete` formalmente fechado. O `UX-M05` foi fechado por waiver formal do PO, com o desvio de LCP documentado em `docs/performance/final-uxq-007.md`.
+- **Próxima fase:** infraestrutura de produção, ainda não definida. Nada neste README descreve um ambiente de produção.
 
 ## Stack tecnológica
 
-- **Monorepo:** pnpm workspaces (`pnpm@11.17.0`), TypeScript em modo `strict` (`ES2022`, `NodeNext`), ESLint via `@leogeison/eslint-config`.
-- **`apps/api`:** NestJS 11, Prisma 7 (generator `prisma-client` com driver adapter `@prisma/adapter-pg`), PostgreSQL 16 (via Docker Compose em desenvolvimento), `nestjs-pino` para logging estruturado, Zod 4 para validação, Jest 30 (testes unitários e e2e, com `supertest` para asserções HTTP).
-- **`apps/admin`:** Next.js 16 (App Router) com React 19 — painel administrativo autenticado (Categorias, Produtos/Ofertas, Artigos, Autores), consumindo a API real.
-- **`apps/fastcompre`:** Next.js 16 (App Router) com React 19 — site público da marca FastCompre (listagem/detalhe de Artigo por Categoria, `sitemap.xml`, `robots.txt`), consumindo a API real.
-- **`packages/contracts`:** schemas e tipos Zod compartilhados entre API e frontends (contratos admin, públicos, de tracking e comuns como `ApiError`/`PaginatedResponse`).
-- **CI:** GitHub Actions — instala dependências, gera o cliente Prisma, builda `packages/contracts`, roda os testes unitários da API (com gate de cobertura), Admin e FastCompre, aplica as migrations num PostgreSQL efêmero, roda a suíte e2e completa da API e só então roda lint, typecheck e build — a cada push/PR para `main`.
+- **Monorepo:** pnpm workspaces (`pnpm@11.17.0`), TypeScript em modo `strict`, ESLint via `@leogeison/eslint-config`.
+- **`apps/api`:** NestJS 11, Prisma 7 (generator `prisma-client` com driver adapter `@prisma/adapter-pg`), PostgreSQL 16, `nestjs-pino`, Zod 4, Jest 30 (unitários e e2e com `supertest`).
+- **`apps/admin`:** Next.js 16 (App Router) e React 19. Painel administrativo autenticado (Dashboard, Artigos, Produtos/Ofertas, Categorias, Autores), com editor de Artigo em Lexical e preview do MDX.
+- **`apps/fastcompre`:** Next.js 16 (App Router) e React 19. Site público (Home, Categoria, Artigo, `sitemap.xml`, `robots.txt`, JSON-LD de Article/Product).
+- **`packages/contracts`:** schemas e tipos Zod compartilhados entre a API e os frontends.
+- **`packages/ui`:** design tokens (Tailwind v4 + CSS custom properties) e primitivas genéricas de UI, sem conhecimento de domínio.
+- **`packages/editorial`:** gramática e validação dos blocos editoriais do `bodyMdx`, compartilhadas pelo Admin e pelo FastCompre.
+- **Qualidade:** Testing Library + `jest-axe`, Playwright + `@axe-core/playwright` (acessibilidade em browser real) e Playwright `toHaveScreenshot()` (regressão visual).
 
 ## Arquitetura
 
-- **Separação de apps:** `apps/api` é o único ponto de acesso ao Prisma/PostgreSQL; `apps/admin` e `apps/fastcompre` consomem a API real via HTTP, sem acesso direto ao banco.
-- **Multi-tenancy:** isolamento por coluna discriminadora `siteId` nas tabelas do schema Prisma. `TenantContext` é um objeto imutável (`{ siteId, siteSlug }`) produzido por funções puras de resolução (`resolvePublicTenantContext`, `resolveAdminTenantContext`), sem estado global, `AsyncLocalStorage` ou provider request-scoped — a integração com autenticação real (extrair o usuário da sessão) já está implementada (Fase 5, Identity e Autenticação).
-- **Banco de dados:** schema Prisma completo (11 modelos, 4 enums — `Site`, `User`, `Session`, `SiteUser`, `Category`, `Product`, `Offer`, `Article`, `ArticleProduct`, `Author`, `AffiliateClick`), migrado para PostgreSQL local. Cliente Prisma compartilhado (`PrismaService`) via driver adapter. Transação de provisionamento de tenant (`User` + `Site` + `SiteUser` atomicamente) implementada e testada.
-- **Infraestrutura HTTP compartilhada (`apps/api/src/shared/http`):**
-  - `AllExceptionsFilter` — filtro global que padroniza toda resposta de erro no formato `ApiError`.
-  - `ZodValidationPipe` — pipe de validação genérico, reutilizável com qualquer schema Zod (local ou de `packages/contracts`).
-  - `SessionCookieHelper` — aplica os atributos de segurança do cookie de sessão (`HttpOnly`, `Secure`, `SameSite=Lax`); a lógica de sessão em si (gerar/validar token) é implementada pelo módulo Identity.
-  - `buildCorsOptions` — CORS restrito à origem exata do `apps/admin`.
-  - `OriginGuard` — valida `Origin`/`Referer` em requisições mutáveis (`POST`/`PATCH`/`DELETE`); aplicado a todas as rotas administrativas de escrita (login, exclusão/criação/atualização em Catalog, Editorial e Application, e upload de imagem em Uploads).
-  - `RateLimitGuard`/`RateLimitStore` — rate limit reutilizável (janela + limite configuráveis via `@RateLimit(...)`), armazenamento em memória por processo; aplicado ao login (`5/60s`) e ao redirect público de afiliado (`30/60s`).
-  - `LoggingModule` — logging estruturado em JSON via `nestjs-pino`, com correlação de `x-request-id` por requisição.
+Visão resumida. A referência completa é `docs/Architecture.md`.
 
-- **Tracking:** `GET /r/:siteSlug/:offerId` é o único redirecionador de link de afiliado — resolve o Site publicamente (sem sessão), registra `AffiliateClick` (UTM, referer, user-agent como telemetria não confiável) e responde `302` para a `affiliateUrl` real (nunca aceita URL da requisição) ou `410` com corpo amigável se a Oferta estiver arquivada. Exclusão física de Oferta (`DELETE /admin/sites/:siteSlug/products/:productId/offers/:id`) é bloqueada com `409` quando existe `AffiliateClick` vinculado — verificação cross-domain feita em `apps/api/src/modules/application`, nunca dentro do Catalog.
+- **Separação de apps:** `apps/api` é o único ponto de acesso ao PostgreSQL. `apps/admin` e `apps/fastcompre` consomem a API via HTTP.
+- **Multi-tenancy:** isolamento por `siteId` em todas as tabelas de conteúdo, com chaves compostas `[id, siteId]` que impedem fisicamente vínculos entre Sites diferentes. `TenantContext` é imutável e resolvido por funções puras.
+- **Banco de dados:** 11 modelos e 4 enums (`Role`, `Marketplace`, `ArticleType`, `ArticleStatus`), migrados via `prisma migrate`.
+- **Editorial:** a máquina de estados do Artigo (`DRAFT`, `PENDING_REVIEW`, `PUBLISHED`, `ARCHIVED`, com as transições válidas em `docs/Architecture.md`) e a autorização por Role (`VIEWER`/`EDITOR`/`OWNER`) são autoridade exclusiva da API. `Article.bodyMdx` é a persistência textual do corpo, e `ArticleProduct` é a única fonte estrutural de verdade sobre os Produtos referenciados (ver `docs/editorial/editorial-serialization-contract.md`).
+- **Infraestrutura HTTP (`apps/api/src/shared/http`):** erro padronizado (`ApiError`), validação Zod, cookie de sessão seguro (`HttpOnly`, `Secure`, `SameSite=Lax`), CORS restrito à origem do Admin, `OriginGuard` em rotas de escrita, rate limit (login e redirect de afiliado) e logging estruturado com `x-request-id`.
+- **Tracking:** `GET /r/:siteSlug/:offerId` é o único redirecionador de afiliado. Registra o `AffiliateClick` e responde `302` para a `affiliateUrl` real, ou `410` se a Oferta estiver arquivada. Uma Oferta com cliques não pode ser excluída fisicamente (`409`).
+- **Uploads:** `POST /admin/sites/:siteSlug/uploads/images` (Role mínima `EDITOR`), com MIME validado por magic bytes (JPEG/PNG/WebP), limite de 5 MiB e nome gerado pelo servidor. Finalidades: `PRODUCT`, `ARTICLE_COVER` e `AUTHOR_AVATAR` (URL gravada no campo do recurso) e `ARTICLE_BODY_IMAGE` (URL persistida dentro do `bodyMdx`). O armazenamento passa por uma porta explícita (`StoragePort`), implementada por `S3StorageAdapter` (qualquer provedor S3-compatível).
+- **API pública (sem sessão, Site resolvido por `siteSlug`):**
+  - `GET /public/sites/:siteSlug/articles` e `GET /public/sites/:siteSlug/articles/:slug` (detalhe com `bodyMdx`, `author`, `products[]` e `offers[]`);
+  - `GET /public/sites/:siteSlug/categories` e `GET /public/sites/:siteSlug/categories/:slug`.
 
-- **Uploads:** `POST /admin/sites/:siteSlug/uploads/images` é o único endpoint de upload de imagem (Role mínima `EDITOR`), usado por Produto, Artigo (capa) e Autor (avatar). Formato validado por assinatura binária real (magic bytes — JPEG/PNG/WebP), não por extensão ou `Content-Type` declarado; limite de 5 MiB aplicado tanto no parser multipart quanto por checagem defensiva no controller; nome do arquivo sempre gerado pelo servidor (nunca o nome original enviado). Armazenamento desenhado com uma porta explícita (`StoragePort`), implementada por `S3StorageAdapter` (compatível com AWS S3, Cloudflare R2, DigitalOcean Spaces, MinIO). Resposta `{ url }`, sem entidade `Media` — a URL é gravada direto no campo do recurso que a usa.
-
-- **API Pública:** três endpoints, sem sessão, resolvendo o Site por `siteSlug` (`PublicTenantGuard`) — `GET /public/sites/:siteSlug/articles` (listagem paginada, só Artigo `PUBLISHED`, filtros opcionais de `categorySlug`/`type`), `GET /public/sites/:siteSlug/articles/:slug` (detalhe, com `bodyMdx` e `products[]` → `offers[]` embutidos) e `GET /public/sites/:siteSlug/categories/:slug`. Nenhuma resposta pública expõe `status`, `siteId`, `authorId` ou `affiliateUrl`; todo Artigo público carrega `categorySlug` solto (nunca um objeto Categoria aninhado). Ordenação sempre `publishedAt DESC` com `id ASC` como desempate estável. Dentro do detalhe do Artigo, Ofertas arquivadas nunca aparecem em `offers[]` (evita CTA que sempre responderia `410`); Produtos arquivados continuam em `products[]` (com `offers: []` se todas as Ofertas dele estiverem arquivadas) e Categoria arquivada continua resolvível — arquivamento bloqueia uso administrativo futuro, mas não invalida referências históricas já publicadas.
+  Nenhuma resposta pública expõe `status`, `siteId`, `authorId` ou `affiliateUrl`.
+- **Revalidação:** a API aciona a revalidação on-demand do FastCompre (`/api/internal/revalidate`, protegida por `REVALIDATION_SECRET`) depois de cada mutação que afeta conteúdo publicado. Mutações de Categoria revalidam o site inteiro. Home, Categoria e Artigo usam `fetchCache = 'force-cache'` e só são atualizados por essa revalidação.
 
 ## Estrutura do projeto
 
 ```text
 commerce-platform/
 ├── apps/
-│   ├── api/
-│   │   ├── prisma/
-│   │   │   ├── schema.prisma
-│   │   │   └── migrations/
-│   │   ├── src/
-│   │   │   ├── health.controller.ts
-│   │   │   ├── app.module.ts
-│   │   │   ├── main.ts
-│   │   │   ├── modules/
-│   │   │   │   ├── application/   # orquestração cross-domain (ex.: health de Artigo)
-│   │   │   │   ├── catalog/       # Categoria, Produto, Oferta
-│   │   │   │   ├── editorial/     # Artigo, Autor, máquina de estados editorial
-│   │   │   │   ├── identity/      # autenticação, sessão, Roles
-│   │   │   │   ├── revalidation/  # revalidação do FastCompre após publish
-│   │   │   │   ├── tenancy/       # TenantContext, provisionamento de Site
-│   │   │   │   ├── tracking/      # redirect de afiliado, AffiliateClick
-│   │   │   │   └── uploads/       # upload de imagem (S3-compatível)
-│   │   │   └── shared/
-│   │   │       ├── config/            # validação de variáveis de ambiente (Zod)
-│   │   │       ├── database/          # PrismaService, DatabaseModule
-│   │   │       ├── http/              # filtro de erro, pipe, cookie, CORS, guards
-│   │   │       └── logging/           # LoggingModule (nestjs-pino)
-│   │   └── test/                      # specs e2e (supertest)
-│   ├── admin/         # Next.js — painel administrativo (Categorias, Produtos, Artigos, Autores)
-│   └── fastcompre/    # Next.js — site público da marca (Artigo, Categoria, sitemap, robots)
-└── packages/
-    └── contracts/
-        └── src/
-            ├── admin/    # contratos das rotas administrativas
-            ├── public/   # contratos das rotas públicas
-            ├── tracking/ # contratos de redirect/telemetria
-            └── common/   # ApiError, PaginatedResponse
+│   ├── api/                 # NestJS + Prisma
+│   │   ├── prisma/          # schema.prisma e migrations/
+│   │   ├── scripts/         # bootstrap-admin.ts
+│   │   ├── src/modules/     # application, catalog, editorial, identity,
+│   │   │                    # revalidation, tenancy, tracking, uploads
+│   │   ├── src/shared/      # config, database, http, logging
+│   │   └── test/            # specs e2e (supertest)
+│   ├── admin/               # Next.js: painel administrativo
+│   │   ├── e2e-a11y/        # Playwright + axe
+│   │   └── e2e-visual/      # baselines de regressão visual
+│   └── fastcompre/          # Next.js: site público
+│       ├── e2e-a11y/
+│       └── e2e-visual/
+├── packages/
+│   ├── contracts/           # contratos Zod (admin, public, tracking, internal, common)
+│   ├── ui/                  # tokens e primitivas de UI
+│   └── editorial/           # gramática/validação dos blocos editoriais
+├── docs/                    # documentação normativa (ver abaixo)
+├── scripts/                 # dev-api, medição de performance, verificação do Tailwind
+└── spikes/                  # provas técnicas históricas (não fazem parte da CI)
 ```
+
+## Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| `docs/Architecture.md` | Arquitetura, regras de negócio, invariantes e decisões estruturais |
+| `docs/Implementation-Backlog.md` | Backlog do MVP (concluído) |
+| `docs/UX-Implementation-Backlog.md` | Backlog do ciclo UI/UX (concluído), com os registros de fechamento de cada gate |
+| `docs/editorial/editorial-serialization-contract.md` | Contrato de serialização do editor e do pipeline MDX |
+| `docs/UXW-visual-direction-decision.md` | Direção visual do FastCompre |
+| `docs/a11y/wcag-aa-checklist.md` | Checklist manual WCAG 2.2 AA (Admin e FastCompre) |
+| `docs/performance/` | Baseline, budget e medição final de performance do FastCompre |
 
 ## Executando localmente
 
-1. **Instalar dependências:** `pnpm install` (na raiz).
-2. **Banco de dados:** `docker compose up -d` sobe um PostgreSQL 16 e um MinIO locais (usuário/senha/bucket definidos em `docker-compose.yml`).
-3. **Variáveis de ambiente:** copiar `apps/api/.env.example` para `apps/api/.env` e preencher `DATABASE_URL`, `SESSION_SECRET`, `REVALIDATION_SECRET`, `ADMIN_ORIGIN` e as variáveis de storage `STORAGE_S3_BUCKET`/`STORAGE_S3_REGION`/`STORAGE_S3_PUBLIC_URL_BASE` (obrigatórias) — `STORAGE_S3_ENDPOINT`, `STORAGE_S3_FORCE_PATH_STYLE` e as credenciais `STORAGE_S3_ACCESS_KEY_ID`/`STORAGE_S3_SECRET_ACCESS_KEY` são opcionais, necessárias apenas para provedores S3-compatíveis que não sejam a AWS real (os comentários no próprio arquivo explicam cada uma).
-4. **Cliente Prisma:** `pnpm --filter api exec prisma generate` (necessário sempre que o schema mudar; a pasta gerada não é versionada).
-5. **Rodar a API e os frontends:** `pnpm dev:api`, `pnpm dev:admin`, `pnpm dev:fastcompre`.
+Pré-requisitos: Node.js compatível com as dependências atuais, pnpm 11 e Docker.
 
-Alternativamente, `docker compose up --build` sobe a stack completa da API em containers (PostgreSQL, MinIO, aplicação das migrations pelo serviço `migrate` e a API pelo serviço `api`, na porta `3000`) a partir do `Dockerfile` de `apps/api` — útil para validar o build de produção da API sem montar o ambiente Node local. Os frontends (`apps/admin`, `apps/fastcompre`) continuam rodando via `pnpm dev:admin`/`pnpm dev:fastcompre` mesmo nesse fluxo.
+1. **Dependências:** `pnpm install` (na raiz).
+2. **Infraestrutura local:** `docker compose up -d postgres minio minio-init` sobe o PostgreSQL 16 e um storage S3-compatível de desenvolvimento (Silo, um fork mantido do MinIO; o serviço continua se chamando `minio`). Credenciais e bucket são valores fixos de desenvolvimento, definidos em `docker-compose.yml`.
+3. **Variáveis de ambiente** (`.env`/`.env.local` não são versionados):
+   - `apps/api/.env`: copie de `apps/api/.env.example`. Os comentários do arquivo explicam cada variável (`DATABASE_URL`, `SESSION_SECRET`, `REVALIDATION_SECRET`, `ADMIN_ORIGIN`, `REVALIDATION_TARGET_URL` e as variáveis `STORAGE_S3_*`).
+   - `apps/fastcompre/.env.local`: copie de `apps/fastcompre/.env.example`. O `REVALIDATION_SECRET` precisa ser igual ao da API.
+   - `apps/admin/.env.local`: defina `NEXT_PUBLIC_API_URL` com a URL da API local (por exemplo, `http://localhost:3000`).
+4. **Banco:** `pnpm --filter api exec prisma generate` e `pnpm --filter api exec prisma migrate deploy`.
+5. **Primeiro administrador:** ver [Criando o primeiro administrador](#criando-o-primeiro-administrador).
+6. **Apps em desenvolvimento** (portas fixas):
+
+   | Comando | App | Porta |
+   |---|---|---|
+   | `pnpm dev:api` | API | 3000 |
+   | `pnpm dev:admin` | Admin | 3001 |
+   | `pnpm dev:fastcompre` | FastCompre | 3002 |
+
+   No local, `ADMIN_ORIGIN` deve ser `http://localhost:3001`, `REVALIDATION_TARGET_URL` deve ser `http://localhost:3002`, e `SITE_URL` (FastCompre) deve ser `http://localhost:3002`. Se uma publicação não aparecer na Home ou na Categoria, verifique primeiro o `REVALIDATION_TARGET_URL`.
+
+Alternativa: `docker compose up --build` sobe também a migration (serviço `migrate`) e a API em container (serviço `api`, porta 3000), a partir do `Dockerfile` de `apps/api`. Os frontends continuam rodando via `pnpm dev:admin`/`pnpm dev:fastcompre`.
 
 ### Criando o primeiro administrador
 
-A API não faz seed automático de dados: o primeiro `User` + `Site` + `SiteUser(OWNER)` é criado por um comando interativo (`bootstrap:admin`, `AUTH-013`), nunca por um endpoint HTTP.
-
-**Pré-requisitos:**
-- Banco de dados já migrado (`docker compose up -d` + `pnpm --filter api exec prisma migrate deploy`).
-- `apps/api/.env` configurado (passo 3 acima).
-- A API **não** precisa estar rodando — o comando sobe seu próprio contexto de aplicação NestJS direto, independente do `pnpm dev:api`.
-
-**Comando:**
+A API não faz seed automático. O primeiro `User` + `Site` + `SiteUser(OWNER)` é criado por um comando interativo, nunca por um endpoint HTTP. O banco precisa estar migrado e o `apps/api/.env` configurado; a API não precisa estar rodando.
 
 ```bash
 pnpm --filter api run bootstrap:admin -- \
@@ -105,57 +116,50 @@ pnpm --filter api run bootstrap:admin -- \
   --site-locale pt-BR
 ```
 
-- `--email`, `--site-name`, `--site-slug`, `--site-domain` são obrigatórios.
-- `--user-name` é opcional. `--site-locale` tem default `pt-BR` se omitido.
-- A senha **nunca** é passada como argumento: o comando pede duas vezes, interativamente, sem eco no terminal (confirmação evita erro de digitação).
+- `--email`, `--site-name`, `--site-slug` e `--site-domain` são obrigatórios. `--user-name` é opcional, e `--site-locale` tem default `pt-BR`.
+- A senha **nunca** é passada como argumento: o comando pede duas vezes, de forma interativa e sem eco.
+- `User` (com hash da senha), `Site` e `SiteUser` com Role `OWNER` são criados atomicamente.
 
-**O que o comando cria:** `User` (com a senha informada, já com hash), `Site` e `SiteUser` com Role `OWNER` — os três atomicamente (falha em qualquer etapa não deixa nenhum dos três).
+Depois, rode `pnpm dev:api` e `pnpm dev:admin` e faça login no Admin. Com acesso a um único Site, o login redireciona direto para o Dashboard (`/<site-slug>`). Com mais de um, a página raiz mostra o seletor de Site.
 
-**Exemplo completo:**
+## Testes e verificação
 
-```
-$ pnpm --filter api run bootstrap:admin -- \
-    --email admin@fastcompre.com \
-    --user-name "Léo Geison" \
-    --site-name "FastCompre" \
-    --site-slug fastcompre \
-    --site-domain fastcompre.com
+| Objetivo | Comando |
+|---|---|
+| Lint (todos os workspaces) | `pnpm lint` |
+| Typecheck (todos) | `pnpm typecheck` |
+| Build (todos) | `pnpm build` |
+| Unitários da API + gate de cobertura | `pnpm --filter api test:coverage:domain` |
+| Unitários do Admin / FastCompre | `pnpm --filter admin test` / `pnpm --filter fastcompre test` |
+| Unitários de `ui` / `editorial` | `pnpm --filter @commerce-platform/ui test` / `pnpm --filter @commerce-platform/editorial test` |
+| E2E da API | `pnpm --filter api test:e2e` |
+| Acessibilidade em browser real (Playwright + axe) | `pnpm --filter admin test:a11y` / `pnpm --filter fastcompre test:a11y` |
+| Regressão visual (comparação com os baselines) | `pnpm --filter admin test:visual-baseline` / `pnpm --filter fastcompre test:visual-baseline` |
 
-Senha: ********
-Confirme a senha: ********
-Administrador criado com sucesso.
-  E-mail: admin@fastcompre.com
-  Site: FastCompre (fastcompre)
-  Role: OWNER
-```
+Observações:
 
-**Depois de criado:** rode `pnpm dev:api` e `pnpm dev:admin`, acesse o Admin e faça login com o e-mail e a senha informados acima. Como o bootstrap cria exatamente um Site, o login redireciona automaticamente para `/<site-slug>/categories` desse Site (a página raiz só mostra uma lista para escolher quando o usuário tem acesso a mais de um Site).
+- **E2E da API:** os specs exigem PostgreSQL real. O setup carrega o `DATABASE_URL` do `apps/api/.env`, e um `DATABASE_URL` exportado no shell tem precedência. A limpeza dos testes é restrita aos dados que eles próprios criam.
+- **Harnesses Playwright:** cada um sobe seu próprio build de produção com mocks da API, em portas dedicadas, sem depender de banco.
+- **Baselines visuais:** dependem do ambiente de captura (as fontes de fallback do sistema influenciam a renderização). Os atuais foram gerados em Ubuntu nativo com o Chromium do Playwright 1.62.1. `test:visual-baseline:update` regenera os baselines e só deve ser usado para mudanças visuais aprovadas.
+- **Acessibilidade:** axe e `jest-axe` são gates de regressão, não certificação WCAG. A verificação manual está em `docs/a11y/wcag-aa-checklist.md`.
 
-### Testes e verificação
+### CI
 
-- `pnpm lint`, `pnpm typecheck`, `pnpm build` — na raiz, cobrem todos os workspaces.
-- `pnpm --filter api test:coverage:domain` — testes unitários da API com gate de cobertura sobre `domain`/`application` (não exigem banco). `pnpm --filter admin test` e `pnpm --filter fastcompre test` cobrem os respectivos frontends.
-- `pnpm --filter api test:e2e` — suíte e2e da API. A maioria dos specs exige um PostgreSQL real: exporte um `DATABASE_URL` válido no shell antes de rodar o Jest (o fallback em `jest-e2e.setup.ts` só se aplica se a variável ainda não estiver definida).
-- **CI:** o GitHub Actions roda automaticamente, a cada push/PR para `main`, todos os passos acima (unitários com gate de cobertura, testes de Admin/FastCompre, migrations num Postgres efêmero, e2e completo, lint, typecheck e build) — ver a seção [Stack tecnológica](#stack-tecnológica).
+O GitHub Actions (`.github/workflows/ci.yml`) roda a cada push para `main` e em todo pull request, em dois jobs:
+
+- **`build-lint-typecheck`:** `pnpm install --frozen-lockfile`, geração do cliente Prisma, build de `contracts`/`ui`/`editorial`, testes de `ui`, unitários da API com gate de cobertura, testes do Admin e do FastCompre, migrations num PostgreSQL efêmero, e2e completo da API, lint, typecheck e build.
+- **`a11y-playwright`:** os harnesses de acessibilidade do Admin e do FastCompre, no container oficial do Playwright.
+
+Os harnesses de regressão visual não fazem parte da CI.
 
 ## Roadmap
 
-Fases do `Implementation-Backlog.md`:
-
-- [x] Fase 1 — Bootstrap do Monorepo
-- [x] Fase 2 — Bootstrap da API e Prisma
-- [x] Fase 3 — Contratos Compartilhados
-- [x] Fase 4 — Infraestrutura Transversal da API
-- [x] Fase 5 — Identity e Autenticação
-- [x] Fase 6 — Catalog
-- [x] Fase 7 — Editorial
-- [x] Fase 8 — Application Cross-Domain
-- [x] Fase 9 — Tracking
-- [x] Fase 10 — Uploads
-- [x] Fase 11 — API Pública
-- [x] Fase 12 — FastCompre Público
-- [x] Fase 13 — Admin
-- [x] Fase 14 — Revalidação
-- [x] Fase 15 — Qualidade e Entrega do MVP
-
-Todas as fases do backlog foram concluídas e o marco `MVP-M01` foi atingido. O backlog atual está encerrado.
+- [x] **MVP** (`docs/Implementation-Backlog.md`): fases 1 a 15, da bootstrap do monorepo à entrega do MVP (`MVP-M01`).
+- [x] **Ciclo UI/UX** (`docs/UX-Implementation-Backlog.md`):
+  - [x] `UX-M01` Foundations Ready
+  - [x] `UX-M02` Admin Rebuilt
+  - [x] `UX-M03` Editorial Platform Ready
+  - [x] `UX-M04` FastCompre Rebuilt
+  - [x] `UX-M05` Quality Gate Passed (por waiver formal de performance)
+  - [x] `UX-M06` UI/UX Complete
+- [ ] **Produção:** definição de infraestrutura e deploy (próxima fase).
