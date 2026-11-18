@@ -1288,6 +1288,7 @@ Bloco comum: esta seção não introduz nenhuma preocupação nova de acessibili
 **Critérios de aceite:** pipeline inteiro verde numa única execução.
 **Testes esperados:** o próprio pipeline.
 **Riscos:** nenhum.
+**Status de fechamento (2026-11-18):** pipeline real do GitHub Actions verde numa única execução para o HEAD `6cf0ad4` (run `44323124739`) — jobs `build-lint-typecheck` e `a11y-playwright` com `success`. Evidência complementar: reprodução local fiel do `ci.yml`, sem alteração de configs, budgets, thresholds ou testes — `build-lint-typecheck` com os 14 passos verdes (UI 3 suítes/21 testes; API unit + gate de cobertura 62 suítes/416 testes, cobertura acima do gate; Admin 66 suítes/956 testes; FastCompre 27 suítes/278 testes; `prisma migrate deploy` em banco vazio; API e2e 78 suítes/665 testes; lint 0 erros, 28 warnings preexistentes; typecheck aprovado; build Admin/FastCompre aprovado) e `a11y-playwright` com Admin 10/10 e FastCompre 3/3.
 **Dependências posteriores:** UXQ-014.
 
 ### UXQ-014 — Fechamento formal de UX-M06 UI/UX Complete
