@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
+import { serializeRequest, serializeResponse } from './log-serializers';
 
 export const REQUEST_ID_HEADER = 'x-request-id';
 
@@ -9,6 +10,24 @@ function resolveRequestId(req: IncomingMessage): string | undefined {
   const header = req.headers[REQUEST_ID_HEADER];
   return Array.isArray(header) ? header[0] : header;
 }
+
+/**
+ * Opções do `pino-http` usadas pelo `LoggingModule`. Exportadas só para que
+ * o teste de integração (`test/logging.e2e-spec.ts`) monte o logger com
+ * exatamente a mesma configuração, gravando num stream em memória.
+ */
+export const pinoHttpOptions = {
+  genReqId: (req: IncomingMessage, res: ServerResponse) => {
+    const id = resolveRequestId(req) ?? randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, id);
+    return id;
+  },
+  // PROD-003 — allowlist de campos/headers; ver `log-serializers.ts`.
+  serializers: {
+    req: serializeRequest,
+    res: serializeResponse,
+  },
+};
 
 /**
  * Logging estruturado da API (INF-002): substitui o logger padrão do Nest
@@ -29,19 +48,16 @@ function resolveRequestId(req: IncomingMessage): string | undefined {
  * de log esperam) — mais simples não usar em lugar nenhum do que arriscar
  * vazar para produção por engano.
  *
+ * Dados sensíveis (PROD-003): `req`/`res` são serializados por allowlist —
+ * nenhum cookie, token, segredo ou IP de cliente chega ao log.
+ *
  * Fora do escopo (não antecipado aqui): tracing distribuído, OpenTelemetry,
  * ou qualquer integração com agregador externo de log.
  */
 @Module({
   imports: [
     LoggerModule.forRoot({
-      pinoHttp: {
-        genReqId: (req: IncomingMessage, res: ServerResponse) => {
-          const id = resolveRequestId(req) ?? randomUUID();
-          res.setHeader(REQUEST_ID_HEADER, id);
-          return id;
-        },
-      },
+      pinoHttp: pinoHttpOptions,
     }),
   ],
 })

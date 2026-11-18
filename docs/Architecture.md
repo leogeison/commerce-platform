@@ -263,6 +263,8 @@ Passport pode ser utilizado apenas se simplificar concretamente a integração c
 
 Hash seguro de senha; rate limiting no login (e no redirect de tracking); mensagem genérica para credenciais incorretas (não revela se o erro foi e-mail ou senha); expiração e revogação de sessão; logout real; e-mails sempre normalizados para minúsculas antes de salvar/consultar (evita duplicidade lógica por diferença de capitalização).
 
+Logs estruturados nunca registram credenciais, tokens de sessão, segredos nem IP de cliente; headers de requisição e de resposta são registrados somente por allowlist.
+
 ### Bootstrap do primeiro administrador
 
 Único ponto de criação de `Site` no MVP: uma transação única cria `User + Site + SiteUser(OWNER)` atomicamente — nunca exposto como endpoint HTTP. Falha parcial não deixa nenhum dos três registros criado (evita administrador órfão).
