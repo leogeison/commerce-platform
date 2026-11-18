@@ -776,6 +776,7 @@ Ver detalhamento completo na Seção 20 (Fluxo de Tracking). Resumo das decisõe
 - Exclusão física de Oferta é bloqueada por existência de `AffiliateClick` — mas essa checagem não pertence ao Catalog (que não pode depender de Tracking); é um caso de uso cross-domain próprio.
 - `410 Gone` (Oferta arquivada) inclui corpo de resposta amigável produzido pela própria API, já que o navegador nunca chega a uma página Next.js nesse fluxo.
 - Rate limit aplicado ao endpoint de redirect, assim como ao login.
+- O rate limit é por IP do cliente; atrás de proxy, a origem do IP é selecionada explicitamente por configuração (`CLIENT_IP_SOURCE`) e nunca confiada por padrão.
 
 ---
 

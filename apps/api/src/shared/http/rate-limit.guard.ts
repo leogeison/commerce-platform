@@ -5,17 +5,16 @@ import {
   HttpStatus,
   Injectable,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import type { EnvVars } from '../config/env.schema';
+import { resolveClientIp } from './client-ip';
 import {
   RATE_LIMIT_METADATA_KEY,
   RateLimitOptions,
 } from './rate-limit.decorator';
 import { RateLimitStore } from './rate-limit.store';
-
-function resolveClientIp(request: Request): string {
-  return request.ip ?? request.socket.remoteAddress ?? 'unknown';
-}
 
 /**
  * Guard reutilizável de rate limit (INF-007). Lê a configuração
@@ -23,7 +22,9 @@ function resolveClientIp(request: Request): string {
  * controller (handler tem prioridade); sem essa metadata, deixa a
  * requisição passar — nenhum limite configurado, nada a aplicar.
  *
- * Chave do limite: `Classe:handler:IP`. O IP isola clientes entre si (o
+ * Chave do limite: `Classe:handler:IP`. O IP vem de `resolveClientIp`,
+ * conforme `CLIENT_IP_SOURCE` (PROD-002: `socket` por padrão; `x-real-ip`
+ * só atrás de proxy confirmado). O IP isola clientes entre si (o
  * requisito da tarefa); o prefixo de classe/handler evita que duas rotas
  * distintas, cada uma com seu próprio `@RateLimit`, compartilhem sem querer
  * o mesmo contador dentro do `RateLimitStore` (que é um único `Map`
@@ -41,6 +42,7 @@ export class RateLimitGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly store: RateLimitStore,
+    private readonly configService: ConfigService<EnvVars, true>,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -53,7 +55,10 @@ export class RateLimitGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request>();
-    const key = `${context.getClass().name}:${context.getHandler().name}:${resolveClientIp(request)}`;
+    const clientIpSource = this.configService.get('CLIENT_IP_SOURCE', {
+      infer: true,
+    });
+    const key = `${context.getClass().name}:${context.getHandler().name}:${resolveClientIp(request, clientIpSource)}`;
 
     const result = this.store.consume(key, options.limit, options.windowMs);
 

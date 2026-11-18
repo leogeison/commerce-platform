@@ -12,12 +12,29 @@ describe('validateEnv', () => {
     STORAGE_S3_PUBLIC_URL_BASE: 'https://cdn.example.com',
   };
 
-  it('retorna as variáveis quando o ambiente é válido (STORAGE_S3_FORCE_PATH_STYLE ausente vira false)', () => {
+  it('retorna as variáveis quando o ambiente é válido (STORAGE_S3_FORCE_PATH_STYLE ausente vira false, CLIENT_IP_SOURCE ausente vira socket)', () => {
     expect(validateEnv(validEnv)).toEqual({
       ...validEnv,
       STORAGE_S3_FORCE_PATH_STYLE: false,
+      CLIENT_IP_SOURCE: 'socket',
     });
   });
+
+  it('CLIENT_IP_SOURCE aceita x-real-ip', () => {
+    expect(
+      validateEnv({ ...validEnv, CLIENT_IP_SOURCE: 'x-real-ip' })
+        .CLIENT_IP_SOURCE,
+    ).toBe('x-real-ip');
+  });
+
+  it.each(['x-forwarded-for', 'X-REAL-IP', 'true', ''])(
+    'lança erro claro quando CLIENT_IP_SOURCE é %p (valores fechados)',
+    (value) => {
+      expect(() =>
+        validateEnv({ ...validEnv, CLIENT_IP_SOURCE: value }),
+      ).toThrow(/CLIENT_IP_SOURCE/);
+    },
+  );
 
   it('lança erro claro quando DATABASE_URL está ausente', () => {
     expect(() =>

@@ -95,6 +95,14 @@ export const envSchema = z
       .string()
       .min(1, 'STORAGE_S3_SECRET_ACCESS_KEY não pode ser vazia')
       .optional(),
+    // Origem do IP do cliente para rate limit (PROD-002). Default `socket`
+    // ignora qualquer header de proxy; `x-real-ip` só deve ser habilitado
+    // atrás de um proxy confirmado como controlador desse header.
+    CLIENT_IP_SOURCE: z
+      .enum(['socket', 'x-real-ip'], {
+        message: 'CLIENT_IP_SOURCE deve ser socket ou x-real-ip',
+      })
+      .default('socket'),
   })
   .passthrough()
   .superRefine((env, ctx) => {
