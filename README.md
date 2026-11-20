@@ -77,6 +77,7 @@ commerce-platform/
 | `docs/UXW-visual-direction-decision.md` | Direção visual do FastCompre |
 | `docs/a11y/wcag-aa-checklist.md` | Checklist manual WCAG 2.2 AA (Admin e FastCompre) |
 | `docs/performance/` | Baseline, budget e medição final de performance do FastCompre |
+| `docs/operations/production-runbook.md` | Runbook de produção: topologia, variáveis, primeiro deploy, bootstrap, smoke test, falhas e rollback |
 
 ## Executando localmente
 
