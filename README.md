@@ -46,7 +46,7 @@ commerce-platform/
 ├── apps/
 │   ├── api/                 # NestJS + Prisma
 │   │   ├── prisma/          # schema.prisma e migrations/
-│   │   ├── scripts/         # bootstrap-admin.ts
+│   │   ├── src/cli/         # bootstrap-admin.ts
 │   │   ├── src/modules/     # application, catalog, editorial, identity,
 │   │   │                    # revalidation, tenancy, tracking, uploads
 │   │   ├── src/shared/      # config, database, http, logging
@@ -107,7 +107,7 @@ Alternativa: `docker compose up --build` sobe também a migration (serviço `mig
 A API não faz seed automático. O primeiro `User` + `Site` + `SiteUser(OWNER)` é criado por um comando interativo, nunca por um endpoint HTTP. O banco precisa estar migrado e o `apps/api/.env` configurado; a API não precisa estar rodando.
 
 ```bash
-pnpm --filter api run bootstrap:admin -- \
+pnpm --filter api run bootstrap:admin \
   --email admin@email.com \
   --user-name "Nome do Administrador" \
   --site-name "Nome do Site" \

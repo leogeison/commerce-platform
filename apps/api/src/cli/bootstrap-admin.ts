@@ -1,9 +1,9 @@
 import { parseArgs } from 'node:util';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
-import { BootstrapAdminModule } from '../src/modules/identity/application/bootstrap-admin.module';
-import { BootstrapAdminCommand } from '../src/modules/identity/application/bootstrap-admin.command';
-import { validatePasswordConfirmation } from '../src/modules/identity/domain/password-confirmation';
+import { BootstrapAdminModule } from '../modules/identity/application/bootstrap-admin.module';
+import { BootstrapAdminCommand } from '../modules/identity/application/bootstrap-admin.command';
+import { validatePasswordConfirmation } from '../modules/identity/domain/password-confirmation';
 
 /**
  * Entrypoint CLI da AUTH-013 — `pnpm --filter api run bootstrap:admin`.

@@ -267,7 +267,7 @@ Logs estruturados nunca registram credenciais, tokens de sessão, segredos nem I
 
 ### Bootstrap do primeiro administrador
 
-Único ponto de criação de `Site` no MVP: uma transação única cria `User + Site + SiteUser(OWNER)` atomicamente — nunca exposto como endpoint HTTP. Falha parcial não deixa nenhum dos três registros criado (evita administrador órfão).
+Único ponto de criação de `Site` no MVP: uma transação única cria `User + Site + SiteUser(OWNER)` atomicamente — nunca exposto como endpoint HTTP. Falha parcial não deixa nenhum dos três registros criado (evita administrador órfão). Em produção, o bootstrap roda one-off dentro do ambiente da API (`node dist/cli/bootstrap-admin.js`), nunca por endpoint.
 
 ---
 
@@ -745,6 +745,10 @@ model AffiliateClick {
 ### Validação automática do schema
 
 Formatação, validação, geração de client e a primeira migration (`prisma format` → `validate` → `generate` → `migrate dev --create-only`) são deliberadamente **adiadas para a primeira atividade da fase de implementação**, imediatamente após o projeto NestJS + Prisma ser criado de fato — enquanto o projeto não existe, essa validação misturaria arquitetura com implementação. A ordem de checagem nesse momento cobre: sintaxe, relações compostas opcionais, compartilhamento de `siteId` entre relações, SQL das foreign keys, ações referenciais, índices gerados, `CHECK ("price" > 0)`, e possível drift após qualquer ajuste manual em SQL.
+
+### Migrations em produção
+
+`prisma migrate deploy` é o único mecanismo de migration em produção. Ele roda antes de cada nova versão da API entrar no ar (pre-deploy) — uma falha bloqueia o deploy — e nunca no startup da API.
 
 ---
 

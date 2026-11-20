@@ -8,7 +8,7 @@ import { BootstrapAdminCommand } from './bootstrap-admin.command';
 
 /**
  * Módulo mínimo dedicado só ao `ApplicationContext` de
- * `scripts/bootstrap-admin.ts` (AUTH-013) — nunca importado pelo
+ * `src/cli/bootstrap-admin.ts` (AUTH-013) — nunca importado pelo
  * `AppModule`/HTTP, nunca sobe servidor nenhum.
  *
  * Deliberadamente separado de `IdentityModule`/`TenancyModule`: registrar

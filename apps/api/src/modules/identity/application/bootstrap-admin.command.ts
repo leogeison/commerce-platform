@@ -27,7 +27,7 @@ export interface BootstrapAdminResult {
  * Só orquestra: gera o hash real via `PasswordHasher` (AUTH-002) e delega a
  * criação atômica para `ProvisionTenantUseCase` (DB-013), que já normaliza
  * o e-mail. Nenhuma lógica de CLI aqui — argumentos, prompt de senha e
- * `ApplicationContext` ficam inteiramente em `scripts/bootstrap-admin.ts`,
+ * `ApplicationContext` ficam inteiramente em `src/cli/bootstrap-admin.ts`,
  * que é quem chama este comando.
  *
  * Nunca vira endpoint HTTP (mesma restrição já registrada na DB-013) — este

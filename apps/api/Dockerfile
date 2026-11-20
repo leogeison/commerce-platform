@@ -70,11 +70,17 @@ FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
+# PROD-004 — `openssl` para o schema engine do Prisma detectar a versão de
+# libssl ao rodar `prisma migrate deploy` (pre-deploy), sem cair no fallback
+# `openssl-1.1.x` com warning.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Diretório autocontido gerado pelo `pnpm deploy` no estágio anterior —
-# já inclui dist/, node_modules/ (só dependências de produção) e
-# package.json. Sem CLI do Prisma, sem prisma/ (migrations), sem
-# devDependencies: migrations rodam no serviço `migrate` (compose), que
-# usa o estágio `build` acima, não este.
+# já inclui dist/ (com dist/cli/bootstrap-admin.js), node_modules/ (só
+# dependências de produção, incluindo o CLI do Prisma) e prisma/
+# (schema + migrations). Migrations rodam via `prisma migrate deploy` no
+# pre-deploy (PROD-004), nunca no `CMD` abaixo.
 COPY --from=build /out/api ./
 
 EXPOSE 3000
