@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway e Vercel **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -49,13 +49,13 @@ Nomes derivados do código (`apps/api/src/shared/config/env.schema.ts`, `apps/fa
 | `REVALIDATION_SECRET` | ✔ | Header `x-revalidation-secret` enviado ao FastCompre | ✔ | Gerado aleatoriamente; **o mesmo valor** do FastCompre Production |
 | `ADMIN_ORIGIN` | ✔ | Origem única aceita por CORS e `OriginGuard` | – | `https://admin.fastcompre.com` — **sem barra final** (comparação exata com o header `Origin`) |
 | `REVALIDATION_TARGET_URL` | ✔ | Origem do FastCompre para revalidação | – | `https://fastcompre.com` — o host canônico, nunca `www` (um redirect quebraria o POST) |
-| `STORAGE_S3_BUCKET` | ✔ | Bucket de uploads | – | Nome do bucket R2 |
+| `STORAGE_S3_BUCKET` | ✔ | Bucket de uploads | – | `fastcompre-media` |
 | `STORAGE_S3_REGION` | ✔ | Região S3 | – | `auto` (R2) |
 | `STORAGE_S3_ENDPOINT` | ✔ (R2) | Endpoint da API S3 | – | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
 | `STORAGE_S3_PUBLIC_URL_BASE` | ✔ | Base da URL pública retornada pelo upload | – | `https://media.fastcompre.com` |
 | `STORAGE_S3_ACCESS_KEY_ID` | ✔ (R2) | Credencial S3 (sempre junto da secret) | ✔ | Token R2 com leitura/escrita de objetos restrito ao bucket |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | ✔ (R2) | Credencial S3 | ✔ | Mesmo token |
-| `STORAGE_S3_FORCE_PATH_STYLE` | opc. | Estilo de endereçamento S3 (default `false`) | – | Definir conforme teste de upload com o R2 **[VALIDAR]** |
+| `STORAGE_S3_FORCE_PATH_STYLE` | opc. | Estilo de endereçamento S3 (default `false`) | – | `false` — validado com o R2 em 2026-11-21 (ver 9.5) |
 | `CLIENT_IP_SOURCE` | opc. | Origem do IP do rate limit (`socket` \| `x-real-ip`) | – | `socket` até o gate da seção 9.1 passar |
 | `PORT` | – | Porta HTTP | – | Injetada pelo Railway |
 
@@ -86,11 +86,11 @@ Secrets de Production **nunca** são reutilizados em Preview (em especial `REVAL
 
 ## 4. Primeiro deploy
 
-Pré-condições: CI verde no commit a publicar; acesso administrativo aos três provedores; zona `fastcompre.com` ativa no Cloudflare.
+Pré-condições: CI verde no commit a publicar; acesso administrativo aos três provedores; zona `fastcompre.com` ativa no Cloudflare (concluído em 2026-11-21).
 
-1. **R2**
-   1. Criar o bucket.
-   2. Conectar o domínio customizado `media.fastcompre.com` ao bucket.
+1. **R2** — concluído em 2026-11-21 (evidências em 9.5)
+   1. Criar o bucket (`fastcompre-media`).
+   2. Conectar o domínio customizado `media.fastcompre.com` ao bucket. O acesso público por `r2.dev` permanece desabilitado.
    3. Criar token com leitura/escrita de objetos **restrito ao bucket**; guardar access key e secret no gerenciador de secrets.
    4. Anotar o endpoint S3 da conta (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
 2. **PostgreSQL (Railway)**
@@ -219,9 +219,18 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Comportamento do deployment anterior quando o novo falha no healthcheck **[VALIDAR]**.
 - Procedimento de rollback de deployment no Railway e na Vercel **[VALIDAR]**.
 - Pre-Deploy Timeout e timeout de healthcheck definidos **[VALIDAR]**.
-- `STORAGE_S3_FORCE_PATH_STYLE` com o R2 **[VALIDAR]**.
 - Status de proxy/DNS-only por registro DNS **[VALIDAR]**.
 - Estratégia de Preview na Vercel **[VALIDAR]**.
+
+### 9.5 Validações concluídas
+
+**Cloudflare DNS + R2 — 2026-11-21**
+
+- Zona `fastcompre.com` ativa no Cloudflare (nameservers trocados no registrador; registros pré-existentes preservados).
+- Bucket `fastcompre-media` criado; região `auto`; acesso público por `r2.dev` não habilitado.
+- Domínio customizado `media.fastcompre.com` ativo no bucket; leitura pública de objeto retornou HTTP 200 com o conteúdo correto.
+- Token R2 com permissão `Object Read & Write` restrita ao bucket; credenciais guardadas fora do repositório.
+- Upload com o mesmo `@aws-sdk/client-s3` usado pela API, com `region: auto`, endpoint S3 da conta e `forcePathStyle: false`: funcionou. `DeleteObject` também funcionou. Portanto `STORAGE_S3_FORCE_PATH_STYLE=false`.
 
 ## 10. Referências
 
