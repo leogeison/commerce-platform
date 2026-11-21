@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway e Vercel **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback e shell seguem pendentes **[VALIDAR]**. Vercel **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -95,17 +95,17 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
    4. Anotar o endpoint S3 da conta (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
 2. **PostgreSQL (Railway)**
    1. Criar o serviço PostgreSQL **sem** acesso público.
-   2. Configurar backups agendados **[VALIDAR disponibilidade e retenção]**.
+   2. Configurar backups agendados. Em 2026-11-21, backups automáticos/PITR exigiam plano Pro na UI do Railway; nenhum upgrade foi feito e o banco está **sem backup agendado**. Decisão de plano e retenção pendente **[VALIDAR]**.
 3. **API (Railway)**
-   1. Criar o serviço a partir do repositório, com build context na raiz e `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile` **[VALIDAR forma exata de configuração]**.
+   1. Criar o serviço como **Empty Service** e conectar o repositório (branch `main`) antes do primeiro deploy. Root Directory **vazio** (build context na raiz), Builder `Dockerfile`, variável `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile` (relativa, sem barra inicial) e Start Command vazio (vale o `CMD` da imagem). Confirmado no build log: `load build definition from apps/api/Dockerfile`.
    2. Desativar auto-deploy (deploy manual).
    3. Pre-Deploy Command: `node_modules/.bin/prisma migrate deploy` (diretório de trabalho da imagem: `/app`).
-   4. **Pre-Deploy Timeout**: configurar deliberadamente — o Railway não impõe limite por padrão, e `prisma migrate deploy` não deve poder ficar preso indefinidamente. Valor a definir na configuração real **[VALIDAR]**.
-   5. Healthcheck path: `/health`; revisar o timeout do healthcheck **[VALIDAR]**.
+   4. **Pre-Deploy Timeout**: configurar deliberadamente — o Railway não impõe limite por padrão, e `prisma migrate deploy` não deve poder ficar preso indefinidamente. Valor definido: **300 s**.
+   5. Healthcheck path: `/health`; Healthcheck Timeout: **300 s**.
    6. Réplicas: 1 (o rate limit é em memória por processo).
    7. Variáveis da seção 3 (API). `CLIENT_IP_SOURCE=socket` (ou ausente).
-   8. Domínio customizado `api.fastcompre.com` (registros exigidos pelo Railway; TLS automático). Status de proxy no Cloudflare **[VALIDAR]**.
-4. **Deploy da API** — disparar manualmente o deploy do commit validado. Esperado: build → pre-deploy aplica as migrations → healthcheck 2xx → deployment ativo. Conferir `GET https://api.fastcompre.com/health` → `{"status":"ok"}`.
+   8. Domínio customizado `api.fastcompre.com`: no Cloudflare, CNAME `api` para o target fornecido pelo Railway e TXT `_railway-verify.api`; TLS automático. **Target port do domínio = porta em que o Railway detectou a aplicação** (8080 em 2026-11-21; a API escuta em `PORT`). Target port errado resulta em `502 Application failed to respond`. Hoje o CNAME está **DNS only**; ativar o proxy do Cloudflare é decisão pendente (exige SSL/TLS **Full**, e afeta o gate 9.1) **[VALIDAR]**.
+4. **Deploy da API** — disparar manualmente o deploy do commit validado. Esperado: build → pre-deploy aplica as migrations → healthcheck 2xx → deployment ativo. Conferir `GET https://api.fastcompre.com/health` → `{"status":"ok"}`. Primeiro deploy executado em 2026-11-21 (ver 9.5).
 5. **Bootstrap** — seção 5.
 6. **FastCompre (Vercel)**
    1. Projeto com Root Directory `apps/fastcompre` (monorepo pnpm).
@@ -218,7 +218,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 
 - Comportamento do deployment anterior quando o novo falha no healthcheck **[VALIDAR]**.
 - Procedimento de rollback de deployment no Railway e na Vercel **[VALIDAR]**.
-- Pre-Deploy Timeout e timeout de healthcheck definidos **[VALIDAR]**.
+- Pre-Deploy Timeout e timeout de healthcheck: definidos em 2026-11-21 (300 s cada; ver 9.5).
 - Status de proxy/DNS-only por registro DNS **[VALIDAR]**.
 - Estratégia de Preview na Vercel **[VALIDAR]**.
 
@@ -231,6 +231,20 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Domínio customizado `media.fastcompre.com` ativo no bucket; leitura pública de objeto retornou HTTP 200 com o conteúdo correto.
 - Token R2 com permissão `Object Read & Write` restrita ao bucket; credenciais guardadas fora do repositório.
 - Upload com o mesmo `@aws-sdk/client-s3` usado pela API, com `region: auto`, endpoint S3 da conta e `forcePathStyle: false`: funcionou. `DeleteObject` também funcionou. Portanto `STORAGE_S3_FORCE_PATH_STYLE=false`.
+
+**Railway + PostgreSQL + API (primeiro deploy, sem bootstrap) — 2026-11-21**
+
+- Projeto `commerce-platform`; serviço PostgreSQL `Postgres` sem Public Access/TCP Proxy; `DATABASE_PUBLIC_URL` inexistente.
+- Backups automáticos/PITR exigem plano Pro na UI atual; nenhum upgrade feito. Banco sem backup agendado (gate 9.3 aberto).
+- Serviço `api`: repositório `leogeison/commerce-platform`, branch `main`, Root Directory vazio, auto-deploy desativado, Builder `Dockerfile`, `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`, Start Command vazio, 1 réplica.
+- Build log: `load build definition from apps/api/Dockerfile`.
+- `DATABASE_URL=${{Postgres.DATABASE_URL}}` (referência privada); Prisma conectou em `postgres.railway.internal:5432`.
+- Pre-deploy `node_modules/.bin/prisma migrate deploy` (timeout 300 s): 2 migrations encontradas e aplicadas. As migrations rodaram no pre-deploy, não no startup da API.
+- Nest iniciou; healthcheck `/health` (timeout 300 s) passou na primeira tentativa.
+- **Porta:** o Railway detectou a aplicação ouvindo na porta **8080**. Com target port `3000` no domínio customizado, a resposta foi `502 Application failed to respond`; trocar o target port para `8080` (no domínio Railway e no customizado) resolveu. Foi uma validação operacional, sem mudança de código.
+- Domínio Railway `api-production-89f31192.up.railway.app` e domínio customizado `api.fastcompre.com` (CNAME `api` + TXT `_railway-verify.api` no Cloudflare, CNAME em DNS only): `GET /health` nos dois retornou HTTP/2 200 com `{"status":"ok"}`.
+- `CLIENT_IP_SOURCE=socket` mantido.
+- Ainda **não** validados nesta etapa: bootstrap e shell (seção 5), `prisma migrate resolve` (9.2), deployment anterior com healthcheck falho e rollback (9.4), backups/restore (9.3), proxy Cloudflare da API, X-Real-IP (9.1), Vercel e Preview.
 
 ## 10. Referências
 
