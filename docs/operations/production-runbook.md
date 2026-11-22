@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback segue pendente **[VALIDAR]**. Vercel **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback segue pendente **[VALIDAR]**. Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre em 2026-11-21 (ver 9.5); projeto do Admin, rollback e Preview pendentes **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -79,6 +79,9 @@ Por ser `NEXT_PUBLIC_*`, o valor é embutido no build: qualquer mudança exige n
 | `AFFILIATE_REDIRECT_URL` | ✔ | Origem dos links `/r/{siteSlug}/{offerId}` | – | `https://api.fastcompre.com` (o redirect é servido pela API) |
 | `REVALIDATION_SECRET` | ✔ | Valida chamadas de revalidação | ✔ | O mesmo valor da API |
 | `STORAGE_PUBLIC_URL_BASE` | ✔ | `images.remotePatterns` do `next/image` (build falha sem ela em produção) | – | `https://media.fastcompre.com` |
+| `ENABLE_EXPERIMENTAL_COREPACK` | ✔ | Operacional (não lida pelo app): faz a Vercel usar o `packageManager` da raiz (`pnpm@11.17.0`) em vez da versão inferida do lockfile | – | `1` |
+
+Node.js do projeto: **22.x** (Settings → Build and Deployment), alinhado ao CI.
 
 ### Preview (Vercel)
 
@@ -108,9 +111,9 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
 4. **Deploy da API** — disparar manualmente o deploy do commit validado. Esperado: build → pre-deploy aplica as migrations → healthcheck 2xx → deployment ativo. Conferir `GET https://api.fastcompre.com/health` → `{"status":"ok"}`. Primeiro deploy executado em 2026-11-21 (ver 9.5).
 5. **Bootstrap** — seção 5.
 6. **FastCompre (Vercel)**
-   1. Projeto com Root Directory `apps/fastcompre` (monorepo pnpm).
-   2. Variáveis da seção 3 no ambiente **Production**.
-   3. Domínios: `fastcompre.com` (canônico) e `www.fastcompre.com` redirecionando para o apex.
+   1. Projeto com Root Directory `apps/fastcompre` (monorepo pnpm), framework Next.js, Node.js 22.x; Build/Install/Output nos padrões, sem overrides.
+   2. Variáveis da seção 3 no ambiente **Production** (somente Production), incluindo `ENABLE_EXPERIMENTAL_COREPACK=1`; conferir no build log que o pnpm usado é o 11.17.0.
+   3. Domínios: `fastcompre.com` (canônico) e `www.fastcompre.com` com redirect `308` para o apex. No Cloudflare, CNAME no apex (`@`, resolvido por CNAME flattening do Cloudflare) e CNAME `www`, ambos apontando para o target indicado pelo projeto em Settings → Domains, em **DNS only**; sem registro AAAA (a Vercel não suporta IPv6 para custom domains neste modelo).
    4. Deploy. Conferir Home (estado vazio), uma rota inexistente (404), `/robots.txt` e `/sitemap.xml`.
 7. **Admin (Vercel)**
    1. Projeto com Root Directory `apps/admin`.
@@ -261,6 +264,18 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Depois (consulta somente leitura): `User` 1, `Site` 1, `SiteUser` 1; slug `fastcompre`, domínio `fastcompre.com`, locale `pt-BR`, role `OWNER`, `active = true`, e-mail normalizado, hash Argon2. Sem duplicidade.
 - O bootstrap não foi repetido em produção (o comportamento em conflito — falha por unicidade sem gravar nada — é coberto pelos testes e2e do comando).
 - **Pendente:** validação por login no Admin (seção 5, item 5), depois do deploy do Admin na Vercel.
+
+**FastCompre (Vercel) — 2026-11-21**
+
+- Projeto Vercel `fastcompre`, Root Directory `apps/fastcompre`, framework Next.js, Node.js 22.x.
+- `ENABLE_EXPERIMENTAL_COREPACK=1` em Production; o build usou `pnpm 11.17.0`. Build de produção concluído com sucesso.
+- Variáveis do FastCompre (seção 3) configuradas somente em Production; `REVALIDATION_SECRET` com o mesmo valor da API (valor não registrado).
+- `https://fastcompre.com` conectado à Production: HTTP 200. `https://www.fastcompre.com`: `308 Permanent Redirect` para `https://fastcompre.com/`.
+- Cloudflare: os dois A e os dois AAAA antigos da Hostinger no apex foram removidos; criado `CNAME @` para o target fornecido pela Vercel (`*.vercel-dns-017.com`), em DNS only — os IPv4 da Vercel retornados por `dig A fastcompre.com` vêm do CNAME flattening do Cloudflare, não de registros A na zona. `www` também é CNAME para a Vercel, em DNS only. Sem registro AAAA (a Vercel não suporta IPv6 para custom domains neste modelo).
+- Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
+- Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
+- Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
+- Ainda **não** validados: rollback na Vercel, Preview, Admin, e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`, X-Real-IP).
 
 ## 10. Referências
 
