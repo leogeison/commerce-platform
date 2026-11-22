@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback segue pendente **[VALIDAR]**. Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre em 2026-11-21 (ver 9.5); projeto do Admin, rollback e Preview pendentes **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback segue pendente **[VALIDAR]**. Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); rollback e Preview pendentes **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -66,8 +66,11 @@ Nomes derivados do código (`apps/api/src/shared/config/env.schema.ts`, `apps/fa
 | Variável | Obrig. | Finalidade | Secret | Origem do valor |
 |---|:-:|---|:-:|---|
 | `NEXT_PUBLIC_API_URL` | ✔ | Base da API usada pelo navegador | – (embutida no bundle) | `https://api.fastcompre.com` (só a origem) |
+| `ENABLE_EXPERIMENTAL_COREPACK` | ✔ | Operacional (não lida pelo app): faz a Vercel usar o `packageManager` da raiz (`pnpm@11.17.0`) | – | `1` |
 
 Por ser `NEXT_PUBLIC_*`, o valor é embutido no build: qualquer mudança exige novo deploy do Admin.
+
+Node.js do projeto: **22.x** (Settings → Build and Deployment), alinhado ao CI.
 
 ### FastCompre (Vercel, build-time **e** runtime)
 
@@ -116,10 +119,12 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
    3. Domínios: `fastcompre.com` (canônico) e `www.fastcompre.com` com redirect `308` para o apex. No Cloudflare, CNAME no apex (`@`, resolvido por CNAME flattening do Cloudflare) e CNAME `www`, ambos apontando para o target indicado pelo projeto em Settings → Domains, em **DNS only**; sem registro AAAA (a Vercel não suporta IPv6 para custom domains neste modelo).
    4. Deploy. Conferir Home (estado vazio), uma rota inexistente (404), `/robots.txt` e `/sitemap.xml`.
 7. **Admin (Vercel)**
-   1. Projeto com Root Directory `apps/admin`.
-   2. `NEXT_PUBLIC_API_URL` no ambiente Production.
-   3. Domínio `admin.fastcompre.com`.
-   4. Deploy.
+   1. Projeto com Root Directory `apps/admin`, framework Next.js, Node.js 22.x; Build/Install/Output nos padrões, sem overrides.
+   2. `NEXT_PUBLIC_API_URL` e `ENABLE_EXPERIMENTAL_COREPACK=1` somente no ambiente Production.
+   3. Deploy inicial; conferir no build log o pnpm 11.17.0 e o `prebuild` de `contracts`, `ui` e `editorial`.
+   4. Na URL provisória da Vercel, validar só o carregamento de `/login`, sem tentar autenticação — **não** tentar login fora de `admin.fastcompre.com`: CORS e `OriginGuard` restringem a origem do Admin, e o fluxo de cookie foi projetado para os subdomínios same-site de `fastcompre.com`.
+   5. Domínio `admin.fastcompre.com`: adicionar no projeto (Settings → Domains) e, no Cloudflare, criar CNAME `admin` para o target indicado pela Vercel, em **DNS only**.
+   6. Validar HTTPS do domínio, login, persistência da sessão, logout e redirect para `/login` sem sessão (ver 9.5).
 8. **Smoke test** — seção 6.
 9. **Gates operacionais** — seção 9.
 
@@ -147,7 +152,7 @@ One-off, executado **dentro do ambiente da API** (onde a rede privada e as vari�
    - com um único Site, o login redireciona para o Dashboard `/fastcompre` — confirma `SiteUser` vinculado ao Site;
    - ações de OWNER disponíveis (ex.: atalhos de criação no Dashboard).
 
-   Até o Admin estar publicado, a verificação possível é a contagem somente leitura de `User`, `Site` e `SiteUser` dentro do container (transação `READ ONLY`, sem imprimir e-mail, hash ou IDs). A validação por login **continua obrigatória** após o deploy do Admin.
+   Até o Admin estar publicado, a verificação possível é a contagem somente leitura de `User`, `Site` e `SiteUser` dentro do container (transação `READ ONLY`, sem imprimir e-mail, hash ou IDs). A validação por login é obrigatória após o deploy do Admin — concluída em 2026-11-21 (ver 9.5).
 6. Não repetir o comando. Uma segunda execução com os mesmos dados falha sem criar nada.
 
 Se o bootstrap falhar: nenhum dos três registros é criado. Corrigir argumentos/ambiente e executar novamente.
@@ -263,7 +268,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - `node dist/cli/bootstrap-admin.js` com Site `FastCompre`, slug `fastcompre`, domínio `fastcompre.com`, locale padrão `pt-BR`; senha digitada só no prompt sem eco. Saída: `Administrador criado com sucesso.`, Role `OWNER`.
 - Depois (consulta somente leitura): `User` 1, `Site` 1, `SiteUser` 1; slug `fastcompre`, domínio `fastcompre.com`, locale `pt-BR`, role `OWNER`, `active = true`, e-mail normalizado, hash Argon2. Sem duplicidade.
 - O bootstrap não foi repetido em produção (o comportamento em conflito — falha por unicidade sem gravar nada — é coberto pelos testes e2e do comando).
-- **Pendente:** validação por login no Admin (seção 5, item 5), depois do deploy do Admin na Vercel.
+- Validação por login no Admin (seção 5, item 5): concluída em 2026-11-21, após o deploy do Admin (ver bloco Admin abaixo).
 
 **FastCompre (Vercel) — 2026-11-21**
 
@@ -275,7 +280,20 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
 - Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validados: rollback na Vercel, Preview, Admin, e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`, X-Real-IP).
+- Ainda **não** validados: rollback na Vercel, Preview e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`, X-Real-IP).
+
+**Admin (Vercel) — 2026-11-21**
+
+- Projeto Vercel `admin`, Root Directory `apps/admin`, framework Next.js, Node.js 22.x.
+- `ENABLE_EXPERIMENTAL_COREPACK=1` em Production; o build usou `pnpm 11.17.0`. `NEXT_PUBLIC_API_URL=https://api.fastcompre.com` somente em Production.
+- Build de produção concluído; o `prebuild` compilou `@commerce-platform/contracts`, `@commerce-platform/ui` e `@commerce-platform/editorial`.
+- `/login` carregou na URL provisória da Vercel; nenhuma tentativa de autenticação nesse host.
+- Domínio `admin.fastcompre.com` configurado na Vercel; Cloudflare com `CNAME admin` para o target fornecido pela Vercel, em DNS only. `https://admin.fastcompre.com/login`: HTTP 200 pela Vercel.
+- Login real com o administrador do bootstrap: redirecionou para `/fastcompre`; a sessão persistiu após reload.
+- `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
+- Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
+- Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
+- Ainda **não** validados: Preview, rollback na Vercel e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`, X-Real-IP).
 
 ## 10. Referências
 
