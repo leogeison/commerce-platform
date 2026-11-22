@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback e shell seguem pendentes **[VALIDAR]**. Vercel **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback segue pendente **[VALIDAR]**. Vercel **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -124,7 +124,10 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
 
 One-off, executado **dentro do ambiente da API** (onde a rede privada e as variáveis do serviço já existem). Nunca por endpoint HTTP e nunca a partir de máquina local com o banco exposto.
 
-1. Abrir shell no container do serviço API (acesso de shell do Railway) **[VALIDAR mecanismo e alocação de terminal interativo no primeiro uso]**.
+1. Abrir shell no container do serviço API com o Railway CLI (validado em 2026-11-21, ver 9.5):
+   - `railway login`; chave SSH local registrada no Railway (o CLI oferece o registro no primeiro `railway ssh`; não usar `RAILWAY_TOKEN` de projeto);
+   - `railway link --project commerce-platform --environment production --service api`, executado **fora do repositório** (o link grava estado local no diretório atual); conferir com `railway status`;
+   - `railway ssh` abre o shell em `/app`. Antes de executar o bootstrap, confirmar que `tty` retorna um dispositivo (`/dev/pts/N`), validando o terminal interativo exigido pelo prompt de senha sem eco, e que as variáveis do serviço estão presentes (checar só a presença, nunca imprimir valores).
 2. Executar:
    ```
    node dist/cli/bootstrap-admin.js \
@@ -140,6 +143,8 @@ One-off, executado **dentro do ambiente da API** (onde a rede privada e as vari�
    - login em `https://admin.fastcompre.com` com o e-mail e a senha;
    - com um único Site, o login redireciona para o Dashboard `/fastcompre` — confirma `SiteUser` vinculado ao Site;
    - ações de OWNER disponíveis (ex.: atalhos de criação no Dashboard).
+
+   Até o Admin estar publicado, a verificação possível é a contagem somente leitura de `User`, `Site` e `SiteUser` dentro do container (transação `READ ONLY`, sem imprimir e-mail, hash ou IDs). A validação por login **continua obrigatória** após o deploy do Admin.
 6. Não repetir o comando. Uma segunda execução com os mesmos dados falha sem criar nada.
 
 Se o bootstrap falhar: nenhum dos três registros é criado. Corrigir argumentos/ambiente e executar novamente.
@@ -245,6 +250,17 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Domínio Railway `api-production-89f31192.up.railway.app` e domínio customizado `api.fastcompre.com` (CNAME `api` + TXT `_railway-verify.api` no Cloudflare, CNAME em DNS only): `GET /health` nos dois retornou HTTP/2 200 com `{"status":"ok"}`.
 - `CLIENT_IP_SOURCE=socket` mantido.
 - Ainda **não** validados nesta etapa: bootstrap e shell (seção 5), `prisma migrate resolve` (9.2), deployment anterior com healthcheck falho e rollback (9.4), backups/restore (9.3), proxy Cloudflare da API, X-Real-IP (9.1), Vercel e Preview.
+
+**Bootstrap do primeiro administrador/Site — 2026-11-21**
+
+- Railway CLI autenticado e vinculado ao projeto `commerce-platform`, environment `production`, serviço `api`; `railway ssh` funcionou com chave SSH registrada.
+- Shell dentro do container da API: `pwd` = `/app`, `tty` = `/dev/pts/0` (terminal interativo); `dist/cli/bootstrap-admin.js` presente; variáveis críticas do serviço presentes (verificada só a presença).
+- `prisma migrate status` dentro do container conectou em `postgres.railway.internal:5432`: 2 migrations, schema em dia — o shell tem as variáveis do serviço e a rede privada, sem exposição pública do banco.
+- Antes: `User` 0, `Site` 0, `SiteUser` 0.
+- `node dist/cli/bootstrap-admin.js` com Site `FastCompre`, slug `fastcompre`, domínio `fastcompre.com`, locale padrão `pt-BR`; senha digitada só no prompt sem eco. Saída: `Administrador criado com sucesso.`, Role `OWNER`.
+- Depois (consulta somente leitura): `User` 1, `Site` 1, `SiteUser` 1; slug `fastcompre`, domínio `fastcompre.com`, locale `pt-BR`, role `OWNER`, `active = true`, e-mail normalizado, hash Argon2. Sem duplicidade.
+- O bootstrap não foi repetido em produção (o comportamento em conflito — falha por unicidade sem gravar nada — é coberto pelos testes e2e do comando).
+- **Pendente:** validação por login no Admin (seção 5, item 5), depois do deploy do Admin na Vercel.
 
 ## 10. Referências
 
