@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro) **[VALIDAR]**; healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); rollback e Preview pendentes **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro) **[VALIDAR]**; healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); Instant Rollback confirmado nos dois projetos em 2026-11-23 (ver 9.5); Preview pendente **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -187,7 +187,7 @@ Executar após o primeiro deploy e após cada deploy relevante. Não criar dados
 | **Nova API não passa no healthcheck** | O deployment novo fica em `Deploying` durante a janela do healthcheck e termina `Failed`, sem receber tráfego; o deployment anterior continua ativo e servindo (validado em 2026-11-23, ver 9.5). Ler os logs da API. Se o pre-deploy tiver aplicado migrations antes da falha do healthcheck, elas **permanecem no banco** — o rollback da aplicação não as desfaz, e por isso a regra expand/contract da seção 7 é obrigatória. |
 | **API cai depois de ficar `Active`** | O healthcheck do Railway é gate de ativação, **não** monitoramento contínuo. Não há evidência de fallback automático para o deployment anterior: o Railway reinicia o processo conforme a restart policy. Se não estabilizar, fazer rollback (linha abaixo). |
 | **API ativa com problema funcional** | Rollback no Railway (validado em 2026-11-23, ver 9.5): serviço `api` → **Deployments** → menu ⋯ do último deployment saudável → **Rollback** → confirmar. O Railway cria um **novo deployment**, executa de novo o pipeline de build, o **pre-deploy** (`prisma migrate deploy`) e o **healthcheck**. O rollback **não reverte o banco**: migrations já aplicadas permanecem — por isso a regra expand/contract da seção 7 é obrigatória. O rollback pode restaurar variáveis do deployment escolhido; **após o rollback, conferir as variáveis críticas da API** (neste teste, `CLIENT_IP_SOURCE` permaneceu `x-real-ip`) e executar o smoke test da seção 6. |
-| **Frontend novo incompatível** | Rollback na Vercel para o deployment anterior do projeto afetado. Se a incompatibilidade for com a API, avaliar primeiro o rollback da API (limitado pela migration aplicada). |
+| **Frontend novo incompatível** | Instant Rollback na Vercel **no projeto afetado** — FastCompre e Admin são projetos independentes, com rollback próprio (validado em 2026-11-23, ver 9.5). Tile de Production → **Instant Rollback** → escolher um deployment de produção anterior `Ready` → confirmar. A Vercel reatribui os domínios ao deployment existente, sem rebuild. O deployment escolhido roda com as variáveis do build dele; mudanças de env posteriores não se aplicam a ele. Por isso, **antes do rollback**, verificar se o deployment escolhido continua compatível com a API atual, os contratos, os secrets (ex.: `REVALIDATION_SECRET`), os hosts/domínios e a configuração de storage e revalidação. Após o rollback, a Vercel desliga a atribuição automática dos domínios de Production; resolvido o incidente, usar **Manage/Promote** para voltar ao deployment desejado e reabilitá-la. Se a incompatibilidade for com a API, avaliar primeiro o rollback da API (limitado pela migration aplicada). |
 | **Bootstrap falha** | Nada é criado (transação única). Corrigir e repetir. |
 | **Dados/schema comprometidos** | Restaurar backup do PostgreSQL é último recurso, implica perda de dados desde o backup e exige decisão do Product Owner. Não existe down migration automática. |
 
@@ -238,7 +238,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 
 - Comportamento do deployment anterior quando o novo falha no healthcheck: validado em 2026-11-23 (ver 9.5).
 - Procedimento de rollback de deployment no Railway: validado em 2026-11-23 (ver 9.5).
-- Procedimento de rollback de deployment na Vercel **[VALIDAR]**.
+- Procedimento de rollback de deployment na Vercel: validado em 2026-11-23 para FastCompre e Admin (ver 9.5).
 - Pre-Deploy Timeout e timeout de healthcheck: definidos em 2026-11-21 (300 s cada; ver 9.5).
 - Status de proxy/DNS-only por registro DNS **[VALIDAR]**.
 - Estratégia de Preview na Vercel **[VALIDAR]**.
@@ -288,7 +288,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
 - Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validados: rollback na Vercel, Preview e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho e rollback do Railway validados depois (ver blocos abaixo).
+- Ainda **não** validados: Preview e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho, rollback do Railway e rollback na Vercel validados depois (ver blocos abaixo).
 
 **Admin (Vercel) — 2026-11-21**
 
@@ -301,7 +301,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
 - Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
 - Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
-- Ainda **não** validados: Preview, rollback na Vercel e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho e rollback do Railway validados depois (ver blocos abaixo).
+- Ainda **não** validados: Preview e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho, rollback do Railway e rollback na Vercel validados depois (ver blocos abaixo).
 
 **IP real do cliente / `CLIENT_IP_SOURCE` — 2026-11-23**
 
@@ -325,6 +325,14 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após o rollback, `CLIENT_IP_SOURCE` continuou `x-real-ip`.
 - Smoke test pós-rollback: `/health` → 200; `https://fastcompre.com` → 200; login no Admin, Dashboard `/fastcompre`, logout e redirect de `/fastcompre` para `/login` sem sessão funcionaram.
 - Implicações registradas na seção 8: healthcheck é gate de ativação, não monitoramento contínuo; sem evidência de fallback automático se o processo cair depois de `Active`; rollback da aplicação não reverte o banco, e migrations aplicadas antes de um healthcheck falho permanecem; expand/contract segue obrigatório; o rollback executa de novo pre-deploy e healthcheck e pode restaurar variáveis do deployment escolhido, então as variáveis críticas devem ser conferidas após cada rollback.
+
+**Rollback na Vercel (FastCompre e Admin) — 2026-11-23**
+
+Evidência de qual deployment serve o domínio: o ID `dpl_…` presente no HTML da página.
+
+- FastCompre: com o deployment atual (D1) identificado e servindo produção, Instant Rollback para um deployment anterior `Ready` que já havia servido Production. Sem rebuild e sem deployment novo: a Vercel reatribuiu os domínios ao deployment existente. O `dpl_` do HTML mudou para o do deployment anterior. Smoke test no deployment antigo: `https://fastcompre.com` → 200; rota inexistente → 404; `/robots.txt` → 200; `/sitemap.xml` → 200; `https://www.fastcompre.com` → 308 para `https://fastcompre.com/`. Em seguida, Manage/Promote de volta ao D1: o `dpl_` voltou ao original e a produção terminou no estado inicial.
+- Admin: com o D1 identificado e servindo produção, Instant Rollback para um deployment anterior `Ready` que já havia servido Production. O `dpl_` de `/login` mudou. No deployment antigo: `/login` carregou; login, Dashboard `/fastcompre`, navegação interna e logout funcionaram; acesso direto a `/fastcompre` sem sessão voltou para `/login`. Em seguida, Manage/Promote de volta ao D1: o `dpl_` voltou ao original e a produção terminou no estado inicial.
+- Implicações (registradas na seção 8): Instant Rollback reatribui os domínios a um deployment de produção existente, sem rebuild; o deployment antigo usa o snapshot de variáveis do build dele, e mudanças de env posteriores não são aplicadas retroativamente; antes de cada rollback, validar a compatibilidade **do deployment escolhido** com a API atual, os contratos, os secrets, os hosts/domínios e a configuração de storage e revalidação (não é uma obrigação de compatibilidade da API com todo o histórico retido pela Vercel); após o rollback, a atribuição automática dos domínios de Production fica desligada até um Manage/Promote; FastCompre e Admin são tratados como projetos independentes.
 
 ## 10. Referências
 
