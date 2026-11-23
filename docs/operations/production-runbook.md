@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro), e rollback segue pendente **[VALIDAR]**. Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); rollback e Preview pendentes **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro) **[VALIDAR]**; healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); rollback e Preview pendentes **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -184,8 +184,9 @@ Executar após o primeiro deploy e após cada deploy relevante. Não criar dados
 |---|---|
 | **Build falha** (Railway ou Vercel) | Nada muda em produção. Corrigir e fazer novo deploy. |
 | **Migration falha no pre-deploy** | Ver 8.1. |
-| **Nova API não passa no healthcheck** | O deployment novo não recebe tráfego e é marcado como falho. Ler os logs da API. Lembrar que a migration desse deploy **já foi aplicada** no pre-deploy. Comportamento exato do deployment anterior nesse cenário **[VALIDAR]**. |
-| **API ativa com problema funcional** | Rollback no Railway para o último deployment bem-sucedido **[VALIDAR procedimento]**. O rollback troca a imagem, **não reverte migrations já aplicadas** — por isso a regra expand/contract da seção 7 é obrigatória. |
+| **Nova API não passa no healthcheck** | O deployment novo fica em `Deploying` durante a janela do healthcheck e termina `Failed`, sem receber tráfego; o deployment anterior continua ativo e servindo (validado em 2026-11-23, ver 9.5). Ler os logs da API. Se o pre-deploy tiver aplicado migrations antes da falha do healthcheck, elas **permanecem no banco** — o rollback da aplicação não as desfaz, e por isso a regra expand/contract da seção 7 é obrigatória. |
+| **API cai depois de ficar `Active`** | O healthcheck do Railway é gate de ativação, **não** monitoramento contínuo. Não há evidência de fallback automático para o deployment anterior: o Railway reinicia o processo conforme a restart policy. Se não estabilizar, fazer rollback (linha abaixo). |
+| **API ativa com problema funcional** | Rollback no Railway (validado em 2026-11-23, ver 9.5): serviço `api` → **Deployments** → menu ⋯ do último deployment saudável → **Rollback** → confirmar. O Railway cria um **novo deployment**, executa de novo o pipeline de build, o **pre-deploy** (`prisma migrate deploy`) e o **healthcheck**. O rollback **não reverte o banco**: migrations já aplicadas permanecem — por isso a regra expand/contract da seção 7 é obrigatória. O rollback pode restaurar variáveis do deployment escolhido; **após o rollback, conferir as variáveis críticas da API** (neste teste, `CLIENT_IP_SOURCE` permaneceu `x-real-ip`) e executar o smoke test da seção 6. |
 | **Frontend novo incompatível** | Rollback na Vercel para o deployment anterior do projeto afetado. Se a incompatibilidade for com a API, avaliar primeiro o rollback da API (limitado pela migration aplicada). |
 | **Bootstrap falha** | Nada é criado (transação única). Corrigir e repetir. |
 | **Dados/schema comprometidos** | Restaurar backup do PostgreSQL é último recurso, implica perda de dados desde o backup e exige decisão do Product Owner. Não existe down migration automática. |
@@ -235,8 +236,9 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 
 ### 9.4 Comportamentos de provedor pendentes
 
-- Comportamento do deployment anterior quando o novo falha no healthcheck **[VALIDAR]**.
-- Procedimento de rollback de deployment no Railway e na Vercel **[VALIDAR]**.
+- Comportamento do deployment anterior quando o novo falha no healthcheck: validado em 2026-11-23 (ver 9.5).
+- Procedimento de rollback de deployment no Railway: validado em 2026-11-23 (ver 9.5).
+- Procedimento de rollback de deployment na Vercel **[VALIDAR]**.
 - Pre-Deploy Timeout e timeout de healthcheck: definidos em 2026-11-21 (300 s cada; ver 9.5).
 - Status de proxy/DNS-only por registro DNS **[VALIDAR]**.
 - Estratégia de Preview na Vercel **[VALIDAR]**.
@@ -286,7 +288,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
 - Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validados: rollback na Vercel, Preview e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`); X-Real-IP validado depois (ver bloco abaixo).
+- Ainda **não** validados: rollback na Vercel, Preview e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho e rollback do Railway validados depois (ver blocos abaixo).
 
 **Admin (Vercel) — 2026-11-21**
 
@@ -299,7 +301,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
 - Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
 - Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
-- Ainda **não** validados: Preview, rollback na Vercel e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`); X-Real-IP validado depois (ver bloco abaixo).
+- Ainda **não** validados: Preview, rollback na Vercel e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho e rollback do Railway validados depois (ver blocos abaixo).
 
 **IP real do cliente / `CLIENT_IP_SOURCE` — 2026-11-23**
 
@@ -311,6 +313,18 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - API: `CLIENT_IP_SOURCE` alterado de `socket` para `x-real-ip`; novo deployment saudável, `GET https://api.fastcompre.com/health` → 200 `{"status":"ok"}`.
 - Anti-spoofing no rate limit real: 6 tentativas de login inválidas seguidas, cada uma com um `X-Real-IP` falso diferente → `401, 401, 401, 401, 401, 429`. Forjar o header não cria buckets independentes.
 - Distinção de clientes: ainda na janela de bloqueio, uma tentativa a partir de uma segunda rede → `401` (bucket independente).
+
+**Healthcheck falho e rollback da API (Railway) — 2026-11-23**
+
+- Pré-condição: deployment saudável ativo; Healthcheck Path `/health`; `CLIENT_IP_SOURCE=x-real-ip`.
+- Healthcheck falho: Healthcheck Path alterado temporariamente para uma rota inexistente. O novo deployment ficou em `Deploying` durante a janela do healthcheck e terminou `Failed`. Durante todo o teste, `GET https://api.fastcompre.com/health` → 200; o deployment saudável anterior continuou servindo tráfego e não foi substituído.
+- Restauração: Healthcheck Path de volta para `/health`; novo deployment saudável `Active`; `/health` → 200; `CLIENT_IP_SOURCE` continuou `x-real-ip`.
+- Rollback real para o deployment saudável anterior: o Railway criou um novo deployment e executou de novo o pipeline de build (etapas do Dockerfile majoritariamente em cache), exportando uma nova imagem — não houve reutilização direta da imagem anterior.
+- Pre-deploy no rollback: `prisma migrate deploy` executado de novo, conectado ao PostgreSQL privado; `2 migrations found`; `No pending migrations to apply`. O rollback não desfaz migrations.
+- Healthcheck no rollback: path `/health`, janela de 5 minutos, aprovado na primeira tentativa; deployment `Active`.
+- Após o rollback, `CLIENT_IP_SOURCE` continuou `x-real-ip`.
+- Smoke test pós-rollback: `/health` → 200; `https://fastcompre.com` → 200; login no Admin, Dashboard `/fastcompre`, logout e redirect de `/fastcompre` para `/login` sem sessão funcionaram.
+- Implicações registradas na seção 8: healthcheck é gate de ativação, não monitoramento contínuo; sem evidência de fallback automático se o processo cair depois de `Active`; rollback da aplicação não reverte o banco, e migrations aplicadas antes de um healthcheck falho permanecem; expand/contract segue obrigatório; o rollback executa de novo pre-deploy e healthcheck e pode restaurar variáveis do deployment escolhido, então as variáveis críticas devem ser conferidas após cada rollback.
 
 ## 10. Referências
 
