@@ -56,7 +56,7 @@ Nomes derivados do código (`apps/api/src/shared/config/env.schema.ts`, `apps/fa
 | `STORAGE_S3_ACCESS_KEY_ID` | ✔ (R2) | Credencial S3 (sempre junto da secret) | ✔ | Token R2 com leitura/escrita de objetos restrito ao bucket |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | ✔ (R2) | Credencial S3 | ✔ | Mesmo token |
 | `STORAGE_S3_FORCE_PATH_STYLE` | opc. | Estilo de endereçamento S3 (default `false`) | – | `false` — validado com o R2 em 2026-11-21 (ver 9.5) |
-| `CLIENT_IP_SOURCE` | opc. | Origem do IP do rate limit (`socket` \| `x-real-ip`) | – | `socket` até o gate da seção 9.1 passar |
+| `CLIENT_IP_SOURCE` | opc. | Origem do IP do rate limit (`socket` \| `x-real-ip`) | – | `x-real-ip` (gate da seção 9.1 validado em 2026-11-23); `socket` até o gate passar em uma nova cadeia de proxy |
 | `PORT` | – | Porta HTTP | – | Injetada pelo Railway |
 
 `NODE_ENV=production` já é definido pela imagem (`apps/api/Dockerfile`).
@@ -109,7 +109,7 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
    4. **Pre-Deploy Timeout**: configurar deliberadamente — o Railway não impõe limite por padrão, e `prisma migrate deploy` não deve poder ficar preso indefinidamente. Valor definido: **300 s**.
    5. Healthcheck path: `/health`; Healthcheck Timeout: **300 s**.
    6. Réplicas: 1 (o rate limit é em memória por processo).
-   7. Variáveis da seção 3 (API). `CLIENT_IP_SOURCE=socket` (ou ausente).
+   7. Variáveis da seção 3 (API). `CLIENT_IP_SOURCE=socket` (ou ausente) no primeiro deploy; `x-real-ip` só depois do gate da seção 9.1.
    8. Domínio customizado `api.fastcompre.com`: no Cloudflare, CNAME `api` para o target fornecido pelo Railway e TXT `_railway-verify.api`; TLS automático. **Target port do domínio = porta em que o Railway detectou a aplicação** (8080 em 2026-11-21; a API escuta em `PORT`). Target port errado resulta em `502 Application failed to respond`. Hoje o CNAME está **DNS only**; ativar o proxy do Cloudflare é decisão pendente (exige SSL/TLS **Full**, e afeta o gate 9.1) **[VALIDAR]**.
 4. **Deploy da API** — disparar manualmente o deploy do commit validado. Esperado: build → pre-deploy aplica as migrations → healthcheck 2xx → deployment ativo. Conferir `GET https://api.fastcompre.com/health` → `{"status":"ok"}`. Primeiro deploy executado em 2026-11-21 (ver 9.5).
 5. **Bootstrap** — seção 5.
@@ -210,14 +210,20 @@ Gates que ficam abertos depois do primeiro deploy e não podem ser presumidos.
 
 ### 9.1 Origem confiável do IP de cliente (`CLIENT_IP_SOURCE`)
 
-Estado inicial: `CLIENT_IP_SOURCE=socket` — atrás do proxy do Railway, o rate limit (login 5/60s, redirect de afiliado 30/60s) funciona de forma **global**, não por visitante. Aceito até este gate passar.
+Estado inicial: `CLIENT_IP_SOURCE=socket`. Atrás do Railway, o socket não representa o visitante: o experimento de 2026-11-23 mostrou peers internos da Railway (faixa `100.64.x.x`, variando entre requisições). Antes da medição, o compartilhamento do limite (login 5/60s, redirect de afiliado 30/60s) entre visitantes era uma hipótese conservadora, não um fato medido. Aceito até este gate passar.
 
 Só mudar para `x-real-ip` depois de provar, na cadeia real (Railway e, se houver, Cloudflare na frente de `api.fastcompre.com`), as duas propriedades abaixo. Executar com `CLIENT_IP_SOURCE=x-real-ip` aplicado em janela controlada, antes de tráfego real, usando somente `POST /admin/auth/login` com e-mail inexistente (não usar `/r/...`, que gera `AffiliateClick`). Nenhum IP é registrado em log para isso (PROD-003); as provas são comportamentais.
 
 1. **Anti-spoofing** — de um mesmo cliente, enviar 6 tentativas de login seguidas, cada uma com um `X-Real-IP` falso diferente. Esperado: a 6ª recebe **429**. Se não receber, o header pode ser forjado → voltar imediatamente para `socket`.
 2. **Distinção de clientes reais** — esgotar o limite a partir do cliente A (rede 1) até receber 429; em seguida, dentro da mesma janela de 60s, tentar o login a partir do cliente B em outra rede real (ex.: rede móvel). Esperado: B **não** recebe 429. Se receber, o valor não representa o visitante (ex.: representa um proxy intermediário) → voltar para `socket`.
 
-Resultado e configuração final da cadeia **[VALIDAR e registrar aqui]**.
+Resultado (2026-11-23): gate **aprovado**; configuração final `CLIENT_IP_SOURCE=x-real-ip` (evidências em 9.5).
+
+Modelo de confiança:
+- `X-Real-IP` é usado **somente** porque, na topologia atual (cliente → edge do Railway → API, com `api.fastcompre.com` em DNS only no Cloudflare), foi comprovado empiricamente que o edge do Railway controla e sobrescreve esse header.
+- `trust proxy` do Express permanece desabilitado.
+- `X-Forwarded-For` não é usado como fonte de IP.
+- Refazer este gate se o Cloudflare passar a proxyar `api.fastcompre.com`, se a cadeia de proxy mudar ou se a API migrar de infraestrutura. Até a nova validação, voltar para `socket`.
 
 ### 9.2 Recuperação de migration falha
 
@@ -280,7 +286,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
 - Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validados: rollback na Vercel, Preview e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`, X-Real-IP).
+- Ainda **não** validados: rollback na Vercel, Preview e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`); X-Real-IP validado depois (ver bloco abaixo).
 
 **Admin (Vercel) — 2026-11-21**
 
@@ -293,7 +299,18 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
 - Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
 - Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
-- Ainda **não** validados: Preview, rollback na Vercel e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`, X-Real-IP).
+- Ainda **não** validados: Preview, rollback na Vercel e os gates pendentes do Railway (healthcheck falho, rollback, backup/restore, `prisma migrate resolve`); X-Real-IP validado depois (ver bloco abaixo).
+
+**IP real do cliente / `CLIENT_IP_SOURCE` — 2026-11-23**
+
+- Experimento em projeto Railway temporário e isolado (HTTP echo com a imagem oficial do Node), sem secrets, sem banco e sem conexão com `commerce-platform`; domínio `*.up.railway.app`. Valores falsos dos testes nas faixas reservadas para documentação. Nenhum IP público real registrado aqui.
+- `socket`: o container observou `remoteAddress` na faixa interna `100.64.x.x`, variando entre requisições — peers da cadeia interna do Railway, não o endereço público do cliente.
+- O Railway entregou um `X-Real-IP` controlado pela infraestrutura e distinto entre as duas redes testadas. Em ambas as redes, sobrescreveu todos os valores controlados pelo cliente: `X-Real-IP` IPv4 falso, lista falsa de IPs, `X-Real-IP` duplicado e IPv6 falso. Nenhum chegou como `X-Real-IP` efetivo à aplicação.
+- `X-Forwarded-For` também foi observado reconstruído/sobrescrito no experimento; é só uma observação, não contrato do Railway, e o header não é usado como fonte de IP.
+- Projeto temporário removido; o endpoint deixou de responder (`curl` → `000`).
+- API: `CLIENT_IP_SOURCE` alterado de `socket` para `x-real-ip`; novo deployment saudável, `GET https://api.fastcompre.com/health` → 200 `{"status":"ok"}`.
+- Anti-spoofing no rate limit real: 6 tentativas de login inválidas seguidas, cada uma com um `X-Real-IP` falso diferente → `401, 401, 401, 401, 401, 429`. Forjar o header não cria buckets independentes.
+- Distinção de clientes: ainda na janela de bloqueio, uma tentativa a partir de uma segunda rede → `401` (bucket independente).
 
 ## 10. Referências
 
