@@ -193,17 +193,45 @@ Executar após o primeiro deploy e após cada deploy relevante. Não criar dados
 
 ### 8.1 Migration falhou
 
-1. O deploy é interrompido; a nova versão da API **não** entra no ar.
+Regra: `prisma migrate deploy` (Pre-Deploy) é o **único** mecanismo normal de aplicação de migrations em produção. `prisma migrate resolve` é só recuperação/reconciliação de incidente — nunca substitui o `deploy`. Ele **não executa nem desfaz** SQL da migration; apenas escreve no histórico (`_prisma_migrations`).
+
+1. O deploy é interrompido; a nova versão da API **não** entra no ar e o deployment anterior continua ativo.
 2. **Não presumir rollback automático** do que a migration fez. Algumas migrations do projeto são explicitamente transacionais, mas isso não é garantia para migrations futuras nem para todo tipo de DDL.
-3. Inspecionar, antes de qualquer ação:
-   - a tabela `_prisma_migrations` (migration marcada como falha, coluna `logs` com o erro);
+3. Enquanto a falha não for resolvida, **todo novo deploy da API falha no Pre-Deploy**. Na topologia validada deste projeto, redeploy e rollback da API também criam novo deployment e voltam a executar o Pre-Deploy (ver seção 8); portanto, enquanto a migration falha não for resolvida, esses caminhos também ficam bloqueados. O deployment ativo segue servindo.
+4. Inspecionar, antes de qualquer ação (somente leitura, via `railway ssh` no container ativo da `api`):
+   - `node_modules/.bin/prisma migrate status`;
+   - a tabela `_prisma_migrations` em transação `READ ONLY`. Migration falha = linha com `finished_at` e `rolled_back_at` nulos; o erro fica em `logs`. A imagem não tem `psql`; usar `node` + `pg` (dependência da API):
+     ```sh
+     node - <<'EOF'
+     const { Client } = require('pg');
+     (async () => {
+       const c = new Client({ connectionString: process.env.DATABASE_URL });
+       await c.connect(); await c.query('BEGIN READ ONLY');
+       console.table((await c.query(`SELECT migration_name, started_at, finished_at, rolled_back_at,
+         left(checksum, 12) AS checksum_prefix, (logs IS NOT NULL) AS has_logs
+         FROM "_prisma_migrations" ORDER BY started_at`)).rows);
+       await c.query('ROLLBACK'); await c.end();
+     })().catch((e) => { console.error('Falha:', e.code ?? 'erro'); process.exit(1); });
+     EOF
+     ```
    - o estado real do schema e dos dados afetados.
-4. Enquanto a falha não for resolvida, novos `prisma migrate deploy` ficam bloqueados.
 5. Decidir conforme o estado real encontrado:
-   - nada foi aplicado → `prisma migrate resolve --rolled-back "<migration>"`, corrigir a migration em novo commit e refazer o deploy;
-   - os passos foram concluídos manualmente e o schema está correto → `prisma migrate resolve --applied "<migration>"`;
-   - aplicação parcial → migration corretiva planejada (nunca editar uma migration já aplicada em produção).
-6. A execução de `prisma migrate resolve` precisa ocorrer dentro do ambiente da API (o CLI está na imagem; o banco é privado). Mecanismo e procedimento exatos **[VALIDAR na configuração real e registrar aqui]**.
+   - **nada foi aplicado**, ou o que foi aplicado foi revertido manualmente → `--rolled-back` (item 6), corrigir a migration em novo commit e voltar ao fluxo normal de deploy;
+   - **o banco já está exatamente no estado que a migration deveria produzir** (passos concluídos manualmente, conferidos) → `--applied` (item 7);
+   - **aplicação parcial** → reverter manualmente e usar `--rolled-back`, ou concluir manualmente e usar `--applied`, ou migration corretiva planejada. Nunca editar uma migration já aplicada com sucesso em produção.
+6. **`prisma migrate resolve --rolled-back "<M>"`** — só depois de investigar o estado real do banco. Marca a linha falha de M como rolled back (escreve `rolled_back_at` no histórico), o que libera o próximo `migrate deploy` para executar M de novo. Não exige o arquivo da migration no container, então pode ser executado via `railway ssh` no container ativo da `api`. Depois: corrigir a migration e/ou o estado necessário e seguir o fluxo normal de deploy.
+7. **`prisma migrate resolve --applied "<M>"`** — só quando o banco já foi levado exatamente ao estado que M produziria. Registra M como aplicada sem executar o SQL. **Exige o arquivo `prisma/migrations/<M>/migration.sql` no container** (o checksum é gravado a partir dele) — o container ativo da `api` roda a imagem anterior e não o contém. Procedimento: serviço temporário `ops-migrate` (validado em ensaio somente leitura, ver 9.5):
+   1. No projeto `commerce-platform`, environment `production`: **+ New → Empty Service** `ops-migrate`; mesmo repositório e branch da API; Root Directory vazio; Builder Dockerfile.
+   2. Variáveis com mínimo privilégio: somente `DATABASE_URL=${{Postgres.DATABASE_URL}}` e `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`. Nenhum secret funcional (sessão, revalidação, storage etc.).
+   3. Start Command `sleep infinity` (inerte; mantém um container disponível para SSH). Sem domínio, sem TCP Proxy, sem healthcheck e sem Pre-Deploy.
+   4. Deploy e aguardar `Active`. Entrar com `railway ssh -s ops-migrate`.
+   5. Conferir `echo "$RAILWAY_GIT_COMMIT_SHA"`: **abortar** se não for exatamente o commit que contém M. Conferir `ls prisma/migrations/<M>/migration.sql`.
+   6. Executar `node_modules/.bin/prisma migrate status` e a inspeção somente leitura do item 4.
+   7. Só então, em incidente real e após confirmação técnica: `node_modules/.bin/prisma migrate resolve --applied "<M>"`.
+   8. Conferir de novo `migrate status` e a inspeção somente leitura.
+   9. Remover completamente o serviço `ops-migrate` (Settings → Danger → Delete Service).
+   10. Só depois, deploy normal da `api` (Pre-Deploy `migrate deploy` inalterado).
+8. Depois de qualquer `resolve`: novo deploy pelo fluxo normal, `migrate status`, inspeção somente leitura, `GET /health` e smoke test da seção 6. Rollback da aplicação, se necessário, só depois de o histórico estar resolvido — e ele não desfaz o banco.
 
 ## 9. Gates operacionais
 
@@ -228,7 +256,7 @@ Modelo de confiança:
 
 ### 9.2 Recuperação de migration falha
 
-Procedimento da seção 8.1, item 6 — validar o mecanismo de execução de `prisma migrate resolve` no ambiente real **[VALIDAR]**.
+Gate **aprovado** (ver 9.5). Procedimento na seção 8.1: inspeção somente leitura e `--rolled-back` via `railway ssh` no container ativo da `api`; `--applied` via serviço temporário `ops-migrate`.
 
 ### 9.3 Backup e restore do PostgreSQL
 
@@ -288,7 +316,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
 - Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validados: Preview e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho, rollback do Railway e rollback na Vercel validados depois (ver blocos abaixo).
+- Ainda **não** validados: Preview e backup/restore; X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel e `prisma migrate resolve` validados depois (ver blocos abaixo).
 
 **Admin (Vercel) — 2026-11-21**
 
@@ -301,7 +329,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
 - Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
 - Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
-- Ainda **não** validados: Preview e os gates pendentes do Railway (backup/restore, `prisma migrate resolve`); X-Real-IP, healthcheck falho, rollback do Railway e rollback na Vercel validados depois (ver blocos abaixo).
+- Ainda **não** validados: Preview e backup/restore; X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel e `prisma migrate resolve` validados depois (ver blocos abaixo).
 
 **IP real do cliente / `CLIENT_IP_SOURCE` — 2026-11-23**
 
@@ -333,6 +361,13 @@ Evidência de qual deployment serve o domínio: o ID `dpl_…` presente no HTML 
 - FastCompre: com o deployment atual (D1) identificado e servindo produção, Instant Rollback para um deployment anterior `Ready` que já havia servido Production. Sem rebuild e sem deployment novo: a Vercel reatribuiu os domínios ao deployment existente. O `dpl_` do HTML mudou para o do deployment anterior. Smoke test no deployment antigo: `https://fastcompre.com` → 200; rota inexistente → 404; `/robots.txt` → 200; `/sitemap.xml` → 200; `https://www.fastcompre.com` → 308 para `https://fastcompre.com/`. Em seguida, Manage/Promote de volta ao D1: o `dpl_` voltou ao original e a produção terminou no estado inicial.
 - Admin: com o D1 identificado e servindo produção, Instant Rollback para um deployment anterior `Ready` que já havia servido Production. O `dpl_` de `/login` mudou. No deployment antigo: `/login` carregou; login, Dashboard `/fastcompre`, navegação interna e logout funcionaram; acesso direto a `/fastcompre` sem sessão voltou para `/login`. Em seguida, Manage/Promote de volta ao D1: o `dpl_` voltou ao original e a produção terminou no estado inicial.
 - Implicações (registradas na seção 8): Instant Rollback reatribui os domínios a um deployment de produção existente, sem rebuild; o deployment antigo usa o snapshot de variáveis do build dele, e mudanças de env posteriores não são aplicadas retroativamente; antes de cada rollback, validar a compatibilidade **do deployment escolhido** com a API atual, os contratos, os secrets, os hosts/domínios e a configuração de storage e revalidação (não é uma obrigação de compatibilidade da API com todo o histórico retido pela Vercel); após o rollback, a atribuição automática dos domínios de Production fica desligada até um Manage/Promote; FastCompre e Admin são tratados como projetos independentes.
+
+**Recuperação de migration (`prisma migrate resolve`) — 2026-11-24**
+
+- 2026-11-23 — Prisma v7.9.1. No container ativo da `api` (`railway ssh`), somente leitura: `prisma migrate status` → 2 migrations, `Database schema is up to date`; `_prisma_migrations` inspecionada em transação `READ ONLY` → as duas migrations com `finished_at` preenchido, `rolled_back_at` nulo e sem logs de erro; `prisma migrate resolve --help` confirmou `--applied` e `--rolled-back`.
+- 2026-11-24 — Ensaio somente leitura do `ops-migrate` (seção 8.1, item 7), sem executar o passo de `resolve`: serviço criado no environment `production` com o Dockerfile da API, Start Command `sleep infinity`, sem domínio, healthcheck ou Pre-Deploy, e só `DATABASE_URL` (referência) + `RAILWAY_DOCKERFILE_PATH`. Ficou `Active`; o SSH abriu em `/app`; `RAILWAY_GIT_COMMIT_SHA` igual ao commit esperado do `main`; `prisma/migrations` presente com as 2 migrations; `migrate status` alcançou o PostgreSQL privado (`postgres.railway.internal:5432`) e a consulta `READ ONLY` passou.
+- Nenhuma escrita foi executada no banco e nenhum `prisma migrate resolve` foi executado. Serviço `ops-migrate` removido (CLI: `Service 'ops-migrate' not found`).
+- A `api` permaneceu no mesmo deployment, com o mesmo conjunto de variáveis (comparado por hash, sem expor valores), e `GET /health` → 200.
 
 ## 10. Referências
 
