@@ -206,7 +206,9 @@ Executar após o primeiro deploy e após cada deploy relevante. Não criar dados
 3. Admin: login, Dashboard carregado, navegação para Artigos/Produtos, logout.
 4. Upload real (capa de Artigo ou imagem de Produto que será usada de fato): a URL retornada (`https://media.fastcompre.com/...`) abre no navegador.
 5. Primeira publicação **real** (quando houver conteúdo real): o Artigo aparece na Home e na Categoria sem intervenção manual (prova da revalidação); o CTA da Oferta responde 302 para o marketplace (prova do tracking — gera um `AffiliateClick` legítimo; uma Oferta com clique não pode ser excluída fisicamente).
-6. Logs da API no Railway: requisições mostram método, path, status e request ID; **não** mostram cookie, headers de autenticação, IP de cliente nem query string.
+6. Logs da API no Railway (validado em 2026-11-24, ver 9.5):
+   - **Logs estruturados produzidos pela aplicação** (Pino): requisições mostram método, path, status e request ID; **não** mostram `Authorization`, cookies/sessão, secrets, request bodies, query string nem IP de cliente (Architecture §15). A regra vale para esses logs.
+   - **Logs HTTP de borda da Railway** são logs da plataforma, fora do controle do código: incluem o `srcIp` do cliente (com retenção definida pela Railway). Isso não é falha da aplicação. Conferir que não mostram query string, cookies, `Authorization` nem body.
 
 ## 7. Deploys posteriores
 
@@ -517,6 +519,16 @@ Verificação externa, somente leitura (resolver `1.1.1.1`, headers HTTP e certi
 - `api.fastcompre.com`: CNAME para o domínio `*.up.railway.app` do serviço, IP fora das faixas do Cloudflare; TXT `_railway-verify.api` presente. `server: railway-hikari`, sem `cf-ray`, `/health` → 200; certificado Let's Encrypt emitido para `api.fastcompre.com`. **DNS only → Railway**: o Cloudflare não está no caminho, e o modelo de confiança do gate 9.1 (`X-Real-IP` controlado pelo edge do Railway) continua válido.
 - `media.fastcompre.com`: IPv4 nas faixas do Cloudflare (IPv6 em `2606:4700::`), sem CNAME exposto. `server: cloudflare`, com `cf-ray` (a raiz, sem objeto, responde 404); certificado emitido pelo Cloudflare. **Servido pelo Cloudflare (proxied)** como domínio customizado do bucket R2, no fluxo validado em 2026-11-21.
 - Estado aprovado registrado na seção 1. Habilitar o proxy na `api` é mudança de topologia e exige refazer o gate 9.1.
+
+**Logs da API em produção (smoke test da seção 6, item 6) — 2026-11-24**
+
+Probes não destrutivos em `https://api.fastcompre.com`, com valores falsos e um marcador único; logs lidos pelo Railway CLI (logs da aplicação e logs HTTP). Nenhuma alteração de código, configuração ou variáveis.
+
+- Probes: `GET /health` com query string, `Cookie` de sessão, `Authorization: Bearer`, `X-Real-IP`, `X-Forwarded-For`, `Referer` e `X-Revalidation-Secret` falsos → 200; rota inexistente com query string → 404; `POST /admin/auth/login` com e-mail inexistente e senha falsa → 401; `POST /admin/auth/login` com JSON malformado → 400; `GET /admin/auth/me` com cookie de sessão falso → 401.
+- Logs estruturados da aplicação (Pino, linha `request completed`): campos `req.id`, `req.method`, `req.url` (só o pathname), `req.params`, headers de requisição `host`, `user-agent`, `content-type` e `content-length`; `res.statusCode` e headers de resposta `content-type`, `content-length` e `x-request-id`; `responseTime` e metadados. **Não** apareceram: `Authorization`, cookie/valor de sessão, secret, `Referer`, body (e-mail/senha), query string, IP de cliente (`remoteAddress`, `X-Real-IP`, `X-Forwarded-For`) nem headers completos. Nenhum stack trace nos logs coletados (não houve 500).
+- Logs HTTP de borda da Railway (plataforma): campos `method`, `path`, `httpStatus`, `host`, `clientUa`, `srcIp`, `edgeRegion`, `requestId`, bytes, durações, `upstreamAddress` (endereço interno) e `deploymentId`. Incluem o `srcIp` do cliente (comportamento da plataforma, não falha da aplicação). Não mostraram query string, cookies, `Authorization` nem body.
+- Observação não bloqueante (observabilidade): a requisição com JSON malformado aparece no log de borda (400), mas não gera linha `request completed` no log da aplicação. Nenhum dado do body apareceu em nenhum dos dois logs.
+- Cópias locais dos logs usadas na análise removidas após a verificação.
 
 ## 10. Referências
 
