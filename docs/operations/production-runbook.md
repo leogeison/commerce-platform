@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados e PITR **não** estão disponíveis no plano atual (exigem Pro); na fase de validação/MVP, substituídos por backup lógico local temporário (ver 9.3); healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); Instant Rollback confirmado nos dois projetos em 2026-11-23 (ver 9.5); Preview pendente **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados e PITR **não** estão disponíveis no plano atual (exigem Pro); na fase de validação/MVP, substituídos por backup lógico local temporário (ver 9.3); healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); Instant Rollback confirmado nos dois projetos em 2026-11-23 (ver 9.5); estratégia de Preview aprovada e validada nos dois projetos em 2026-11-24 (ver seção 3 e 9.5).
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -88,7 +88,37 @@ Node.js do projeto: **22.x** (Settings → Build and Deployment), alinhado ao CI
 
 ### Preview (Vercel)
 
-Secrets de Production **nunca** são reutilizados em Preview (em especial `REVALIDATION_SECRET`). Se previews serão desativados, terão configuração própria ou serão protegidos é decisão da configuração real **[VALIDAR]**. Builds de Preview rodam com `NODE_ENV=production`: sem variáveis próprias, o build do FastCompre falha por design.
+Estratégia aprovada em 2026-11-24 (ver 9.5): Preview é **somente para build e revisão visual**. Não é staging funcional e não substitui um ambiente de staging futuro.
+
+Regras:
+
+- Nenhum secret de Production é reutilizado em Preview (em especial `REVALIDATION_SECRET`).
+- Variáveis de Production ficam marcadas **somente** em Production; as de Preview, **somente** em Preview.
+- Vercel Authentication (Standard Protection) permanece ativa nos dois projetos: Previews só abrem para quem está autenticado na Vercel.
+- FastCompre Preview pode consumir a leitura pública da API de produção, mas o redirect de afiliado é inerte (nenhum CTA chega à API e nenhum `AffiliateClick` é criado).
+- Admin Preview fica isolado da API de produção: nenhuma chamada a ela; sem autenticação e sem escrita.
+- Builds de Preview rodam com `NODE_ENV=production`: sem as variáveis de Preview, os builds dos dois projetos falham por design.
+
+FastCompre — escopo **Preview**:
+
+| Variável | Valor |
+|---|---|
+| `SITE_SLUG` | `fastcompre` |
+| `API_URL` | `https://api.fastcompre.com` |
+| `SITE_URL` | `https://fastcompre.com` |
+| `AFFILIATE_REDIRECT_URL` | `https://affiliate-preview.invalid` (inerte; `.invalid` não resolve) |
+| `REVALIDATION_SECRET` | Valor **exclusivo de Preview**, nunca o de Production (valor não registrado) |
+| `STORAGE_PUBLIC_URL_BASE` | `https://media.fastcompre.com` |
+| `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
+
+Admin — escopo **Preview**:
+
+| Variável | Valor |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://api-preview.invalid` (inerte; nenhuma chamada à API de produção) |
+| `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
+
+Limpeza após qualquer uso de Preview: remover apenas branches e deployments temporários. As variáveis de Preview e a Standard Protection são permanentes nesta fase.
 
 ## 4. Primeiro deploy
 
@@ -348,7 +378,7 @@ Restaurar um backup **no banco de produção** não faz parte deste procedimento
 - Procedimento de rollback de deployment na Vercel: validado em 2026-11-23 para FastCompre e Admin (ver 9.5).
 - Pre-Deploy Timeout e timeout de healthcheck: definidos em 2026-11-21 (300 s cada; ver 9.5).
 - Status de proxy/DNS-only por registro DNS **[VALIDAR]**.
-- Estratégia de Preview na Vercel **[VALIDAR]**.
+- Estratégia de Preview na Vercel: aprovada e validada em 2026-11-24 (ver seção 3 e 9.5).
 
 ### 9.5 Validações concluídas
 
@@ -394,8 +424,8 @@ Restaurar um backup **no banco de produção** não faz parte deste procedimento
 - Cloudflare: os dois A e os dois AAAA antigos da Hostinger no apex foram removidos; criado `CNAME @` para o target fornecido pela Vercel (`*.vercel-dns-017.com`), em DNS only — os IPv4 da Vercel retornados por `dig A fastcompre.com` vêm do CNAME flattening do Cloudflare, não de registros A na zona. `www` também é CNAME para a Vercel, em DNS only. Sem registro AAAA (a Vercel não suporta IPv6 para custom domains neste modelo).
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
-- Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validado: Preview. X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel, `prisma migrate resolve` e backup/restore (local, validação/MVP) validados depois (ver blocos abaixo).
+- Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada nesta etapa (estratégia de Preview aprovada e validada em 2026-11-24, ver seção 3 e bloco Preview abaixo).
+- Preview, X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel, `prisma migrate resolve` e backup/restore (local, validação/MVP): validados depois (ver blocos abaixo).
 
 **Admin (Vercel) — 2026-11-21**
 
@@ -408,7 +438,7 @@ Restaurar um backup **no banco de produção** não faz parte deste procedimento
 - `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
 - Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
 - Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
-- Ainda **não** validado: Preview. X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel, `prisma migrate resolve` e backup/restore (local, validação/MVP) validados depois (ver blocos abaixo).
+- Preview, X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel, `prisma migrate resolve` e backup/restore (local, validação/MVP): validados depois (ver blocos abaixo).
 
 **IP real do cliente / `CLIENT_IP_SOURCE` — 2026-11-23**
 
@@ -456,6 +486,16 @@ Evidência de qual deployment serve o domínio: o ID `dpl_…` presente no HTML 
 - Container de restore e dumps em claro removidos; ficaram só `.dump.gpg` e `.sha256`.
 - Produção antes == produção depois; a `api` permaneceu no mesmo deployment e `GET /health` → 200. Nenhuma escrita deliberada no banco de produção durante o drill.
 - Limitação registrada na seção 9.3: aceito somente para validação/MVP; antes de dados críticos ou go-live definitivo, backup externo automatizado ou PITR.
+
+**Preview na Vercel (FastCompre e Admin) — 2026-11-24**
+
+- Estado inicial dos dois projetos (`fastcompre` e `admin`): Production Branch = `main`; variáveis de Production somente em Production (no Admin, `NEXT_PUBLIC_API_URL` e `ENABLE_EXPERIMENTAL_COREPACK`); escopo Preview vazio; Deployment Protection = Vercel Authentication / Standard Protection; `Ignored Build Step = Automatic`.
+- Variáveis de Preview da seção 3 cadastradas somente no escopo Preview; `REVALIDATION_SECRET` de Preview gerado exclusivamente para Preview (valor não registrado).
+- Branch temporária `preview-drill` criada apontando para o mesmo commit do `main`. Com `Ignored Build Step = Automatic`, nenhum Preview surgiu automaticamente para o mesmo commit; os deployments de Preview foram criados manualmente na Vercel a partir da branch `preview-drill`.
+- Admin Preview: `Ready`. Em janela anônima, a proteção da Vercel apareceu. `/login` carregou. A raiz mostrou o erro de carregamento esperado, porque `api-preview.invalid` não resolve. Nenhuma tentativa de login foi feita.
+- FastCompre Preview: `Ready`. Em janela anônima, a proteção da Vercel apareceu. Home, rota inexistente (404), `/robots.txt` e `/sitemap.xml` funcionaram. Nenhum CTA de afiliado foi acionado.
+- Produção: `AffiliateClick` permaneceu `0`; `GET https://api.fastcompre.com/health` → 200.
+- Limpeza: branch `preview-drill` removida local e remotamente; deployments de Preview removidos da Vercel. Mantidas as variáveis de Preview e a Standard Protection (estratégia permanente nesta fase).
 
 ## 10. Referências
 
