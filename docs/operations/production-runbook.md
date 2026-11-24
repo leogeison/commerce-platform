@@ -24,7 +24,17 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 - A API é o único ponto de acesso ao PostgreSQL. O banco nunca é exposto publicamente — nem para migration, nem para bootstrap.
 - Admin e API ficam no mesmo domínio registrável (`*.fastcompre.com`): o cookie de sessão é host-only na API, `SameSite=Lax`, e só é enviado em requisições same-site.
-- Status de proxy/DNS-only de cada registro (`api`, `admin`, apex, `www`) é decidido **por serviço** na configuração real **[VALIDAR]**. O `media.fastcompre.com` é o domínio customizado do R2 e exige a zona `fastcompre.com` na mesma conta Cloudflare do bucket.
+- Estado aprovado dos registros DNS (validado em 2026-11-24, ver 9.5):
+
+  | Registro | Destino | Proxy |
+  |---|---|---|
+  | `fastcompre.com` (apex) | Vercel (`CNAME @`, resolvido por CNAME flattening) | DNS only |
+  | `www.fastcompre.com` | Vercel (CNAME; redirect `308` para o apex) | DNS only |
+  | `admin.fastcompre.com` | Vercel (CNAME) | DNS only |
+  | `api.fastcompre.com` | Railway (CNAME + TXT `_railway-verify.api`) | DNS only |
+  | `media.fastcompre.com` | Domínio customizado do bucket R2 | Servido pelo Cloudflare (proxied), como nesta configuração de domínio customizado do R2 |
+
+  O `media.fastcompre.com` exige a zona `fastcompre.com` na mesma conta Cloudflare do bucket. Habilitar o proxy do Cloudflare na `api` é **mudança de topologia**: exige SSL/TLS **Full** e refazer o gate 9.1 antes (com `CLIENT_IP_SOURCE=socket` até a nova validação).
 
 ## 2. Recursos necessários
 
@@ -140,7 +150,7 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
    5. Healthcheck path: `/health`; Healthcheck Timeout: **300 s**.
    6. Réplicas: 1 (o rate limit é em memória por processo).
    7. Variáveis da seção 3 (API). `CLIENT_IP_SOURCE=socket` (ou ausente) no primeiro deploy; `x-real-ip` só depois do gate da seção 9.1.
-   8. Domínio customizado `api.fastcompre.com`: no Cloudflare, CNAME `api` para o target fornecido pelo Railway e TXT `_railway-verify.api`; TLS automático. **Target port do domínio = porta em que o Railway detectou a aplicação** (8080 em 2026-11-21; a API escuta em `PORT`). Target port errado resulta em `502 Application failed to respond`. Hoje o CNAME está **DNS only**; ativar o proxy do Cloudflare é decisão pendente (exige SSL/TLS **Full**, e afeta o gate 9.1) **[VALIDAR]**.
+   8. Domínio customizado `api.fastcompre.com`: no Cloudflare, CNAME `api` para o target fornecido pelo Railway e TXT `_railway-verify.api`; TLS automático. **Target port do domínio = porta em que o Railway detectou a aplicação** (8080 em 2026-11-21; a API escuta em `PORT`). Target port errado resulta em `502 Application failed to respond`. O CNAME fica em **DNS only** (estado aprovado em 2026-11-24, ver seção 1 e 9.5). Ativar o proxy do Cloudflare na `api` é mudança de topologia: exige SSL/TLS **Full** e refazer o gate 9.1.
 4. **Deploy da API** — disparar manualmente o deploy do commit validado. Esperado: build → pre-deploy aplica as migrations → healthcheck 2xx → deployment ativo. Conferir `GET https://api.fastcompre.com/health` → `{"status":"ok"}`. Primeiro deploy executado em 2026-11-21 (ver 9.5).
 5. **Bootstrap** — seção 5.
 6. **FastCompre (Vercel)**
@@ -377,7 +387,7 @@ Restaurar um backup **no banco de produção** não faz parte deste procedimento
 - Procedimento de rollback de deployment no Railway: validado em 2026-11-23 (ver 9.5).
 - Procedimento de rollback de deployment na Vercel: validado em 2026-11-23 para FastCompre e Admin (ver 9.5).
 - Pre-Deploy Timeout e timeout de healthcheck: definidos em 2026-11-21 (300 s cada; ver 9.5).
-- Status de proxy/DNS-only por registro DNS **[VALIDAR]**.
+- Status de proxy/DNS-only por registro DNS: aprovado e validado em 2026-11-24 (ver seção 1 e 9.5).
 - Estratégia de Preview na Vercel: aprovada e validada em 2026-11-24 (ver seção 3 e 9.5).
 
 ### 9.5 Validações concluídas
@@ -496,6 +506,17 @@ Evidência de qual deployment serve o domínio: o ID `dpl_…` presente no HTML 
 - FastCompre Preview: `Ready`. Em janela anônima, a proteção da Vercel apareceu. Home, rota inexistente (404), `/robots.txt` e `/sitemap.xml` funcionaram. Nenhum CTA de afiliado foi acionado.
 - Produção: `AffiliateClick` permaneceu `0`; `GET https://api.fastcompre.com/health` → 200.
 - Limpeza: branch `preview-drill` removida local e remotamente; deployments de Preview removidos da Vercel. Mantidas as variáveis de Preview e a Standard Protection (estratégia permanente nesta fase).
+
+**DNS/proxy Cloudflare por registro — 2026-11-24**
+
+Verificação externa, somente leitura (resolver `1.1.1.1`, headers HTTP e certificados TLS); nenhuma alteração de DNS. Zona `fastcompre.com` com nameservers do Cloudflare. Proxy determinado comparando os IPs resolvidos com as faixas IPv4 publicadas pelo Cloudflare (`cloudflare.com/ips-v4`): registro proxied resolve para IPs do Cloudflare e não expõe o destino do CNAME.
+
+- `fastcompre.com`: IPv4 da Vercel (CNAME flattening do `CNAME @`), fora das faixas do Cloudflare; sem AAAA. `server: Vercel`, HTTP 200; certificado Let's Encrypt emitido para `fastcompre.com`. **DNS only → Vercel.**
+- `www.fastcompre.com`: CNAME para o target da Vercel (o mesmo do apex), IPs fora das faixas do Cloudflare. `server: Vercel`, `308` para `https://fastcompre.com/`. **DNS only → Vercel.**
+- `admin.fastcompre.com`: CNAME para o target da Vercel, IPs fora das faixas do Cloudflare. `server: Vercel`, `/login` → 200; certificado Let's Encrypt emitido para `admin.fastcompre.com`. **DNS only → Vercel.**
+- `api.fastcompre.com`: CNAME para o domínio `*.up.railway.app` do serviço, IP fora das faixas do Cloudflare; TXT `_railway-verify.api` presente. `server: railway-hikari`, sem `cf-ray`, `/health` → 200; certificado Let's Encrypt emitido para `api.fastcompre.com`. **DNS only → Railway**: o Cloudflare não está no caminho, e o modelo de confiança do gate 9.1 (`X-Real-IP` controlado pelo edge do Railway) continua válido.
+- `media.fastcompre.com`: IPv4 nas faixas do Cloudflare (IPv6 em `2606:4700::`), sem CNAME exposto. `server: cloudflare`, com `cf-ray` (a raiz, sem objeto, responde 404); certificado emitido pelo Cloudflare. **Servido pelo Cloudflare (proxied)** como domínio customizado do bucket R2, no fluxo validado em 2026-11-21.
+- Estado aprovado registrado na seção 1. Habilitar o proxy na `api` é mudança de topologia e exige refazer o gate 9.1.
 
 ## 10. Referências
 
