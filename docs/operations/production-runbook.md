@@ -28,7 +28,7 @@ Visitante ──GET /r/fastcompre/{offerId}──▶ api.fastcompre.com ──30
 
 ## 2. Recursos necessários
 
-Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados **não** estão disponíveis no plano atual (exigem Pro) **[VALIDAR]**; healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); Instant Rollback confirmado nos dois projetos em 2026-11-23 (ver 9.5); Preview pendente **[VALIDAR]**.
+Descritos por capacidade, não por plano comercial — confirmar na configuração real que o plano contratado de cada provedor oferece o recurso. Cloudflare: recursos confirmados em 2026-11-21 (ver 9.5). Railway: Dockerfile com path customizado, Pre-Deploy Command com timeout, healthcheck, auto-deploy desativável, PostgreSQL privado e domínio customizado com TLS e acesso de shell ao container (`railway ssh`) confirmados em 2026-11-21 (ver 9.5); backups agendados e PITR **não** estão disponíveis no plano atual (exigem Pro); na fase de validação/MVP, substituídos por backup lógico local temporário (ver 9.3); healthcheck como gate de ativação e rollback de deployment confirmados em 2026-11-23 (ver 9.5). Vercel: Root Directory em monorepo pnpm, variáveis restritas a Production e domínio customizado com TLS confirmados para o FastCompre e para o Admin em 2026-11-21 (ver 9.5); Instant Rollback confirmado nos dois projetos em 2026-11-23 (ver 9.5); Preview pendente **[VALIDAR]**.
 
 | Provedor | Recursos exigidos pelo procedimento |
 |---|---|
@@ -101,7 +101,7 @@ Pré-condições: CI verde no commit a publicar; acesso administrativo aos três
    4. Anotar o endpoint S3 da conta (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
 2. **PostgreSQL (Railway)**
    1. Criar o serviço PostgreSQL **sem** acesso público.
-   2. Configurar backups agendados. Em 2026-11-21, backups automáticos/PITR exigiam plano Pro na UI do Railway; nenhum upgrade foi feito e o banco está **sem backup agendado**. Decisão de plano e retenção pendente **[VALIDAR]**.
+   2. Backups: em 2026-11-21, backups automáticos/PITR exigiam plano Pro na UI do Railway; decisão do PO: sem upgrade nesta fase. Durante a validação/MVP, backup lógico local temporário conforme a seção 9.3 (com a limitação registrada lá).
 3. **API (Railway)**
    1. Criar o serviço como **Empty Service** e conectar o repositório (branch `main`) antes do primeiro deploy. Root Directory **vazio** (build context na raiz), Builder `Dockerfile`, variável `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile` (relativa, sem barra inicial) e Start Command vazio (vale o `CMD` da imagem). Confirmado no build log: `load build definition from apps/api/Dockerfile`.
    2. Desativar auto-deploy (deploy manual).
@@ -189,7 +189,7 @@ Executar após o primeiro deploy e após cada deploy relevante. Não criar dados
 | **API ativa com problema funcional** | Rollback no Railway (validado em 2026-11-23, ver 9.5): serviço `api` → **Deployments** → menu ⋯ do último deployment saudável → **Rollback** → confirmar. O Railway cria um **novo deployment**, executa de novo o pipeline de build, o **pre-deploy** (`prisma migrate deploy`) e o **healthcheck**. O rollback **não reverte o banco**: migrations já aplicadas permanecem — por isso a regra expand/contract da seção 7 é obrigatória. O rollback pode restaurar variáveis do deployment escolhido; **após o rollback, conferir as variáveis críticas da API** (neste teste, `CLIENT_IP_SOURCE` permaneceu `x-real-ip`) e executar o smoke test da seção 6. |
 | **Frontend novo incompatível** | Instant Rollback na Vercel **no projeto afetado** — FastCompre e Admin são projetos independentes, com rollback próprio (validado em 2026-11-23, ver 9.5). Tile de Production → **Instant Rollback** → escolher um deployment de produção anterior `Ready` → confirmar. A Vercel reatribui os domínios ao deployment existente, sem rebuild. O deployment escolhido roda com as variáveis do build dele; mudanças de env posteriores não se aplicam a ele. Por isso, **antes do rollback**, verificar se o deployment escolhido continua compatível com a API atual, os contratos, os secrets (ex.: `REVALIDATION_SECRET`), os hosts/domínios e a configuração de storage e revalidação. Após o rollback, a Vercel desliga a atribuição automática dos domínios de Production; resolvido o incidente, usar **Manage/Promote** para voltar ao deployment desejado e reabilitá-la. Se a incompatibilidade for com a API, avaliar primeiro o rollback da API (limitado pela migration aplicada). |
 | **Bootstrap falha** | Nada é criado (transação única). Corrigir e repetir. |
-| **Dados/schema comprometidos** | Restaurar backup do PostgreSQL é último recurso, implica perda de dados desde o backup e exige decisão do Product Owner. Não existe down migration automática. |
+| **Dados/schema comprometidos** | Restaurar backup do PostgreSQL é último recurso, implica perda de dados desde o backup e exige decisão do Product Owner. Não existe down migration automática. Backups disponíveis e limitações: seção 9.3. |
 
 ### 8.1 Migration falhou
 
@@ -260,7 +260,86 @@ Gate **aprovado** (ver 9.5). Procedimento na seção 8.1: inspeção somente lei
 
 ### 9.3 Backup e restore do PostgreSQL
 
-Confirmar agendamento e retenção dos backups e executar um restore de teste antes do go-live **[VALIDAR]**.
+Gate **aprovado para a fase de validação/MVP** (drill em 2026-11-24, ver 9.5), com a limitação abaixo.
+
+**Estratégia atual (validação/MVP):** backup lógico local temporário, manual.
+
+- `pg_dump -Fc` executado **dentro** do container do serviço `Postgres` no Railway (PostgreSQL **18.6**; `pg_dump` da mesma versão). Nenhuma credencial sai do Railway e o banco continua privado.
+- SHA-256 calculado na origem (container) e no destino (máquina local); os dois precisam ser idênticos.
+- Criptografia local com GPG AES256 (`gpg --symmetric --cipher-algo AES256`), com a passphrase digitada só no pinentry. A passphrase nunca deve aparecer na linha de comando ou no repositório e precisa ser mantida pelo operador em local seguro; sua perda torna os backups irrecuperáveis.
+- Ficam retidos somente `fastcompre-prod-pg18-<AAAAMMDDTHHMMSSZ>.dump.gpg` e o `.sha256` (checksum do dump e do `.gpg`), em `~/backups/commerce-platform`, com permissão `600`. Dumps em claro são removidos depois do drill.
+
+**Quando executar e retenção:**
+
+- obrigatório antes de todo deploy da API com migration nova;
+- pelo menos semanal enquanto houver dados reais;
+- manter 30 dias e nunca menos que os 3 backups mais recentes (remoção manual, após conferir com `ls -l`).
+
+**Procedimento.** Arquivos locais ficam em `~/backups/commerce-platform`; os comandos `railway …` precisam rodar a partir de `~/railway-ops` (diretório vinculado ao projeto/ambiente; de outro diretório o CLI responde `No linked project found`). Por isso todos os comandos abaixo rodam num único shell em `~/railway-ops` e usam caminhos absolutos para os arquivos locais:
+
+```bash
+B="$HOME/backups/commerce-platform"
+cd "$HOME/railway-ops"
+```
+
+1. Impressão digital da produção **antes** (somente leitura; não fazer login no Admin até o passo 7, porque o login cria linhas em `Session`). O arquivo `fp.sql` contém as consultas de contagem das tabelas do domínio, `_prisma_migrations`, colunas, enums, índices e constraints:
+   ```sql
+   \pset footer off
+   SELECT 'counts', (SELECT count(*) FROM "Site"), (SELECT count(*) FROM "User"), (SELECT count(*) FROM "SiteUser"),
+     (SELECT count(*) FROM "Session"), (SELECT count(*) FROM "Category"), (SELECT count(*) FROM "Product"),
+     (SELECT count(*) FROM "Offer"), (SELECT count(*) FROM "Article"), (SELECT count(*) FROM "ArticleProduct"),
+     (SELECT count(*) FROM "Author"), (SELECT count(*) FROM "AffiliateClick");
+   SELECT 'migrations', count(*), md5(string_agg(migration_name||'|'||checksum||'|'||coalesce(finished_at::text,'')||'|'||coalesce(rolled_back_at::text,''), ',' ORDER BY migration_name)) FROM _prisma_migrations;
+   SELECT 'columns', md5(string_agg(table_name||'.'||column_name||':'||data_type||':'||is_nullable||':'||coalesce(column_default,''), ',' ORDER BY table_name, column_name)) FROM information_schema.columns WHERE table_schema='public';
+   SELECT 'enums', md5(string_agg(t.typname||':'||e.enumlabel, ',' ORDER BY t.typname, e.enumsortorder)) FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid;
+   SELECT 'indexes', md5(string_agg(indexdef, ',' ORDER BY indexname)) FROM pg_indexes WHERE schemaname='public';
+   SELECT 'constraints', md5(string_agg(conname||':'||pg_get_constraintdef(oid), ',' ORDER BY conname)) FROM pg_constraint WHERE connamespace='public'::regnamespace;
+   ```
+   ```bash
+   railway ssh -s Postgres -- sh -c 'psql -X -A -t -v ON_ERROR_STOP=1 -h localhost -U "$PGUSER" -d "$PGDATABASE" -f -' < "$B/fp.sql" > "$B/fp-prod-before.txt"
+   ```
+2. Dump dentro do container e checksum na origem:
+   ```bash
+   TS=$(date -u +%Y%m%dT%H%M%SZ); NAME="fastcompre-prod-pg18-$TS"
+   railway ssh -s Postgres -- sh -c "pg_dump -h localhost -U \"\$PGUSER\" -d \"\$PGDATABASE\" -Fc -Z 6 -f /tmp/$NAME.dump && sha256sum /tmp/$NAME.dump"
+   ```
+3. Transferência, checksum no destino (tem que ser igual ao da origem; se não for, descartar e repetir), validação do arquivo e remoção na origem:
+   ```bash
+   railway ssh -s Postgres -- cat "/tmp/$NAME.dump" > "$B/$NAME.dump"
+   sha256sum "$B/$NAME.dump"
+   docker run --rm -i postgres:18.6 pg_restore --list < "$B/$NAME.dump" > /dev/null && echo "dump válido"
+   railway ssh -s Postgres -- rm -f "/tmp/$NAME.dump"
+   ```
+4. Checksums e criptografia:
+   ```bash
+   (cd "$B" && sha256sum "$NAME.dump" > "$NAME.sha256")
+   gpg --symmetric --cipher-algo AES256 --output "$B/$NAME.dump.gpg" "$B/$NAME.dump"
+   (cd "$B" && sha256sum "$NAME.dump.gpg" >> "$NAME.sha256")
+   chmod 600 "$B/$NAME.dump.gpg" "$B/$NAME.sha256"
+   ```
+5. Restore drill local (container temporário, exposto só em `127.0.0.1`, dados em memória), partindo do `.gpg`:
+   ```bash
+   PW=$(openssl rand -hex 16)
+   docker run -d --name cp-restore-drill -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=railway \
+     -p 127.0.0.1:55432:5432 --tmpfs /var/lib/postgresql postgres:18.6
+   gpg --decrypt --output "$B/restore-$NAME.dump" "$B/$NAME.dump.gpg"
+   grep -q "$(sha256sum < "$B/restore-$NAME.dump" | cut -d' ' -f1)" "$B/$NAME.sha256" && echo "checksum após decrypt OK"
+   docker exec -i cp-restore-drill pg_restore -U postgres -d railway --no-owner --no-privileges --exit-on-error < "$B/restore-$NAME.dump"
+   docker exec -i cp-restore-drill psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d railway < "$B/fp.sql" > "$B/fp-restore.txt"
+   diff "$B/fp-prod-before.txt" "$B/fp-restore.txt" && echo "restore == produção"
+   (cd <repo> && DATABASE_URL="postgresql://postgres:$PW@127.0.0.1:55432/railway" pnpm --filter api exec prisma migrate status)
+   ```
+6. Limpeza obrigatória: `docker rm -f cp-restore-drill; unset PW; rm -f "$B/$NAME.dump" "$B/restore-$NAME.dump"` (ficam só `.dump.gpg` e `.sha256`).
+7. Impressão digital da produção **depois** (mesmo comando do passo 1, ainda a partir de `~/railway-ops`, saída em `"$B/fp-prod-after.txt"`) e `diff "$B/fp-prod-before.txt" "$B/fp-prod-after.txt"`; conferir que a `api` continua no mesmo deployment e `GET /health` → 200.
+
+Restaurar um backup **no banco de produção** não faz parte deste procedimento: é último recurso, com decisão do Product Owner (seção 8).
+
+**Limitação (aceita somente durante validação/MVP):**
+
+- não protege contra perda simultânea da máquina/disco local;
+- não oferece PITR;
+- RPO = intervalo entre backups; RTO depende de execução manual;
+- antes de dados críticos ou do go-live definitivo, adotar backup externo automatizado ou PITR.
 
 ### 9.4 Comportamentos de provedor pendentes
 
@@ -316,7 +395,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - Após aplicar o Node.js 22.x, redeploy validado de novo: apex 200, `www` 308.
 - Revalidação: de dentro do container da API no Railway (`railway ssh`), `POST https://fastcompre.com/api/internal/revalidate` com o `REVALIDATION_SECRET` do serviço e payload `{}` retornou `400 {"error":"INVALID_PAYLOAD"}` — prova de alcance e de secret compatível (secret divergente retornaria `401`), sem executar revalidação real.
 - Git/Build: `Ignored Build Step = Automatic`; nenhuma política adicional de Preview criada. Comportamento atual mantido por enquanto (Preview segue **[VALIDAR]**, ver seção 3 e 9.4).
-- Ainda **não** validados: Preview e backup/restore; X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel e `prisma migrate resolve` validados depois (ver blocos abaixo).
+- Ainda **não** validado: Preview. X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel, `prisma migrate resolve` e backup/restore (local, validação/MVP) validados depois (ver blocos abaixo).
 
 **Admin (Vercel) — 2026-11-21**
 
@@ -329,7 +408,7 @@ Confirmar agendamento e retenção dos backups e executar um restore de teste an
 - `GET https://api.fastcompre.com/admin/auth/me` com sessão válida observado em produção (em requisição condicional, `304 Not Modified`), com `Access-Control-Allow-Credentials: true` e `Access-Control-Allow-Origin: https://admin.fastcompre.com`.
 - Dashboard reconheceu o Site FastCompre e exibiu ações compatíveis com OWNER.
 - Logout funcionou; depois dele, o acesso direto a `/fastcompre` redirecionou para `/login`.
-- Ainda **não** validados: Preview e backup/restore; X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel e `prisma migrate resolve` validados depois (ver blocos abaixo).
+- Ainda **não** validado: Preview. X-Real-IP, healthcheck falho, rollback do Railway, rollback na Vercel, `prisma migrate resolve` e backup/restore (local, validação/MVP) validados depois (ver blocos abaixo).
 
 **IP real do cliente / `CLIENT_IP_SOURCE` — 2026-11-23**
 
@@ -368,6 +447,15 @@ Evidência de qual deployment serve o domínio: o ID `dpl_…` presente no HTML 
 - 2026-11-24 — Ensaio somente leitura do `ops-migrate` (seção 8.1, item 7), sem executar o passo de `resolve`: serviço criado no environment `production` com o Dockerfile da API, Start Command `sleep infinity`, sem domínio, healthcheck ou Pre-Deploy, e só `DATABASE_URL` (referência) + `RAILWAY_DOCKERFILE_PATH`. Ficou `Active`; o SSH abriu em `/app`; `RAILWAY_GIT_COMMIT_SHA` igual ao commit esperado do `main`; `prisma/migrations` presente com as 2 migrations; `migrate status` alcançou o PostgreSQL privado (`postgres.railway.internal:5432`) e a consulta `READ ONLY` passou.
 - Nenhuma escrita foi executada no banco e nenhum `prisma migrate resolve` foi executado. Serviço `ops-migrate` removido (CLI: `Service 'ops-migrate' not found`).
 - A `api` permaneceu no mesmo deployment, com o mesmo conjunto de variáveis (comparado por hash, sem expor valores), e `GET /health` → 200.
+
+**Backup/restore do PostgreSQL (local, validação/MVP) — 2026-11-24**
+
+- Dump `pg_dump -Fc` criado dentro do container `Postgres` de produção (PostgreSQL 18.6). SHA-256 da origem e do destino idênticos; `pg_restore --list` válido; arquivo temporário removido do `/tmp` do container.
+- Criptografia GPG AES256 e descriptografia preservaram o mesmo SHA-256.
+- Restore local em `postgres:18.6` (container temporário em `127.0.0.1`) passou. Impressão digital do restaurado idêntica à da produção: contagens, `_prisma_migrations`, colunas, enums, índices e constraints. `prisma migrate status` no restaurado: 2 migrations, schema up to date.
+- Container de restore e dumps em claro removidos; ficaram só `.dump.gpg` e `.sha256`.
+- Produção antes == produção depois; a `api` permaneceu no mesmo deployment e `GET /health` → 200. Nenhuma escrita deliberada no banco de produção durante o drill.
+- Limitação registrada na seção 9.3: aceito somente para validação/MVP; antes de dados críticos ou go-live definitivo, backup externo automatizado ou PITR.
 
 ## 10. Referências
 
