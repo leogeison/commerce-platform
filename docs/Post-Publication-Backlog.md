@@ -12,6 +12,7 @@ Mesma convenção de campos do `docs/UX-Implementation-Backlog.md`: **Objetivo**
 |---|---|
 | `UXP` | Correções/melhorias de UI/UX pós-publicação, sem mudança de regra de negócio nem de contrato |
 | `SEC` | Investigações/correções de segurança e de dependências identificadas após a publicação |
+| `DEP` | Estabilidade e manutenção da resolução de dependências (lockfile), sem mudança funcional |
 
 ---
 
@@ -208,5 +209,87 @@ O mesmo defeito existia no bloco inline `:::product` e na seção estática "Pro
 **Riscos:**
 - dados sensíveis (por exemplo, credenciais) em logs, se algum caminho de log do SDK estiver ativo;
 - regressão do upload para o R2 ao atualizar o SDK.
+
+**Conclusão da investigação (2026-11-25):** classificação **não afetado** pela falha da issue 8393, com base em evidência de código e com evidência complementar de logs. Não é garantia de ausência de exposição histórica por outros mecanismos.
+
+- **Issue 8393** ("Custom loggers receive unredacted data when nested in lists & maps"; aberta; `bug`, `p1`, `released`):
+  - versões afetadas: `@smithy/core` `>=3.24.0 <3.38.1` e `@smithy/smithy-client` `>=4.5.0 <4.13.0`;
+  - correção: `@smithy/core` 3.38.1 ou superior;
+  - a falha afeta só quem passa um `logger` customizado ao cliente AWS: valores sensíveis dentro de listas ou mapas chegam ao `logger.info` sem a ocultação esperada. Texto da issue: "does not apply if you did not configure a custom logger".
+- **Evidências de código:**
+  - único cliente AWS do repositório: `buildS3Client` (`apps/api/.../s3-storage.adapter.ts`), sem `logger`, `middlewareStack` ou `requestHandler` customizados, em todas as versões do histórico do git deste arquivo e de `uploads.module.ts`;
+  - sem logger, o `@aws-sdk/client-s3@3.1106.0` usa `config?.logger ?? new NoOpLogger()`, e os métodos do `NoOpLogger` não fazem nada;
+  - o `loggerMiddleware` (`@aws-sdk/core@3.977.6`) só chama `logger?.info`/`logger?.error` do cliente;
+  - a única escrita direta do SDK no `console` é uma frase fixa, sem dados, só para corpos em stream (o adaptador envia `Buffer`);
+  - comando usado: só `PutObjectCommand` (`Bucket`, `Key`, `Body`, `ContentType`);
+  - `@smithy/smithy-client` não estava no lockfile.
+- **Evidência de logs** (executada pelo PO, uma amostra de 618 linhas da API na Railway, só contagens):
+  - 0 entradas no formato do logger AWS (`clientName`/`commandName`);
+  - 0 menções a `PutObjectCommand`/`S3Client`;
+  - 0 nomes de campos de credencial ou assinatura;
+  - 0 avisos de streaming do SDK.
+- **Rotação de credenciais:** não exigida pelo advisory, que a condiciona a logger customizado. Não foi realizada (decisão do PO).
+
+**Implementação (2026-11-25), opção B (atualização transitiva mínima):**
+- **Resultado:**
+  - `@smithy/core` de 3.31.1 para **3.40.0** (versão escolhida pelo PO: já contém a correção e circula há mais tempo que a 3.41.1);
+  - `@smithy/types` **4.20.0** adicionado só para o `@smithy/core`, que exige `^4.20.0`; os demais `@smithy/*` seguem na 4.16.1 (coexistência aceita, sem dedupe forçado);
+  - `@aws-sdk/client-s3@3.1106.0` e `@aws-sdk/core@3.977.6` mantidos;
+  - nenhum `package.json` alterado.
+- **Método:**
+  - o `pnpm update` isolado não atualiza dependência transitiva (`@smithy/core` permaneceu 3.31.1);
+  - foi usado override **temporário** `@smithy/core: 3.40.0` no `pnpm-workspace.yaml`, seguido de `pnpm install`, remoção do override e novo `pnpm install`;
+  - o resolvedor reintroduz alterações alheias a cada escrita do lockfile (ver DEP-001). Com exceção pontual autorizada pelo PO, só esses trechos alheios foram restaurados ao texto original;
+  - versões, hashes e referências do Smithy são exatamente os gerados pelo resolvedor.
+- **Validações:**
+  - diff do lockfile restrito a `@smithy/core` e `@smithy/types`;
+  - nenhuma versão afetada na árvore;
+  - sem `overrides` no workspace ou no lockfile;
+  - nenhuma política do pnpm alterada;
+  - integridade igual à publicada no npm;
+  - `pnpm install --frozen-lockfile` passou;
+  - `pnpm why`: 1 versão de `@smithy/core` (3.40.0);
+  - runtime da API: `@smithy/core` 3.40.0 por `client-s3` e por `@aws-sdk/core`;
+  - instalação reproduzível em cópia limpa do repositório (sem `node_modules` prévio, `--ignore-scripts`);
+  - API: unit 455/455 e e2e 668/668 (78 suítes);
+  - `pnpm typecheck`, `pnpm lint` (0 erros), `pnpm build` e `git diff --check`: OK.
+- **Validação real de storage (executada pelo PO em 2026-11-25):**
+  - **Silo local:** upload pelo Admin usando o fluxo real da API (adaptador e SDK reais), aprovado;
+  - **Cloudflare R2:** com `@smithy/core` 3.40.0 em uso, `PutObject`, `HeadObject`, `GET` público por `media.fastcompre.com`, integridade do conteúdo e `DeleteObject` OK. Objeto de teste sob `sdk-validation/`, removido ao final.
+- **Pendentes:**
+  - deploy da API com o lockfile atualizado;
+  - após o deploy, upload real pelo Admin em produção e conferência dos logs da API.
+
+**Status:** investigação concluída (não afetado); atualização implementada e validada no Silo local e no Cloudflare R2 em 2026-11-25; **aprovada para commit**. Deploy e validação em produção pendentes.
+
+---
+
+### DEP-001 — Estabilizar resolução das dependências transitivas do Lighthouse
+
+**Objetivo:** eliminar a re-resolução não determinística de dependências transitivas do Lighthouse a cada escrita do `pnpm-lock.yaml`, para que atualizações pontuais de dependências produzam diffs só com o que foi autorizado.
+
+**Contexto/decisão relacionada:** observado na UXP-003 e na SEC-001 (2026-11-24/25).
+- **Origem:** `@paulirish/trace_engine@0.0.65`, dependência da `devDependency` raiz `lighthouse@13.4.1`, declara `third-party-web` e `legacy-javascript` com a tag **`latest`**, não com uma faixa de versão. O pnpm re-resolve tags em todo `pnpm install` ou `pnpm update` que reescreve o lockfile.
+- **Alterações colaterais observadas:**
+  - `legacy-javascript` de 0.0.1 para 0.0.4 e `third-party-web` de 0.29.2 para 0.30.0;
+  - linhas `deprecated:` adicionadas a pacotes já existentes: `@opentelemetry/sdk-trace-base@2.10.0`, `argon2@0.45.1` e `node-abort-controller@3.1.1`.
+
+  Nas duas tarefas, essas alterações foram restauradas ao original e não estão no lockfile versionado.
+- **Possível impacto:** `third-party-web` (catálogo de domínios de terceiros) e `legacy-javascript` (detecção de polyfills ou JS legado) alimentam auditorias do Lighthouse usadas nas medições de performance. Versões que mudam sem decisão explícita podem alterar classificações e resultados entre execuções ou máquinas e afetar a comparação com os budgets de performance.
+
+**Pré-requisitos:** nenhum.
+
+**Escopo incluído (quando iniciada):**
+- decidir entre fixar as duas dependências (override permanente, com aprovação), atualizar o `lighthouse`/`@paulirish/trace_engine` para versões sem tag `latest`, se existirem, ou aceitar e documentar a variação;
+- validar que um `pnpm install` não congelado não altera mais o lockfile;
+- reexecutar as medições de performance afetadas, se as versões mudarem.
+
+**Fora de escopo:** atualizar `argon2`, `@opentelemetry/*` ou `node-abort-controller` (os avisos de depreciação desses pacotes exigem decisões próprias).
+
+**Arquivos/áreas:** `package.json`/`pnpm-workspace.yaml` (raiz) e `pnpm-lock.yaml`.
+
+**Critérios de aceite:** um `pnpm install` não congelado em árvore limpa não produz diff no lockfile; versões das ferramentas de medição documentadas.
+
+**Riscos:** mudança de resultados de Lighthouse ao alterar as versões fixadas.
 
 **Status:** registrada em 2026-11-25. Não iniciada.
