@@ -293,3 +293,70 @@ O mesmo defeito existia no bloco inline `:::product` e na seção estática "Pro
 **Riscos:** mudança de resultados de Lighthouse ao alterar as versões fixadas.
 
 **Status:** registrada em 2026-11-25. Não iniciada.
+
+---
+
+### DEP-002 — Atualizar `argon2` para 0.45.2 (formato PHC dos hashes)
+
+**Objetivo:** sair da versão depreciada `argon2@0.45.1` (dependência direta da API, hash de senhas).
+
+**Contexto/decisão relacionada:** investigação concluída em 2026-11-25.
+- **Causa:** o npm deprecia a 0.45.0 e a 0.45.1 ("bug in hash encoding and generates invalid hashes"). O defeito é só de formato: o `hash()` serializava os parâmetros como `m,p,t` em vez da ordem PHC `m,t,p` (issue #559 e correção no PR #562, commit `d6d22754`, em `argon2.cjs`: `{ m, p, t }` → `{ m, t, p }`).
+- **Impacto:** digest e salt não mudam, e o `verify` da própria biblioteca lê os parâmetros por nome. Hashes existentes (do bootstrap de admin desde 2026-07-30 e o `dummy-password-hash.ts`) continuam válidos na 0.45.1 e na 0.45.2. Confirmado por teste empírico em memória com a versão instalada.
+- **Classificação:** não afetado em autenticação e segurança. Risco residual só se outra implementação, mais rígida quanto à ordem, precisar verificar esses hashes (inferência, não testada); mitigável reordenando o texto, sem rotacionar senhas.
+- **Decisão do PO:** atualização **adiada** (não urgente).
+
+**Escopo (quando iniciada):**
+- `argon2` para `^0.45.2`;
+- testes unit e e2e de identidade e login, incluindo a verificação de hash no formato antigo;
+- build da imagem Docker da Railway (módulo nativo);
+- opcional: regenerar o hash fixo do `dummy-password-hash.ts` no formato `m,t,p`.
+
+Sem reprocessar os hashes existentes.
+
+**Status:** registrada em 2026-11-25. Adiada.
+
+---
+
+### UXP-004 — Redesign da página de login do Admin
+
+**Objetivo:** dar ao login do Admin identidade **Commerce Platform** (o Admin é multi-site), com estilo SaaS premium, minimalista e corporativo, sem alterar a autenticação.
+
+**Decisões do PO (2026-11-25):**
+- **Opção A:** só tokens existentes, painel com `surface-inverse` (verde-escuro), sem alterar `packages/ui`.
+- **Desktop (≥ `lg`, 1024 px):** painel institucional (48%) à esquerda e formulário (52%) à direita.
+- **Mobile:** só a faixa superior com a marca, sem conteúdo institucional.
+- **Painel:** ícone `Layers` com "Commerce Platform"; rótulo "GESTÃO EDITORIAL"; título "Sua operação editorial em um só lugar."; texto complementar; ilustração abstrata em SVG leve (documento e barras, sem dados); copyright.
+- **Formulário:**
+  - até 400 px, sem card;
+  - "ACESSO ADMINISTRATIVO", H1 "Bem-vindo de volta" e subtítulo;
+  - campos de 48 px com ícones `Mail`/`Lock` e controle `Eye`/`EyeOff`;
+  - botão "Entrar" de 48 px com `ArrowRight`;
+  - `ShieldCheck` com "Acesso restrito a usuários autorizados".
+- **Controle de senha:** nome acessível dinâmico "Mostrar senha"/"Ocultar senha" com `aria-controls`, sem `aria-pressed`. A senha volta a ficar oculta a cada envio.
+- **Validação:** foco no primeiro campo inválido.
+- **Fora:** recuperação de senha, cadastro, "lembrar de mim" e login social.
+
+**Implementação:**
+- `apps/admin/src/app/login/`:
+  - `page.tsx` (layout dos painéis; no DOM o `<main>` vem antes do `<aside>`, reposicionado por CSS `order`; o painel não tem elementos focáveis);
+  - `login-form.tsx` (visual com tokens, controle de senha, `aria-busy` e `Loader2` com `motion-safe`, `name` nos campos para gerenciadores de senha);
+  - `login-brand-panel.tsx` (novo, Server Component);
+  - `login.module.css` reescrito só com variáveis semânticas (gradiente e grade decorativos), sem hex.
+- **Preservado integralmente:** `loginRequestSchema`/`loginResponseSchema`, `POST /admin/auth/login` via `apiRequest` (`credentials: 'include'`, cookie `HttpOnly`), mensagens 401/429/genérica, `router.replace('/')` e `autoComplete` (`email`, `current-password`).
+- **Fora da tarefa:** API, Prisma, contratos, FastCompre e `packages/ui` não alterados; nenhuma dependência nova.
+
+**Testes:**
+- **Jest:** 8 testes existentes mantidos; novos para o controle de senha, ocultar ao enviar, foco no primeiro campo inválido, `aria-busy`, a composição da página (`login-page.spec.tsx`: landmarks, textos aprovados, sem "FastCompre", painel sem focáveis, sem recursos de autenticação extras) e axe.
+- **Browser real:** novo `e2e-a11y/login-presentation.spec.ts`:
+  - 1440 px: proporção 48/52, formulário centralizado até 400 px e controles de 48 px;
+  - contraste ≥ 4,5:1 dos textos do painel;
+  - 360/320 px: faixa com a marca, sem institucional, formulário na primeira tela e sem overflow;
+  - 640×360 (pouca altura/zoom);
+  - ordem de teclado e foco visível;
+  - indicador de envio sem animação com movimento reduzido.
+
+  No `login.a11y.spec.ts` existente, o seletor do campo de senha passou a `getByLabel('Senha', { exact: true })`, porque o `getByLabel` do Playwright casa por trecho e "Mostrar senha" também conteria "senha". O alvo e as verificações são os mesmos.
+- **Visual:** novos baselines `login-1440`, `login-360` e `login-error-1440` (copyright mascarado, porque o ano é calculado no build). Baselines anteriores preservados.
+
+**Status:** implementada em 2026-11-25, aguardando aprovação visual do PO. Sem commit.

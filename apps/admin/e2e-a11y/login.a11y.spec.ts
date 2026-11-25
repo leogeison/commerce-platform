@@ -58,6 +58,10 @@ import { mockEmptyCategoriesAndAuthors, mockEmptyDashboardSections, mockLogin, m
  * feita a partir de achados aqui: qualquer violação encontrada seria
  * reportada antes de qualquer correção de produto.
  */
+// UXP-004: `exact: true` no rótulo "Senha" — por padrão o `getByLabel` do
+// Playwright casa por trecho, e o controle "Mostrar senha" (nome acessível
+// aprovado na UXP-004) também conteria "senha". O alvo continua o mesmo
+// campo de senha; nenhuma verificação foi enfraquecida.
 test.describe('UXQ-002 — a11y: fluxo de Login (Admin)', () => {
   test('/login carrega via build real e não reporta violação axe', async ({ page }) => {
     await page.goto('/login');
@@ -72,7 +76,7 @@ test.describe('UXQ-002 — a11y: fluxo de Login (Admin)', () => {
 
     await page.goto('/login');
     await page.getByLabel('E-mail').fill('equipe.editorial@fastcompre.test');
-    await page.getByLabel('Senha').fill('senha-incorreta');
+    await page.getByLabel('Senha', { exact: true }).fill('senha-incorreta');
     await page.getByRole('button', { name: 'Entrar' }).click();
 
     const errorMessage = page.getByRole('alert').filter({ hasText: 'Credenciais inválidas.' });
@@ -90,7 +94,7 @@ test.describe('UXQ-002 — a11y: fluxo de Login (Admin)', () => {
 
     await page.goto('/login');
     await page.getByLabel('E-mail').fill('equipe.editorial@fastcompre.test');
-    await page.getByLabel('Senha').fill('senha-correta');
+    await page.getByLabel('Senha', { exact: true }).fill('senha-correta');
     await page.getByRole('button', { name: 'Entrar' }).click();
 
     // Confirma que a cadeia real (login → `/` → redirect automático de

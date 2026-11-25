@@ -198,4 +198,82 @@ describe('LoginForm', () => {
     ).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
   });
+
+  describe('UXP-004 — redesign', () => {
+    it('campos com nome e autocomplete para gerenciadores de senha, e ícones decorativos', () => {
+      const { container } = renderLoginForm();
+      const email = screen.getByLabelText('E-mail');
+      const password = screen.getByLabelText('Senha');
+      expect(email).toHaveAttribute('name', 'email');
+      expect(email).toHaveAttribute('autocomplete', 'email');
+      expect(password).toHaveAttribute('name', 'password');
+      expect(password).toHaveAttribute('autocomplete', 'current-password');
+      expect(password).toHaveAttribute('type', 'password');
+      for (const svg of container.querySelectorAll('svg')) {
+        expect(svg).toHaveAttribute('aria-hidden', 'true');
+      }
+    });
+
+    it('mostrar/ocultar senha: nome acessível dinâmico, aria-controls, sem aria-pressed, foco permanece no controle', async () => {
+      const user = userEvent.setup();
+      renderLoginForm();
+      const password = screen.getByLabelText('Senha');
+      const toggle = screen.getByRole('button', { name: 'Mostrar senha' });
+      expect(toggle).toHaveAttribute('type', 'button');
+      expect(toggle).toHaveAttribute('aria-controls', 'password');
+      expect(toggle).not.toHaveAttribute('aria-pressed');
+
+      await user.type(password, 'segredo');
+      await user.click(toggle);
+      expect(password).toHaveAttribute('type', 'text');
+      expect(screen.getByRole('button', { name: 'Ocultar senha' })).toHaveFocus();
+      expect(password).toHaveAttribute('autocomplete', 'current-password');
+
+      await user.keyboard('{Enter}');
+      expect(password).toHaveAttribute('type', 'password');
+      expect(screen.getByRole('button', { name: 'Mostrar senha' })).toHaveFocus();
+    });
+
+    it('a senha volta a ficar oculta ao enviar (inclusive quando a validação falha)', async () => {
+      const user = userEvent.setup();
+      global.fetch = jest.fn<typeof fetch>();
+      renderLoginForm();
+      await user.type(screen.getByLabelText('Senha'), 'segredo');
+      await user.click(screen.getByRole('button', { name: 'Mostrar senha' }));
+      expect(screen.getByLabelText('Senha')).toHaveAttribute('type', 'text');
+
+      await user.click(screen.getByRole('button', { name: 'Entrar' }));
+      expect(screen.getByLabelText('Senha')).toHaveAttribute('type', 'password');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('foco vai para o primeiro campo inválido: e-mail antes de senha; só senha inválida foca a senha', async () => {
+      const user = userEvent.setup();
+      global.fetch = jest.fn<typeof fetch>();
+      renderLoginForm();
+
+      await user.click(screen.getByRole('button', { name: 'Entrar' }));
+      expect(screen.getByLabelText('E-mail')).toHaveFocus();
+
+      await user.type(screen.getByLabelText('E-mail'), 'ana@fastcompre.com');
+      await user.click(screen.getByRole('button', { name: 'Entrar' }));
+      expect(screen.getByLabelText('Senha')).toHaveFocus();
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('durante o envio: formulário com aria-busy e controle de senha desabilitado', async () => {
+      const user = userEvent.setup();
+      global.fetch = jest.fn<typeof fetch>().mockReturnValue(new Promise<Response>(() => {}));
+      const { container } = renderLoginForm();
+      await user.type(screen.getByLabelText('E-mail'), 'ana@fastcompre.com');
+      await user.type(screen.getByLabelText('Senha'), 'senha-correta');
+      await user.click(screen.getByRole('button', { name: 'Entrar' }));
+
+      await screen.findByRole('button', { name: 'Entrando...' });
+      // O nome acessível do formulário vem do H1 da página (coberto em
+      // `login-page.spec.tsx`); renderizado isolado, busca-se o <form>.
+      expect(container.querySelector('form')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByRole('button', { name: 'Mostrar senha' })).toBeDisabled();
+    });
+  });
 });
