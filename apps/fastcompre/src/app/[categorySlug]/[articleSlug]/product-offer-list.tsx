@@ -125,9 +125,38 @@ export interface ProductOfferListProps {
   articleId: string;
 }
 
+/**
+ * UXP-001 — hierarquia marketplace/preço e CTA responsivo.
+ *
+ * Cada linha separa o rótulo do marketplace (à esquerda) do preço (à
+ * direita, `tabular-nums`, peso de ação) — antes os dois eram uma única
+ * frase com o mesmo peso. O separador " — " continua presente no texto,
+ * só visualmente oculto (`sr-only`), para que o nome acessível do link e o
+ * texto do item indisponível permaneçam exatamente os mesmos de antes
+ * ("Amazon — R$ 199,90 (abre em nova aba)" / "… (indisponível)").
+ *
+ * CTA: `w-full` da sua célula — largura total no mobile (uma Oferta por
+ * linha, como aprovado); em `sm`+ a lista vira um grid de colunas iguais
+ * (`repeat(auto-fill, minmax(15rem, 1fr))`): Ofertas lado a lado, todas
+ * com a mesma largura, e as que não cabem quebram para a linha de baixo —
+ * inclusive em larguras onde não cabem duas, quando empilham sozinhas em
+ * vez de quebrar o texto do CTA. `auto-fill` (não `auto-fit`) mantém a
+ * mesma largura de coluna mesmo com uma única Oferta na última linha.
+ * `gap-2` entre as Ofertas (antes `gap-1`). O traço entre marketplace e
+ * preço nunca é visível (só `sr-only`, para o nome acessível). O preço nunca quebra linha
+ * (`whitespace-nowrap`); o rótulo pode quebrar (`min-w-0`) se faltar
+ * espaço a 320px/zoom 200%, em vez de causar overflow horizontal.
+ *
+ * Inalterados: um link por Oferta em estoque, na ordem recebida (nenhuma
+ * "melhor Oferta", nenhuma ordenação por preço); `href` via
+ * `affiliateRedirectHref(offer.id, articleId)`; `target`/`rel`; `sr-only`
+ * de nova aba; Oferta fora de estoque como texto, nunca link.
+ */
+const OFFER_ROW_LAYOUT = 'flex w-full items-center justify-between gap-3';
+
 export function ProductOfferList({ offers, articleId }: ProductOfferListProps) {
   return (
-    <ul className="mt-1 flex flex-col gap-1">
+    <ul className="mt-3 flex flex-col gap-2 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
       {offers.map((offer) =>
         offer.inStock ? (
           <li key={offer.id} className="text-body-sm">
@@ -135,15 +164,21 @@ export function ProductOfferList({ offers, articleId }: ProductOfferListProps) {
               href={affiliateRedirectHref(offer.id, articleId)}
               target="_blank"
               rel="sponsored nofollow noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-control bg-accent px-control-x py-control-y font-ui font-action text-body text-fg-on-accent hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 ring-focus"
+              className={`${OFFER_ROW_LAYOUT} rounded-control bg-accent px-control-x py-control-y font-ui text-body text-fg-on-accent hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 ring-focus`}
             >
-              {formatMarketplaceLabel(offer.marketplace)} — {formatOfferPrice(offer)}
+              <span className="min-w-0 font-medium">{formatMarketplaceLabel(offer.marketplace)}</span>
+              <span className="sr-only"> — </span>
+              <span className="whitespace-nowrap font-action tabular-nums">{formatOfferPrice(offer)}</span>
               <span className="sr-only"> (abre em nova aba)</span>
             </a>
           </li>
         ) : (
-          <li key={offer.id} className="text-body-sm text-fg-muted">
-            {formatMarketplaceLabel(offer.marketplace)} — {formatOfferPrice(offer)} (indisponível)
+          <li key={offer.id} className={`${OFFER_ROW_LAYOUT} px-control-x text-body-sm text-fg-muted`}>
+            <span className="min-w-0">{formatMarketplaceLabel(offer.marketplace)}</span>
+            <span className="sr-only"> — </span>
+            <span className="whitespace-nowrap tabular-nums">
+              {formatOfferPrice(offer)} (indisponível)
+            </span>
           </li>
         ),
       )}

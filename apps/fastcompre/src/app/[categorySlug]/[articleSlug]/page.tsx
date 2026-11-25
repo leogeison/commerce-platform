@@ -6,6 +6,14 @@ import { getPublicArticle } from '@/lib/public-api/client';
 import { compileArticleBody } from './compile-article-body';
 import { createProductBlockComponent } from './product-block';
 import { ProductOfferList } from './product-offer-list';
+import {
+  PRODUCT_CARD_IMAGE_CLASS_NAME,
+  PRODUCT_CARD_IMAGE_SIZES,
+  PRODUCT_CARD_IMAGE_SIZE_PX,
+  productCardDetailsClassName,
+  productCardGridClassName,
+  productCardNameClassName,
+} from './product-card-layout';
 import { ArticleJsonLd } from './article-json-ld';
 
 /**
@@ -446,48 +454,59 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
                 // `<div className="mt-10 font-editorial ...">` do corpo
                 // MDX acima — nunca herda `font-editorial`, então não
                 // precisa reverter nada.
+                // UXP-001 — `flex gap-4` substituído pelo mesmo grid do bloco
+                // inline (`product-card-layout.ts`), num `<div>` interno ao
+                // `<li>` (o `<li>` continua sendo o card): a imagem não
+                // estica mais até a altura do texto, fica centralizada acima
+                // do conteúdo no mobile e ao lado dele, com linha divisória,
+                // em `sm`+.
                 <li
                   key={product.id}
-                  className="flex gap-4 rounded-control border border-outline bg-surface p-4 sm:p-6"
+                  className="rounded-control border border-outline bg-surface p-4 sm:p-6"
                 >
-                  {/* UXW-013 — `alt=""`: `product.name` já é texto sempre
-                      visível, incondicional, no `<h3>` logo ao lado (mesmo
-                      contexto/bloco) — um `alt` não vazio aqui duplicaria o
-                      nome do Produto no leitor de tela (imagem + `<h3>` em
-                      sequência), mesmo critério já usado para a capa de
-                      Artigo e o avatar de Autor nesta mesma tarefa. Decisão
-                      revista nesta tarefa: a implementação anterior usava
-                      `alt={product.name}`, redundante com o `<h3>` adjacente
-                      — corrigida aqui, não uma consequência automática da
-                      troca por `next/image`. `width`/`height` (96×96,
-                      quadrado) casam exatamente com `w-24`
-                      (96px) — sem `sizes` (tamanho fixo, não responsivo).
-                      Sem `preload` — Artigo é LCP-por-texto (UXW-006). */}
-                  {product.imageUrl && (
-                    <Image
-                      src={product.imageUrl}
-                      alt=""
-                      width={96}
-                      height={96}
-                      className="aspect-square w-24 shrink-0 rounded object-cover"
-                    />
-                  )}
-                  <div>
-                    <h3 className="font-medium">{product.name}</h3>
-                    {product.description && (
-                      <p className="text-body-sm text-fg-muted">{product.description}</p>
+                  <div className={productCardGridClassName(Boolean(product.imageUrl))}>
+                    {/* UXW-013 — `alt=""`: `product.name` já é texto sempre
+                        visível, incondicional, no `<h3>` logo ao lado (mesmo
+                        contexto/bloco) — um `alt` não vazio aqui duplicaria o
+                        nome do Produto no leitor de tela (imagem + `<h3>` em
+                        sequência), mesmo critério já usado para a capa de
+                        Artigo e o avatar de Autor nesta mesma tarefa. Decisão
+                        revista nesta tarefa: a implementação anterior usava
+                        `alt={product.name}`, redundante com o `<h3>` adjacente
+                        — corrigida aqui, não uma consequência automática da
+                        troca por `next/image`. UXP-001: `width`/`height`
+                        intrínsecos de 176 + `sizes` responsivo (96px no
+                        mobile, 176px em `sm`+ — ver `product-card-layout.ts`).
+                        Sem `preload` — Artigo é LCP-por-texto (UXW-006). */}
+                    {product.imageUrl && (
+                      <Image
+                        src={product.imageUrl}
+                        alt=""
+                        width={PRODUCT_CARD_IMAGE_SIZE_PX}
+                        height={PRODUCT_CARD_IMAGE_SIZE_PX}
+                        sizes={PRODUCT_CARD_IMAGE_SIZES}
+                        className={PRODUCT_CARD_IMAGE_CLASS_NAME}
+                      />
                     )}
-                    {isUnavailable && (
-                      <p className="mt-1 text-body-sm text-fg-muted">Temporariamente indisponível</p>
-                    )}
-                    {/* UXW-011 — extraído para `ProductOfferList`
-                        (`product-offer-list.tsx`), compartilhado com
-                        `ProductBlock` (bloco inline): mesmo `href`/
-                        `affiliateRedirectHref`/`target`/`rel`/`sr-only` de
-                        antes (comportamento de tracking intocado), sem
-                        duplicação entre os dois consumidores reais desta
-                        página. */}
-                    {hasOffers && <ProductOfferList offers={product.offers} articleId={article.id} />}
+                    <h3 className={productCardNameClassName('font-medium', Boolean(product.imageUrl))}>
+                      {product.name}
+                    </h3>
+                    <div className={productCardDetailsClassName(Boolean(product.imageUrl))}>
+                      {product.description && (
+                        <p className="text-body-sm text-fg-muted">{product.description}</p>
+                      )}
+                      {isUnavailable && (
+                        <p className="mt-1 text-body-sm text-fg-muted">Temporariamente indisponível</p>
+                      )}
+                      {/* UXW-011 — extraído para `ProductOfferList`
+                          (`product-offer-list.tsx`), compartilhado com
+                          `ProductBlock` (bloco inline): mesmo `href`/
+                          `affiliateRedirectHref`/`target`/`rel`/`sr-only` de
+                          antes (comportamento de tracking intocado), sem
+                          duplicação entre os dois consumidores reais desta
+                          página. */}
+                      {hasOffers && <ProductOfferList offers={product.offers} articleId={article.id} />}
+                    </div>
                   </div>
                 </li>
               );

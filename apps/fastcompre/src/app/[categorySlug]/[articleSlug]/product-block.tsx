@@ -2,6 +2,14 @@ import type { ComponentType } from 'react';
 import Image from 'next/image';
 import { resolveProductBlock } from './product-block-resolver';
 import { ProductOfferList } from './product-offer-list';
+import {
+  PRODUCT_CARD_IMAGE_CLASS_NAME,
+  PRODUCT_CARD_IMAGE_SIZES,
+  PRODUCT_CARD_IMAGE_SIZE_PX,
+  productCardDetailsClassName,
+  productCardGridClassName,
+  productCardNameClassName,
+} from './product-card-layout';
 import type { PublicArticleProduct } from '@commerce-platform/contracts';
 
 /**
@@ -103,29 +111,37 @@ function ProductBlockFound({
 }) {
   const hasOffers = product.offers.length > 0;
   const isUnavailable = product.offers.every((offer) => !offer.inStock);
+  const hasImage = Boolean(product.imageUrl);
 
   return (
     <div className="mt-8 rounded-control border border-outline bg-surface p-4 font-ui sm:p-6">
-      <div className="flex gap-4">
+      {/* UXP-001 — grid em vez de `flex gap-4`: ver `product-card-layout.ts`
+          (imagem não estica mais; no mobile, imagem centralizada acima de
+          nome/detalhes/Ofertas em largura total; em `sm`+, composição
+          lateral com o conjunto interno limitado e centralizado no card).
+          Ordem no DOM inalterada: imagem, nome, detalhes. */}
+      <div className={productCardGridClassName(hasImage)}>
         {/* UXW-013 — `alt=""`: mesma correção e mesmo racional da seção
             estática de Produtos em `page.tsx` — `product.name` já é texto
             sempre visível, incondicional, no `<p>` logo ao lado (mesmo
-            bloco `min-w-0`), então um `alt` não vazio duplicaria o nome no
-            leitor de tela. `width`/`height` (96×96) casam exatamente com
-            `w-24` — sem `sizes` (tamanho fixo). Sem `preload` — Artigo é
+            card), então um `alt` não vazio duplicaria o nome no
+            leitor de tela. `width`/`height` intrínsecos de 176 + `sizes`
+            responsivo (96px no mobile, 176px em `sm`+ — ver
+            `product-card-layout.ts`). Sem `preload` — Artigo é
             LCP-por-texto (UXW-006), e este bloco nunca é a primeira coisa
             renderizada na página de qualquer forma. */}
         {product.imageUrl && (
           <Image
             src={product.imageUrl}
             alt=""
-            width={96}
-            height={96}
-            className="aspect-square w-24 shrink-0 rounded object-cover"
+            width={PRODUCT_CARD_IMAGE_SIZE_PX}
+            height={PRODUCT_CARD_IMAGE_SIZE_PX}
+            sizes={PRODUCT_CARD_IMAGE_SIZES}
+            className={PRODUCT_CARD_IMAGE_CLASS_NAME}
           />
         )}
-        <div className="min-w-0">
-          <p className="font-medium text-fg">{product.name}</p>
+        <p className={productCardNameClassName('font-medium text-fg', hasImage)}>{product.name}</p>
+        <div className={productCardDetailsClassName(hasImage)}>
           {product.description && (
             <p className="mt-1 text-body-sm text-fg-muted">{product.description}</p>
           )}

@@ -59,6 +59,10 @@ import { createProductBlockComponent, type ProductBlockProps } from './product-b
 
 const ARTICLE_ID = '99999999-9999-4999-8999-999999999999';
 
+function formatBRL(amount: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+}
+
 function buildProduct(overrides: Partial<PublicArticleProduct> = {}): PublicArticleProduct {
   return {
     id: '11111111-1111-4111-8111-111111111111',
@@ -91,8 +95,11 @@ describe('ProductBlock (unidade)', () => {
       // reescrito para o endpoint do Image Optimizer (`/_next/image?url=...`,
       // URL original codificada) em vez do `src` bruto do Product.
       expect(html).toContain('url=https%3A%2F%2Fcdn.example.com%2Ffone-xyz.jpg');
-      expect(html).toContain('width="96"');
-      expect(html).toContain('height="96"');
+      // UXP-001 — intrínsecos de 176 (maior tamanho exibido, em `sm`+) +
+      // `sizes` responsivo: 96px no mobile, 176px em `sm`+.
+      expect(html).toContain('width="176"');
+      expect(html).toContain('height="176"');
+      expect(html).toContain('sizes="(min-width: 640px) 176px, 96px"');
       // UXW-013 — `alt=""`: `product.name` já é texto sempre visível e
       // adjacente (`<p class="font-medium text-fg">`, mesmo bloco `min-w-0`),
       // então um `alt` não vazio duplicaria o nome no leitor de tela (mesma
@@ -112,14 +119,118 @@ describe('ProductBlock (unidade)', () => {
       // (`AMAZON — 199.90 BRL`) — passa a exibir rótulo/preço
       // formatados, computados aqui via `Intl.NumberFormat`, não
       // hardcoded.
-      expect(html).toContain(
-        `Amazon — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(199.9)}`,
-      );
-      expect(html).toContain(
-        `Mercado Livre — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(209.9)} (indisponível)`,
-      );
+      //
+      // UXP-001 — marketplace e preço passaram a ser elementos separados
+      // (rótulo à esquerda, preço à direita), com o separador " — " mantido
+      // em `sr-only`. As asserções de texto contínuo no HTML bruto deixaram
+      // de casar por causa dos `<span>` intermediários; foram substituídas
+      // por asserções de igual ou maior força sobre o DOM: nome acessível
+      // EXATO do único link e texto EXATO de cada item da lista.
+      const { getAllByRole, getByRole } = render(<ProductBlock productId={product.id} />);
+      expect(getAllByRole('link')).toHaveLength(1);
+      expect(
+        getByRole('link', { name: `Amazon — ${formatBRL(199.9)} (abre em nova aba)` }),
+      ).toBeTruthy();
+      expect(getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        `Amazon — ${formatBRL(199.9)} (abre em nova aba)`,
+        `Mercado Livre — ${formatBRL(209.9)} (indisponível)`,
+      ]);
       // A Oferta indisponível nunca deve estar dentro de um <a>.
-      expect(html).not.toMatch(/<a[^>]*>[^<]*Mercado Livre/);
+      const unavailableItem = getAllByRole('listitem')[1];
+      expect(unavailableItem.querySelector('a')).toBeNull();
+      expect(unavailableItem.closest('a')).toBeNull();
+    });
+
+    it('UXP-001 — marketplace e preço em elementos próprios; preço com tabular-nums, nunca quebrando linha', () => {
+      const { getByRole, getAllByRole } = render(<ProductBlock productId={product.id} />);
+      const link = getByRole('link');
+      const visibleParts = Array.from(link.children).filter((child) => !child.classList.contains('sr-only'));
+      expect(visibleParts.map((part) => part.textContent)).toEqual(['Amazon', formatBRL(199.9)]);
+      expect(visibleParts[1].classList.contains('tabular-nums')).toBe(true);
+      expect(visibleParts[1].classList.contains('whitespace-nowrap')).toBe(true);
+      // Separador acessível preservado, só visualmente oculto.
+      const srOnlyParts = Array.from(link.children).filter((child) => child.classList.contains('sr-only'));
+      expect(srOnlyParts.map((part) => part.textContent)).toEqual([' — ', ' (abre em nova aba)']);
+      // CTA ocupa toda a sua célula: largura total no mobile; em `sm`+ as
+      // Ofertas ficam lado a lado num grid de colunas iguais que quebra para
+      // a linha de baixo (sem limite próprio de largura no link).
+      expect(link.classList.contains('w-full')).toBe(true);
+      expect(link.classList.contains('sm:max-w-xs')).toBe(false);
+      const offerList = link.closest('ul');
+      for (const className of ['flex', 'flex-col', 'gap-2', 'sm:grid', 'sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]']) {
+        expect(offerList?.classList.contains(className)).toBe(true);
+      }
+      // Traço nunca visível: só existe em `sr-only` (nome acessível).
+      expect(visibleParts.some((part) => part.textContent?.includes('—'))).toBe(false);
+      // Mesmo layout de linha na Oferta indisponível (texto, nunca link).
+      const unavailableParts = Array.from(getAllByRole('listitem')[1].children).filter(
+        (child) => !child.classList.contains('sr-only'),
+      );
+      expect(unavailableParts.map((part) => part.textContent)).toEqual([
+        'Mercado Livre',
+        `${formatBRL(209.9)} (indisponível)`,
+      ]);
+    });
+
+    it('UXP-001 — imagem com quadrado fixo de 96px e object-contain (sem esticar nem recortar), centralizada no mobile', () => {
+      const { container } = render(<ProductBlock productId={product.id} />);
+      const image = container.querySelector('img');
+      expect(image).not.toBeNull();
+      for (const className of [
+        'h-24',
+        'w-24',
+        'self-start',
+        'object-contain',
+        'justify-self-center',
+        'sm:h-44',
+        'sm:w-44',
+        'sm:self-center',
+        'sm:row-span-2',
+      ]) {
+        expect(image?.classList.contains(className)).toBe(true);
+      }
+      expect(image?.classList.contains('object-cover')).toBe(false);
+      // Centralizada também na própria coluna em `sm`+ (nunca alinhada ao início).
+      expect(image?.classList.contains('sm:justify-self-start')).toBe(false);
+      // `sm`+: grid em toda a largura interna do card (coluna da imagem de
+      // 11rem + conteúdo), sem limite de largura nem centralização do
+      // conjunto; nenhum texto centralizado individualmente.
+      const grid = image?.parentElement;
+      for (const className of ['grid', 'grid-cols-1', 'sm:grid-cols-[11rem_minmax(0,1fr)]', 'sm:gap-x-6']) {
+        expect(grid?.classList.contains(className)).toBe(true);
+      }
+      for (const className of ['sm:max-w-xl', 'sm:w-fit', 'sm:mx-auto']) {
+        expect(grid?.classList.contains(className)).toBe(false);
+      }
+      expect(container.querySelector('.text-center')).toBeNull();
+    });
+
+    it('UXP-001 — nome em negrito a partir de sm (mobile inalterado) e linha divisória entre imagem e conteúdo', () => {
+      const { getByText } = render(<ProductBlock productId={product.id} />);
+      const name = getByText('Fone Bluetooth XYZ');
+      // Classes de mobile preservadas; negrito só como variante `sm:`.
+      for (const className of ['font-medium', 'text-fg', 'sm:font-semibold']) {
+        expect(name.classList.contains(className)).toBe(true);
+      }
+      // Linha divisória contínua: aplicada ao nome e ao bloco de detalhes,
+      // os dois itens da coluna de conteúdo.
+      const details = name.nextElementSibling;
+      for (const element of [name, details]) {
+        for (const className of ['sm:border-l', 'sm:border-outline-subtle', 'sm:pl-6']) {
+          expect(element?.classList.contains(className)).toBe(true);
+        }
+      }
+    });
+
+    it('UXP-001 — sem imagem: nenhuma linha divisória', () => {
+      const ProductBlockWithoutImage = createProductBlockComponent(
+        [buildProduct({ imageUrl: null, offers: product.offers })],
+        ARTICLE_ID,
+      );
+      const { getByText } = render(<ProductBlockWithoutImage productId={product.id} />);
+      const name = getByText('Fone Bluetooth XYZ');
+      expect(name.classList.contains('sm:border-l')).toBe(false);
+      expect(name.nextElementSibling?.classList.contains('sm:border-l')).toBe(false);
     });
 
     it('CTA tem rel de afiliado correto e indicação acessível de nova aba', () => {
@@ -146,12 +257,14 @@ describe('ProductBlock (unidade)', () => {
     it('mostra o aviso de indisponibilidade e nenhum <a> de CTA', () => {
       expect(html).toContain('Temporariamente indisponível');
       expect(html).not.toContain('<a ');
-      expect(html).toContain(
-        `Amazon — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(199.9)} (indisponível)`,
-      );
-      expect(html).toContain(
-        `Mercado Livre — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(209.9)} (indisponível)`,
-      );
+      // UXP-001 — mesma substituição de asserção de texto contínuo por texto
+      // EXATO de cada item (ver teste de Ofertas mistas acima).
+      const { getAllByRole, queryAllByRole } = render(<ProductBlock productId={product.id} />);
+      expect(queryAllByRole('link')).toHaveLength(0);
+      expect(getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        `Amazon — ${formatBRL(199.9)} (indisponível)`,
+        `Mercado Livre — ${formatBRL(209.9)} (indisponível)`,
+      ]);
     });
 
     it('Product continua renderizado (nome/descrição/imagem)', () => {

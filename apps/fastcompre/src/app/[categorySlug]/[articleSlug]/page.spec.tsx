@@ -540,8 +540,8 @@ describe('ArticlePage', () => {
       // `article.products[]` independente de referência inline — por isso a
       // asserção é sobre o `<h3>` visível, não sobre a contagem total de
       // ocorrências de texto no HTML inteiro (que inclui o JSON-LD).
-      expect(html).toContain('<h3 class="font-medium">Fone A (referenciado inline)</h3>');
-      expect(html).toContain('<h3 class="font-medium">Fone B (só vinculado, nunca referenciado inline)</h3>');
+      expect(html).toContain('<h3 class="font-medium sm:font-semibold">Fone A (referenciado inline)</h3>');
+      expect(html).toContain('<h3 class="font-medium sm:font-semibold">Fone B (só vinculado, nunca referenciado inline)</h3>');
       // Nenhum cartão inline de `ProductBlock` (`product-block.tsx`) foi
       // renderizado. Refinamento visual pós-`testeLayout.png`: a seção
       // estática (page.tsx) passou a reaproveitar o mesmo trio de tokens
@@ -587,13 +587,13 @@ describe('ArticlePage', () => {
       // `article.products[]` independente de referência inline, por isso a
       // asserção é sobre marcadores visíveis específicos, não sobre a
       // contagem total de ocorrências de texto no HTML inteiro).
-      expect(html).toContain('<p class="font-medium text-fg">Fone A (referenciado inline)</p>');
-      expect(html).not.toContain('<h3 class="font-medium">Fone A');
+      expect(html).toContain('<p class="font-medium text-fg sm:font-semibold">Fone A (referenciado inline)</p>');
+      expect(html).not.toContain('<h3 class="font-medium sm:font-semibold">Fone A');
 
       // "Fone B" nunca foi referenciado inline — continua elegível e
       // presente na seção estática, exatamente como antes da UXW-011.
       expect(html).toContain('Fone B (só vinculado, nunca referenciado inline)');
-      expect(html).toContain('<h3 class="font-medium">Fone B (só vinculado, nunca referenciado inline)</h3>');
+      expect(html).toContain('<h3 class="font-medium sm:font-semibold">Fone B (só vinculado, nunca referenciado inline)</h3>');
     });
 
     it('productId referenciado por um bloco, mas ausente de article.products[]: ProductBlock renderiza o estado not-found, sem afetar a seção estática', async () => {
@@ -627,9 +627,110 @@ describe('ArticlePage', () => {
 
       // Zero ocorrências na seção estática — `referencedProductIds` tem uma
       // única entrada para o id repetido (Set), o suficiente para excluir.
-      expect(html).not.toContain('<h3 class="font-medium">Fone A');
+      expect(html).not.toContain('<h3 class="font-medium sm:font-semibold">Fone A');
       // Fone B, não referenciado inline, permanece.
       expect(html).toContain('Fone B (só vinculado, nunca referenciado inline)');
+    });
+
+    /**
+     * UXP-001 — seção estática "Produtos" usa o mesmo layout corrigido do
+     * bloco inline (`product-card-layout.ts`): imagem com `object-contain`
+     * (não estica, não recorta) — 96×96 centralizada acima do conteúdo no
+     * mobile; 176×176 centralizada na própria coluna, com linha divisória
+     * até o conteúdo, em `sm`+. Nome continua como `<h3>`, em negrito só a
+     * partir de `sm`.
+     */
+    function articleWithStaticProductImage(): PublicArticle {
+      const article = articleWithProducts();
+      return {
+        ...article,
+        products: article.products.map((product, index) =>
+          index === 0 ? { ...product, imageUrl: 'https://cdn.example.com/fone-a.jpg' } : product,
+        ),
+      };
+    }
+
+    async function renderArticleContainer(article: PublicArticle): Promise<HTMLElement> {
+      mockArticleDependencies(article);
+      const { default: ArticlePage } = await import('./page');
+      const { container } = render(
+        await ArticlePage({
+          params: Promise.resolve({ categorySlug: 'fones-bluetooth', articleSlug: 'melhor-fone' }),
+        }),
+      );
+      return container;
+    }
+
+    it('UXP-001 — seção estática: imagem quadrada com object-contain, centralizada no mobile e na própria coluna em sm+, com linha divisória', async () => {
+      const container = await renderArticleContainer(articleWithStaticProductImage());
+      const heading = Array.from(container.querySelectorAll('h3')).find(
+        (element) => element.textContent === 'Fone A (referenciado inline)',
+      );
+      // Mobile inalterado (`font-medium`); negrito, linha divisória e
+      // recuo só como variantes `sm:` (há imagem neste Produto).
+      expect(heading?.className).toBe('font-medium sm:font-semibold sm:border-l sm:border-outline-subtle sm:pl-6');
+      const card = heading?.closest('li');
+      expect(card).not.toBeNull();
+      expect(card?.classList.contains('flex')).toBe(false);
+      // Grid interno ao card: imagem, nome e detalhes como filhos diretos,
+      // largura limitada e centralizado em `sm`+ (nunca o próprio card).
+      const grid = heading?.parentElement;
+      expect(grid?.parentElement).toBe(card);
+      for (const className of ['grid', 'grid-cols-1', 'sm:grid-cols-[11rem_minmax(0,1fr)]', 'sm:gap-x-6']) {
+        expect(grid?.classList.contains(className)).toBe(true);
+      }
+      for (const className of ['sm:max-w-xl', 'sm:w-fit', 'sm:mx-auto']) {
+        expect(grid?.classList.contains(className)).toBe(false);
+      }
+
+      const image = grid?.querySelector(':scope > img');
+      for (const className of [
+        'h-24',
+        'w-24',
+        'self-start',
+        'object-contain',
+        'justify-self-center',
+        'sm:h-44',
+        'sm:w-44',
+        'sm:self-center',
+        'sm:row-span-2',
+      ]) {
+        expect(image?.classList.contains(className)).toBe(true);
+      }
+      expect(image?.classList.contains('object-cover')).toBe(false);
+      expect(image?.classList.contains('sm:justify-self-start')).toBe(false);
+      expect(image?.getAttribute('width')).toBe('176');
+      expect(image?.getAttribute('height')).toBe('176');
+      expect(image?.getAttribute('sizes')).toBe('(min-width: 640px) 176px, 96px');
+
+      // Descrição e Ofertas num mesmo container de detalhes, irmão do <h3>
+      // (não filho de uma coluna estreita ao lado da imagem).
+      const details = heading?.nextElementSibling;
+      expect(details?.textContent).toContain('Descrição do fone A.');
+      expect(details?.querySelector('ul')).not.toBeNull();
+      expect(details?.classList.contains('sm:border-l')).toBe(true);
+      // Textos nunca centralizados individualmente.
+      expect(card?.querySelector('.text-center')).toBeNull();
+    });
+
+    it('UXP-001 — seção estática sem imagem: coluna única, sem célula reservada para a imagem', async () => {
+      const container = await renderArticleContainer(articleWithProducts());
+      const heading = Array.from(container.querySelectorAll('h3')).find(
+        (element) => element.textContent === 'Fone B (só vinculado, nunca referenciado inline)',
+      );
+      const card = heading?.closest('li');
+      expect(card?.querySelector('img')).toBeNull();
+      const grid = heading?.parentElement;
+      expect(grid?.classList.contains('grid-cols-1')).toBe(true);
+      expect(grid?.className).not.toContain('sm:grid-cols-[');
+      // Sem imagem, sem linha divisória.
+      expect(heading?.classList.contains('sm:border-l')).toBe(false);
+      expect(heading?.nextElementSibling?.classList.contains('sm:border-l')).toBe(false);
+    });
+
+    it('UXP-001 — não tem violação de acessibilidade na seção estática com imagem de Produto', async () => {
+      const container = await renderArticleContainer(articleWithStaticProductImage());
+      expect(await axe(container)).toHaveNoViolations();
     });
 
     it('não tem violação de acessibilidade com um ProductBlock inline presente', async () => {

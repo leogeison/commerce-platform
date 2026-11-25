@@ -44,15 +44,37 @@ test.describe('FastCompre — Artigo (UXW-015)', () => {
     // para a imagem do Produto, nunca um índice posicional frágil.
     const avatar = page.getByText(AUTHOR_NAME).locator('xpath=..').locator('img');
     await waitForImageLoaded(avatar);
-    // Imagem do `ProductBlock` — mesmo `<div className="flex gap-4">` que
-    // envolve a imagem E o `<p>` com `product.name` como irmãos diretos
-    // (`product-block.tsx`, `ProductBlockFound`) — `xpath=../..` sobe do
-    // `<p>` (via `<div className="min-w-0">`) até esse container comum,
-    // nunca um índice posicional frágil como "a última imagem da página".
+    // Imagem do `ProductBlock` — desde a UXP-001 a imagem e o `<p>` com
+    // `product.name` são irmãos diretos no grid do card
+    // (`product-block.tsx`, `ProductBlockFound`); `xpath=../..` sobe do
+    // `<p>` (via o grid) até o próprio card, que contém a imagem — nunca um
+    // índice posicional frágil como "a última imagem da página".
     const productImage = page.getByText(PRODUCT_NAME).locator('xpath=../..').locator('img');
     await waitForImageLoaded(productImage);
     await waitForFontsReady(page);
 
     await expect(page).toHaveScreenshot('article-populated.png', { fullPage: true });
+  });
+
+  /**
+   * UXP-001 — baseline do card de Produto/Ofertas em mobile (360px), a
+   * largura onde o defeito corrigido foi observado em produção (imagem
+   * esticada/recortada, conteúdo espremido ao lado da imagem). Captura só
+   * o card (`toHaveScreenshot` de elemento), não a página inteira — o
+   * restante da página em mobile não faz parte desta correção. Viewport
+   * alterado só neste teste (`setViewportSize`), sem novo projeto/config.
+   */
+  test('UXP-001 — card de Produto/Ofertas em mobile (360px)', async ({ page }) => {
+    await resetFixtureState('populated');
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`/${CATEGORY_SLUG}/${ARTICLE_SLUG}`);
+
+    const productCard = page.getByText(PRODUCT_NAME).locator('xpath=../..');
+    await expect(productCard).toBeVisible();
+    await waitForImageLoaded(productCard.locator('img'));
+    await waitForFontsReady(page);
+
+    await expect(productCard).toHaveScreenshot('article-product-card-360.png');
   });
 });
