@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
@@ -11,6 +11,8 @@ import { AdminApiError } from '../../../lib/api-error';
 import { adminZodErrorMap } from '../../../lib/validation-messages';
 import { useSyncFormDirty } from '../unsaved-changes-context';
 import { AuthorAvatar } from './author-avatar';
+import { AvatarCropDialog } from './avatar-crop-dialog';
+import { AVATAR_FILE_ACCEPT, validateAvatarFile, type PixelArea } from './crop-avatar-image';
 
 /**
  * UXA-015 — schema client-side de `AuthorForm`, composto de
@@ -123,10 +125,47 @@ function toFormInput(values: AuthorFormValues): AuthorFormInput {
  * depois que a persistência é bem-sucedida — estabelece o novo baseline e
  * zera `formState.isDirty`. Em erro (upload ou submissão), nenhum
  * `reset()` roda.
+ *
+ * UXP-003 — cropper de avatar. Selecionar um arquivo não altera mais o
+ * formulário diretamente: valida tipo (JPEG/PNG/WebP) e tamanho (5 MiB,
+ * mesmo limite da API) e abre `AvatarCropDialog` sobre o arquivo original.
+ * - Cancelar/Escape: nenhuma alteração no formulário (nem `isDirty`).
+ * - Aplicar recorte: o `File` quadrado gerado no navegador passa a ser o
+ *   `selectedFile` (preview local + `setValue('avatarUrl', ..., {
+ *   shouldDirty: true })`), exatamente o ponto onde antes entrava o
+ *   arquivo selecionado. O upload `AUTHOR_AVATAR` em `onValid` e a
+ *   persistência do Autor seguem idênticos, enviando só o arquivo recortado.
+ * - "Ajustar recorte": enquanto houver um recorte ainda não salvo, reabre o
+ *   cropper sobre o arquivo ORIGINAL, mantido só em memória
+ *   (`originalFile`); descartado ao salvar com sucesso, ao remover o avatar
+ *   ou ao desmontar. Recortar novamente um avatar já persistido fica fora
+ *   de escopo. Junto do original fica, também só em memória, a área do
+ *   último recorte aplicado (`lastCropArea`), repassada ao cropper para
+ *   retomar o enquadramento. Cancelar um ajuste — ou selecionar outra
+ *   imagem e cancelar — não mexe em nenhum dos dois: só "Aplicar recorte"
+ *   os substitui.
+ * - Resultados tardios: o cropper descarta gerações canceladas, e
+ *   `handleCropApplied` ainda confere que o resultado pertence à imagem
+ *   aberta AGORA (`cropSource.url`) — um diálogo antigo nunca sobrescreve
+ *   um recorte mais recente nem altera o formulário depois de fechado.
+ * Nenhuma coordenada de recorte é persistida — `avatarUrl` continua sendo
+ * só a URL da imagem final.
  */
 export function AuthorForm({ siteSlug, initialValues, submitLabel, onSubmit, onSuccess }: AuthorFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // UXP-003 — arquivo original do recorte ainda não salvo ("Ajustar
+  // recorte") e imagem atualmente aberta no cropper (`null` = fechado).
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [lastCropArea, setLastCropArea] = useState<PixelArea | null>(null);
+  const [cropSource, setCropSource] = useState<{
+    file: File;
+    url: string;
+    initialArea: PixelArea | null;
+  } | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cropReturnFocusRef = useRef<HTMLElement | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -159,6 +198,20 @@ export function AuthorForm({ siteSlug, initialValues, submitLabel, onSubmit, onS
     };
   }, [previewUrl]);
 
+  /** Mesmo padrão acima, para a URL local da imagem original aberta no cropper. */
+  useEffect(() => {
+    return () => {
+      if (cropSource) {
+        URL.revokeObjectURL(cropSource.url);
+      }
+    };
+  }, [cropSource]);
+
+  function openCropper(file: File, returnFocusTarget: HTMLElement | null, initialArea: PixelArea | null) {
+    cropReturnFocusRef.current = returnFocusTarget;
+    setCropSource({ file, url: URL.createObjectURL(file), initialArea });
+  }
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     // Reseta o valor do input imediatamente: sem isso, selecionar o MESMO
@@ -169,10 +222,42 @@ export function AuthorForm({ siteSlug, initialValues, submitLabel, onSubmit, onS
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
-    setSelectedFile(file);
+    // Antecipação client-side da política de upload (a API continua sendo a
+    // autoridade): arquivo inválido nunca abre o cropper nem altera o form.
+    const validationError = validateAvatarFile(file);
+    setAvatarError(validationError);
+    if (validationError) {
+      return;
+    }
+
+    // Imagem nova: começa centralizada (a área salva é do original anterior).
+    openCropper(file, fileInputRef.current, null);
+  }
+
+  function handleCropApplied(sourceUrl: string, croppedFile: File, croppedArea: PixelArea) {
+    if (!cropSource || cropSource.url !== sourceUrl) {
+      return; // resultado de um cropper que não é mais o aberto
+    }
+    const objectUrl = URL.createObjectURL(croppedFile);
+    setOriginalFile(cropSource.file);
+    setLastCropArea(croppedArea);
+    setCropSource(null);
+    setSelectedFile(croppedFile);
     setPreviewUrl(objectUrl);
     setValue('avatarUrl', objectUrl, { shouldDirty: true });
+  }
+
+  function handleCropCancelled() {
+    setCropSource(null);
+  }
+
+  function handleAdjustCrop(event: MouseEvent<HTMLButtonElement>) {
+    if (!originalFile || isSaving) {
+      return;
+    }
+    // O próprio botão recebe o foco de volta ao fechar o cropper (ele
+    // continua montado enquanto o recorte não for salvo).
+    openCropper(originalFile, event.currentTarget, lastCropArea);
   }
 
   function handleRemoveAvatar() {
@@ -180,6 +265,9 @@ export function AuthorForm({ siteSlug, initialValues, submitLabel, onSubmit, onS
       return;
     }
     setSelectedFile(null);
+    setOriginalFile(null);
+    setLastCropArea(null);
+    setAvatarError(null);
     setPreviewUrl(null);
     setValue('avatarUrl', null, { shouldDirty: true });
   }
@@ -204,6 +292,10 @@ export function AuthorForm({ siteSlug, initialValues, submitLabel, onSubmit, onS
 
         finalAvatarUrl = url;
         setSelectedFile(null);
+        // O recorte foi enviado: a partir daqui o avatar é o persistido, e
+        // recortar de novo exige selecionar o arquivo outra vez.
+        setOriginalFile(null);
+        setLastCropArea(null);
         setPreviewUrl(null);
         setValue('avatarUrl', finalAvatarUrl, { shouldDirty: true });
       } catch (error) {
@@ -278,26 +370,56 @@ export function AuthorForm({ siteSlug, initialValues, submitLabel, onSubmit, onS
         </label>
         <AuthorAvatar name={watchedName ?? ''} avatarUrl={previewSrc ?? null} />
         <input
+          ref={fileInputRef}
           id="author-avatar"
           type="file"
-          accept="image/*"
+          accept={AVATAR_FILE_ACCEPT}
           onChange={handleFileChange}
           disabled={isSaving}
+          aria-describedby={avatarError ? 'author-avatar-error author-avatar-hint' : 'author-avatar-hint'}
+          aria-invalid={avatarError ? true : undefined}
           className="font-ui text-body-sm"
         />
-        {previewSrc && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleRemoveAvatar}
-            disabled={isSaving}
-            className="self-start"
-          >
-            Remover avatar
-          </Button>
+        <Text id="author-avatar-hint" variant="body-sm" tone="muted" className="m-0">
+          JPEG, PNG ou WebP, até 5 MB. Depois de escolher, você ajusta o recorte.
+        </Text>
+        {avatarError && (
+          <Text id="author-avatar-error" role="alert" tone="danger" variant="body-sm" className="m-0">
+            {avatarError}
+          </Text>
+        )}
+        {(previewSrc || (originalFile && selectedFile)) && (
+          <div className="flex flex-wrap gap-2">
+            {originalFile && selectedFile && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleAdjustCrop}
+                disabled={isSaving}
+              >
+                Ajustar recorte
+              </Button>
+            )}
+            {previewSrc && (
+              <Button type="button" variant="secondary" size="sm" onClick={handleRemoveAvatar} disabled={isSaving}>
+                Remover avatar
+              </Button>
+            )}
+          </div>
         )}
       </div>
+
+      {cropSource && (
+        <AvatarCropDialog
+          key={cropSource.url}
+          imageUrl={cropSource.url}
+          returnFocusRef={cropReturnFocusRef}
+          initialCroppedAreaPixels={cropSource.initialArea}
+          onApply={(croppedFile, croppedArea) => handleCropApplied(cropSource.url, croppedFile, croppedArea)}
+          onCancel={handleCropCancelled}
+        />
+      )}
 
       {formError && (
         <Text role="alert" tone="danger" variant="body-sm" className="m-0">
