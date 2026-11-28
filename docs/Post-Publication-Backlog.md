@@ -360,3 +360,117 @@ Sem reprocessar os hashes existentes.
 - **Visual:** novos baselines `login-1440`, `login-360` e `login-error-1440` (copyright mascarado, porque o ano é calculado no build). Baselines anteriores preservados.
 
 **Status:** implementada em 2026-11-25, aguardando aprovação visual do PO. Sem commit.
+
+---
+
+### UXP-005 — Página pública do Autor (adiada)
+
+**Objetivo original:** página pública `/autores/[slug]` com foto, nome, biografia e Artigos publicados do Autor; link no byline do Artigo; SEO, canonical, dados estruturados, sitemap e revalidação.
+
+**Decisão do PO (2026-11-25):** **adiada**. Não serão implementados agora nem a página dedicada nem o bloco "Sobre o autor" no fim do Artigo. Prioridade transferida ao dashboard de cliques de afiliados.
+
+**Investigação preservada como referência futura (2026-11-25):**
+- **Modelo:** `Author` não tem `slug` nem estado ativo/arquivado. A relação com `Article` usa a chave composta `[authorId, siteId]` com `onDelete: Restrict`.
+- **Desenho técnico proposto:**
+  - `Author.slug` gerado pela API a partir do nome (sem acentos, minúsculas, hífens), único por Site, com sufixo `-2`/`-3` em colisão e **estável** ao renomear;
+  - migration em três passos: coluna opcional, preenchimento por SQL com `translate`/`regexp_replace`, sem depender de `unaccent`, e então `NOT NULL` com `@@unique([siteId, slug])`. O Autor de produção resultaria em `leo-geison`;
+  - janela de risco: enquanto o container antigo atende, a criação de Autor falha (também em rollback de imagem).
+- **Contratos e API (aditivos):**
+  - `slug` em `publicArticleAuthorSchema`;
+  - `authorSlug` na listagem pública;
+  - `GET /public/sites/:siteSlug/authors` e `/:slug`, só Autores com Artigo publicado no Site.
+- **FastCompre:**
+  - página `app/autores/[authorSlug]` com paginação e ordenação da Categoria, `ArticleCard` extraído (hoje duplicado em Home e Categoria), byline com link, `ProfilePage`/`Person` em JSON-LD e sitemap;
+  - a revalidação sitewide existente já cobre tudo.
+- **Decisões que ficaram em aberto:** Autor sem Artigo publicado (404 recomendado); conflito de rota `app/autores` × `[categorySlug]` (recusar o slug de Categoria `autores`, recomendado); slug não editável no Admin; extração do `ArticleCard`.
+- **Quando retomar:** quando houver mais de um Autor ou vários Artigos por Autor.
+
+**Status:** adiada em 2026-11-25. Não iniciada.
+
+---
+
+### UXP-006 — Dashboard de cliques de afiliados no Admin
+
+**Objetivo:** dar ao Admin uma leitura confiável dos eventos de clique de afiliado (`AffiliateClick`), por período, Artigo, categoria, Produto, Oferta e marketplace, sem depender de consulta manual ao banco.
+
+**Decisões do PO (2026-11-25):**
+- **Ampliação do escopo do MVP:** registrada em `docs/Architecture.md` (seções 6, 12 e 20), que também traz as definições normativas das métricas.
+- **Rota e acesso:**
+  - `/:siteSlug/clicks`, item "Cliques" na navegação;
+  - leitura para VIEWER ou superior;
+  - CSV para EDITOR ou superior, verificado na API.
+- **Implementação:**
+  - gráficos em SVG próprio, sem dependência nova;
+  - sem Redis, filas ou serviço externo;
+  - fuso `America/Sao_Paulo`.
+- **Bots:**
+  - nada é excluído por padrão; o total bruto é exibido;
+  - classes: provável bot, sem indício de bot, desconhecido;
+  - nunca "humano".
+- **Snapshot no clique:**
+  - colunas opcionais: marketplace, categoria do Artigo e `outcome` (redirecionamento autorizado × Oferta arquivada);
+  - sem backfill retroativo;
+  - sem duplicar outros atributos.
+- **Limites de entrada:**
+  - UTM e `user-agent` truncados sem quebrar o redirect;
+  - `referer` reduzido a origem + caminho;
+  - UA, referer, IP e dados pessoais nunca expostos na UI ou no CSV.
+- **Limites de consulta:**
+  - CSV até 10.000 eventos;
+  - período personalizado até 366 dias.
+
+**Implementação:**
+- **API (Prisma):**
+  - enum `AffiliateClickOutcome`;
+  - três colunas opcionais em `AffiliateClick`;
+  - migration aditiva `20261125181339_affiliate_click_snapshot`.
+- **API (Tracking):**
+  - `click-input-limits.ts`;
+  - recorder e repository gravam o snapshot e aplicam os limites.
+- **API (Application):**
+  - `handle-affiliate-redirect.use-case.ts` captura categoria, marketplace e `outcome` (fluxo e ordem preservados);
+  - read model `click-analytics/` (período, CSV, service), `PrismaClickAnalyticsQuery` (SQL parametrizado, `siteId` em toda consulta e join, ordenação determinística) e `ClickAnalyticsController`.
+- **Contratos:** `packages/contracts/src/admin/clicks/`, aditivos.
+- **Admin:**
+  - `src/app/[siteSlug]/clicks/` com:
+    - filtros persistidos na URL;
+    - `asOf` único por atualização;
+    - indicadores, evolução, distribuições, rankings e histórico paginado e ordenável;
+    - estados de carregamento, erro (404 = indisponível), vazio e parcial;
+    - tabela alternativa para cada gráfico;
+  - item "Cliques" na sidebar e na paleta de comandos.
+- **Fora (capacidade futura única de analytics/atribuição):** visitas/sessões, propagação de UTM da visita, pixels, custos de mídia, vendas, comissões e atribuição de campanha.
+
+**Desempenho (local, dados sintéticos: 100 mil cliques, 75 mil na janela de 90 dias; mediana HTTP):**
+
+| Endpoint | Mediana |
+|---|---|
+| summary 90d | ~580 ms |
+| summary 30d | ~220 ms |
+| summary 7d | ~70 ms |
+| rankings | ~30–35 ms |
+| events | 26 ms (página 100: 55 ms) |
+| filter-options | ~290 ms |
+| CSV 7d | ~107 ms |
+
+- **Otimizações medidas:**
+  - totais: contagens com FILTER + distintos em CTE com hash aggregate (606 ms com sort em disco → ~120 ms);
+  - ranking de Oferta/Produto: agrega antes do join (~400 ms → ~32 ms).
+- **Índices:** nenhum índice novo; os planos usam `(siteId, clickedAt)` e `(siteId, offerId, clickedAt)`.
+- **Limpeza:** dados sintéticos removidos.
+
+**Testes:**
+- **API:**
+  - unit: período, CSV, limites, recorder e use case;
+  - e2e `click-analytics.e2e-spec.ts`: autenticação, Role, tenancy, precisão, filtros, rankings, sem base anterior, validação 422, paginação/desempate, CSV (fórmula e limite) e snapshot/limites no `/r/`;
+  - também passa com `TZ=America/New_York`.
+- **Admin:**
+  - **Jest:** `click-format`, `clicks-dashboard`, incluindo jest-axe; specs de navegação atualizados de 5 para 6 destinos.
+  - **Browser real:**
+    - `clicks-dashboard.a11y.spec.ts`: 1440/360 nos estados populado com tabelas abertas, vazio, erro e personalizado;
+    - `clicks-dashboard-presentation.spec.ts`: overflow em 320/360/1440, teclado, URL, `asOf`, tabela alternativa, `aria-sort`, CSV por Role, movimento reduzido e ausência de "humano".
+  - **Visual:** novos `clicks-dashboard-desktop`/`-mobile`. Regenerados por mudança esperada (novo item "Cliques" na sidebar): `dashboard-populated`, `dashboard-empty` e `author-avatar-crop-dialog-1440`.
+
+**Deploy:** runbook §7.1 (confirmação somente leitura do fuso do banco, API manual logo após o push, smoke test e rollback).
+
+**Status:** implementada em 2026-11-28, aguardando validação do PO. Sem commit, push, deploy ou migration em produção.

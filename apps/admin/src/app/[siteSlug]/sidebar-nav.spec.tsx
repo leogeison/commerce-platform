@@ -78,7 +78,7 @@ describe('SidebarNav', () => {
     delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
-  it('renderiza os 5 itens (Dashboard, Artigos, Produtos, Categorias, Autores) com o href correto', () => {
+  it('renderiza os 6 itens (Dashboard, Artigos, Produtos, Categorias, Autores, Cliques) com o href correto', () => {
     renderSidebarNav('/fastcompre/categories');
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/fastcompre');
@@ -86,7 +86,8 @@ describe('SidebarNav', () => {
     expect(screen.getByRole('link', { name: 'Produtos' })).toHaveAttribute('href', '/fastcompre/products');
     expect(screen.getByRole('link', { name: 'Categorias' })).toHaveAttribute('href', '/fastcompre/categories');
     expect(screen.getByRole('link', { name: 'Autores' })).toHaveAttribute('href', '/fastcompre/authors');
-    expect(screen.getAllByRole('link')).toHaveLength(5);
+    expect(screen.getByRole('link', { name: 'Cliques' })).toHaveAttribute('href', '/fastcompre/clicks');
+    expect(screen.getAllByRole('link')).toHaveLength(6);
   });
 
   it('landmark de navegação com aria-label "Navegação do Site"', () => {
@@ -114,7 +115,7 @@ describe('SidebarNav', () => {
     expect(screen.getByRole('link', { name: 'Artigos' })).not.toHaveAttribute('aria-current');
   });
 
-  it.each(['/fastcompre/articles', '/fastcompre/products', '/fastcompre/categories', '/fastcompre/authors'])(
+  it.each(['/fastcompre/articles', '/fastcompre/products', '/fastcompre/categories', '/fastcompre/authors', '/fastcompre/clicks'])(
     'Dashboard: NÃO recebe aria-current em %s, mesmo sendo prefixo textual de toda rota do Site',
     (pathname) => {
       renderSidebarNav(pathname);
@@ -212,7 +213,7 @@ describe('SidebarNav', () => {
 
     const persistentNav = screen.getByRole('navigation', { name: 'Navegação do Site' });
     const links = within(persistentNav).getAllByRole('link');
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(6);
 
     for (const link of links) {
       const icon = link.querySelector('svg');
@@ -309,7 +310,7 @@ describe('SidebarNav', () => {
 
     const focusable = within(dialog).getAllByRole('button').concat(within(dialog).getAllByRole('link'));
     const labels = focusable.map((element) => element.textContent);
-    expect(labels).toEqual(['Fechar menu', 'Dashboard', 'Artigos', 'Produtos', 'Categorias', 'Autores']);
+    expect(labels).toEqual(['Fechar menu', 'Dashboard', 'Artigos', 'Produtos', 'Categorias', 'Autores', 'Cliques']);
   });
 
   it('UXA-019B: cabeçalho do drawer mostra o branding "FastCompre"/"ADMIN", que não é focável e não conta entre os elementos interativos', async () => {
@@ -332,6 +333,7 @@ describe('SidebarNav', () => {
       'Produtos',
       'Categorias',
       'Autores',
+      'Cliques',
     ]);
   });
 

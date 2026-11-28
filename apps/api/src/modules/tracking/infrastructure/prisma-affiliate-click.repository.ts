@@ -5,6 +5,12 @@ import type {
   RecordAffiliateClickInput,
 } from '../domain/affiliate-click-recorder';
 import type { AffiliateClickExistenceChecker } from '../domain/affiliate-click-existence-checker';
+import {
+  sanitizeReferer,
+  truncateCodePoints,
+  USER_AGENT_MAX_LENGTH,
+  UTM_MAX_LENGTH,
+} from '../domain/click-input-limits';
 
 /**
  * Implementação concreta (Prisma) de `AffiliateClickRecorder` (TRK-004) e,
@@ -35,11 +41,16 @@ export class PrismaAffiliateClickRepository
         siteId: input.siteId,
         offerId: input.offerId,
         articleId: input.articleId,
-        utmSource: input.utmSource,
-        utmMedium: input.utmMedium,
-        utmCampaign: input.utmCampaign,
-        referer: input.referer,
-        userAgent: input.userAgent,
+        // UXP-006 — limites de entrada (ver `click-input-limits.ts`): nunca
+        // rejeitam a requisição, só normalizam o que é gravado.
+        utmSource: truncateCodePoints(input.utmSource, UTM_MAX_LENGTH),
+        utmMedium: truncateCodePoints(input.utmMedium, UTM_MAX_LENGTH),
+        utmCampaign: truncateCodePoints(input.utmCampaign, UTM_MAX_LENGTH),
+        referer: sanitizeReferer(input.referer),
+        userAgent: truncateCodePoints(input.userAgent, USER_AGENT_MAX_LENGTH),
+        marketplace: input.marketplace,
+        articleCategoryId: input.articleCategoryId,
+        outcome: input.outcome,
       },
     });
   }

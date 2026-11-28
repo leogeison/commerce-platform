@@ -107,6 +107,9 @@ export class HandleAffiliateRedirectUseCase {
     }
 
     let articleId: string | null = null;
+    // UXP-006 — categoria do Artigo no momento do clique (o Artigo já foi
+    // carregado abaixo para validação; nenhuma consulta extra).
+    let articleCategoryId: string | null = null;
 
     if (input.articleId) {
       const article = await this.articleRepository.findOneBySite(input.siteId, input.articleId);
@@ -116,6 +119,7 @@ export class HandleAffiliateRedirectUseCase {
       }
 
       articleId = article.id;
+      articleCategoryId = article.categoryId ?? null;
     }
 
     await this.affiliateClickRecorder.record({
@@ -127,6 +131,12 @@ export class HandleAffiliateRedirectUseCase {
       utmCampaign: input.utmCampaign ?? null,
       referer: input.referer ?? null,
       userAgent: input.userAgent ?? null,
+      // UXP-006 — estado no momento do clique. `outcome` espelha exatamente
+      // a decisão tomada logo abaixo (410 se arquivada, senão 302); a ordem
+      // "registrar e depois decidir" é preservada.
+      marketplace: offer.marketplace,
+      articleCategoryId,
+      outcome: offer.archivedAt !== null ? 'OFFER_ARCHIVED' : 'REDIRECTED',
     });
 
     if (offer.archivedAt !== null) {

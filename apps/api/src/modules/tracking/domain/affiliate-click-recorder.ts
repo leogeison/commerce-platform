@@ -14,7 +14,16 @@
  * a convenção do projeto para acesso a dado via Prisma, independente do
  * nome da porta que implementa.
  */
+import type { Marketplace } from '@commerce-platform/contracts';
+
 export const AFFILIATE_CLICK_RECORDER = Symbol('AffiliateClickRecorder');
+
+/**
+ * UXP-006 — o que o redirecionador respondeu para este clique:
+ * `REDIRECTED` (302 para a `affiliateUrl`) ou `OFFER_ARCHIVED` (410).
+ * Nunca significa chegada confirmada ao marketplace.
+ */
+export type AffiliateClickOutcome = 'REDIRECTED' | 'OFFER_ARCHIVED';
 
 /**
  * Campos já validados/resolvidos por quem chama — normalizados para
@@ -32,6 +41,13 @@ export interface RecordAffiliateClickInput {
   utmCampaign: string | null;
   referer: string | null;
   userAgent: string | null;
+  /**
+   * UXP-006 — estado no MOMENTO do clique, já resolvido por quem chama a
+   * partir da Oferta/Artigo que ele mesmo carregou (nenhuma consulta extra).
+   */
+  marketplace: Marketplace;
+  articleCategoryId: string | null;
+  outcome: AffiliateClickOutcome;
 }
 
 export interface AffiliateClickRecorder {

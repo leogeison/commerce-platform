@@ -228,6 +228,11 @@ model Author {
 }
 
 // ── TRACKING ─────────────────────────────
+enum AffiliateClickOutcome {
+  REDIRECTED
+  OFFER_ARCHIVED
+}
+
 model AffiliateClick {
   id          String   @id @default(uuid())
   siteId      String
@@ -239,6 +244,19 @@ model AffiliateClick {
   utmMedium   String?
   utmCampaign String?
   clickedAt   DateTime @default(now())
+
+  // UXP-006 — estado no MOMENTO do clique (todas opcionais: compatibilidade
+  // com o histórico, deploy e rollback). `null` = não registrado (eventos
+  // anteriores a esta versão) — nunca preenchido retroativamente.
+  // `marketplace`: da Oferta no instante do clique (a Oferta é editável).
+  // `articleCategoryId`: categoria do Artigo de origem no instante do clique;
+  // identificador simples, sem FK, para não alterar as regras de exclusão de
+  // Categoria. `outcome`: o que o redirecionador respondeu — `REDIRECTED`
+  // (302 para a `affiliateUrl`) ou `OFFER_ARCHIVED` (410); NÃO é chegada
+  // confirmada ao marketplace.
+  marketplace       Marketplace?
+  articleCategoryId String?
+  outcome           AffiliateClickOutcome?
 
   site    Site     @relation(fields: [siteId], references: [id], onDelete: Restrict)
   offer   Offer    @relation(fields: [offerId, siteId], references: [id, siteId], onDelete: Restrict)

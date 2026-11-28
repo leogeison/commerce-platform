@@ -63,7 +63,7 @@ Não é receita ainda (fora do controle direto no curto prazo). O critério é o
 
 - Geração de conteúdo por IA (o fluxo manual de criação/revisão/publicação precisa provar que funciona primeiro; IA nunca publica sozinha).
 - Histórico de preço.
-- Dashboard de analytics (consulta direta ao banco é suficiente).
+- ~~Dashboard de analytics (consulta direta ao banco é suficiente).~~ **Ampliação de escopo aprovada pelo PO em 2026-11-25 (UXP-006, `docs/Post-Publication-Backlog.md`):** dashboard de **cliques de afiliados** no Admin (`/:siteSlug/clicks`), restrito a eventos de `AffiliateClick` — definições na seção 20. Continuam fora: visitas/sessões, propagação de UTM da visita, pixels, custos de mídia, vendas, comissões e atribuição de campanha (capacidade futura única de analytics/atribuição).
 - Busca interna/textual (em nenhuma listagem).
 - Tags e vínculo `ArticleTag`.
 - E-mail/notificação.
@@ -180,6 +180,8 @@ O KPI que mais importa nos primeiros 60-90 dias é indexação + clique — rece
 - Metadados (`referer`, `user-agent`, UTM) são armazenados quando disponíveis, mas nenhum é obrigatório para o registro do clique.
 - Nenhum dado de clique é pessoalmente identificável (sem IP, sem cookie de rastreamento individualizado no MVP).
 - `referer`/`user-agent` são tratados como telemetria não confiável, nunca usados em decisão de autorização/roteamento.
+- **Snapshot no clique (UXP-006):** além de Oferta/Artigo, o registro guarda o `marketplace` da Oferta e a categoria do Artigo (`articleCategoryId`, sem FK) **no momento do clique**, e o `outcome` (`REDIRECTED` = redirecionamento autorizado; `OFFER_ARCHIVED` = Oferta arquivada, respondida com `410`, sem redirecionamento). As três colunas são opcionais: `NULL` significa "não registrado" (evento anterior à UXP-006, ou gravado por versão anterior da API após rollback) e **nunca** é preenchido retroativamente. Nenhum outro atributo de Artigo/Produto/Oferta é duplicado.
+- **Limites de entrada (UXP-006):** UTM truncado em 200 e `user-agent` em 512 caracteres (por code point; vazio vira `NULL`); `referer` reduzido a origem + caminho `http(s)` (sem query/fragmento; inválido vira `NULL`), até 512. Truncar nunca impede o registro nem o redirecionamento.
 
 ---
 
@@ -367,6 +369,16 @@ Se a Oferta estiver arquivada, a resposta é **`410 Gone`**, com corpo de respos
 A exclusão física de uma Oferta é bloqueada (`409`) quando ela possui `AffiliateClick` registrado — essa verificação pertence a um caso de uso cross-domain (Catalog + Tracking), nunca ao Catalog isoladamente, para não criar dependência de Catalog em Tracking.
 
 Rate limit é aplicado tanto no login quanto neste endpoint de redirect.
+
+### Leitura analítica dos cliques (UXP-006)
+
+Read model no módulo `application` (Tracking continua sem conhecer Catalog/Editorial): `GET /admin/sites/:siteSlug/clicks/{summary,rankings,events,filter-options}` (Role VIEWER ou superior) e `.../export.csv` (EDITOR ou superior, verificado na API). Definições normativas:
+
+- **Unidade:** evento registrado (`AffiliateClick`). Não é visitante único, sessão, venda nem conversão. "Redirecionamentos autorizados" = eventos com `outcome = REDIRECTED`; eventos `OFFER_ARCHIVED` e não registrados entram no total de eventos, nunca nos redirecionamentos.
+- **Tempo:** `clickedAt` é instante UTC; períodos são dias locais de `America/Sao_Paulo`, intervalos semiabertos `[início, fim)`. Uma referência única `asOf` (limitada ao relógio do servidor) vale para todas as consultas de uma atualização; dia corrente é parcial e sinalizado. Comparação com o período anterior de mesma duração e mesmo horário de corte; sem eventos no anterior, não há percentual. Série temporal por hora (períodos de um dia) ou por dia, com buckets vazios = 0.
+- **Classificações derivadas do `user-agent`:** dispositivo (aproximado) e bot em três classes — provável bot, sem indício de bot, desconhecido. Nunca "humano"; nada é excluído por padrão.
+- **Dimensões:** categoria = categoria do Artigo no clique; marketplace = marketplace no clique; ranking de Oferta exibe o marketplace **atual** da Oferta, rotulado como tal. Origem/campanha não é apresentada como atribuição confiável.
+- **Segurança:** toda consulta e join filtrados por `siteId`; SQL parametrizado; CSV (máx. 10.000 eventos, período personalizado máx. 366 dias) com proteção contra injeção de fórmula e sem `user-agent`, `referer`, IP ou IDs.
 
 ---
 

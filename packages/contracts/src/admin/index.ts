@@ -7,3 +7,4 @@ export * from './authors/index.js';
 export * from './articles/index.js';
 export * from './publication/index.js';
 export * from './uploads/index.js';
+export * from './clicks/index.js';

@@ -12,12 +12,13 @@ function buildOffer(archived: boolean, id: string = OFFER_ID): Offer {
   return {
     id,
     siteId: SITE_ID,
+    marketplace: 'AMAZON',
     archivedAt: archived ? new Date() : null,
   } as unknown as Offer;
 }
 
-function buildArticle(id: string = ARTICLE_ID): Article {
-  return { id, siteId: SITE_ID } as unknown as Article;
+function buildArticle(id: string = ARTICLE_ID, categoryId: string | null = 'category-1'): Article {
+  return { id, siteId: SITE_ID, categoryId } as unknown as Article;
 }
 
 function buildFakes(fixtures: { offer: Offer | null; article?: Article | null }) {
@@ -59,6 +60,9 @@ describe('HandleAffiliateRedirectUseCase', () => {
       utmCampaign: null,
       referer: null,
       userAgent: null,
+      marketplace: 'AMAZON',
+      articleCategoryId: null,
+      outcome: 'REDIRECTED',
     });
   });
 
@@ -124,6 +128,9 @@ describe('HandleAffiliateRedirectUseCase', () => {
       utmCampaign: 'black-friday',
       referer: 'https://origem.test.com/',
       userAgent: 'Mozilla/5.0',
+      marketplace: 'AMAZON',
+      articleCategoryId: null,
+      outcome: 'REDIRECTED',
     });
   });
 
@@ -171,6 +178,37 @@ describe('HandleAffiliateRedirectUseCase', () => {
       utmCampaign: null,
       referer: null,
       userAgent: null,
+      marketplace: 'AMAZON',
+      articleCategoryId: null,
+      outcome: 'OFFER_ARCHIVED',
+    });
+  });
+
+  describe('UXP-006 — estado no momento do clique', () => {
+    it('grava a categoria do Artigo de origem e outcome REDIRECTED', async () => {
+      const offer = buildOffer(false);
+      const { useCase, record } = buildFakes({ offer, article: buildArticle(ARTICLE_ID, 'category-9') });
+      await useCase.execute({ siteId: SITE_ID, offerId: OFFER_ID, articleId: ARTICLE_ID });
+      expect(record).toHaveBeenCalledWith(
+        expect.objectContaining({ articleCategoryId: 'category-9', marketplace: 'AMAZON', outcome: 'REDIRECTED' }),
+      );
+    });
+
+    it('Artigo sem categoria grava articleCategoryId null', async () => {
+      const offer = buildOffer(false);
+      const { useCase, record } = buildFakes({ offer, article: buildArticle(ARTICLE_ID, null) });
+      await useCase.execute({ siteId: SITE_ID, offerId: OFFER_ID, articleId: ARTICLE_ID });
+      expect(record).toHaveBeenCalledWith(expect.objectContaining({ articleCategoryId: null }));
+    });
+
+    it('Oferta arquivada com Artigo: outcome OFFER_ARCHIVED, categoria registrada, sem redirecionar', async () => {
+      const offer = buildOffer(true);
+      const { useCase, record } = buildFakes({ offer, article: buildArticle() });
+      const result = await useCase.execute({ siteId: SITE_ID, offerId: OFFER_ID, articleId: ARTICLE_ID });
+      expect(result).toEqual({ ok: false, reason: 'OFFER_ARCHIVED' });
+      expect(record).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: 'OFFER_ARCHIVED', articleCategoryId: 'category-1' }),
+      );
     });
   });
 

@@ -43,6 +43,8 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
   { label: 'Produtos', segment: 'products' },
   { label: 'Categorias', segment: 'categories' },
   { label: 'Autores', segment: 'authors' },
+  // UXP-006 — dashboard de cliques de afiliados (leitura; VIEWER ou superior).
+  { label: 'Cliques', segment: 'clicks' },
 ] as const;
 
 /**

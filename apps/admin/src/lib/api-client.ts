@@ -72,6 +72,22 @@ export async function apiRequest<T>(
   return parseOrThrow(responseSchema, parsedBody.body, response.status);
 }
 
+/**
+ * UXP-006 — download de arquivo (ex.: CSV) com a mesma sessão (`credentials:
+ * 'include'`) e o mesmo tratamento de erro de `apiRequest` (corpo de erro
+ * JSON padrão da API → `AdminApiError` com a mensagem segura da API).
+ */
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(`${env.NEXT_PUBLIC_API_URL}${path}`, { method: 'GET', credentials: 'include' });
+  if (!response.ok) {
+    const parsedBody = await parseBody(response);
+    throwApiError(response.status, parsedBody.success ? parsedBody.body : undefined);
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+  return { blob: await response.blob(), filename };
+}
+
 type ParsedBody = { success: true; body: unknown } | { success: false };
 
 /**

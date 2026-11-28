@@ -13,6 +13,7 @@ import {
   FileText,
   LayoutDashboard,
   Menu as MenuIcon,
+  MousePointerClick,
   ShoppingBag,
   Tag,
   Users,
@@ -391,14 +392,15 @@ const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
  * lança um erro claro em vez de deixar `SEGMENT_ICONS[segment as
  * NavSegment]` produzir `undefined` silenciosamente.
  */
-type NavSegment = '' | 'articles' | 'products' | 'categories' | 'authors';
+type NavSegment = '' | 'articles' | 'products' | 'categories' | 'authors' | 'clicks';
 
 const SEGMENT_ICONS = {
   '': LayoutDashboard,
   articles: FileText,
   products: ShoppingBag,
   categories: Tag,
-  authors: Users
+  authors: Users,
+  clicks: MousePointerClick
 } satisfies Record<NavSegment, LucideIcon>;
 
 function iconForSegment(segment: string): LucideIcon {

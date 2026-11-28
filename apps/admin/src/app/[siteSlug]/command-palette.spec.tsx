@@ -135,7 +135,7 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('combobox', { name: 'Buscar navegação' })).toBeInTheDocument();
   });
 
-  it('com query vazia, lista os 5 destinos (Dashboard primeiro) e a primeira opção fica ativa', () => {
+  it('com query vazia, lista os 6 destinos (Dashboard primeiro) e a primeira opção fica ativa', () => {
     render(buildTree('/fastcompre/categories'));
     act(() => pressShortcut());
 
@@ -146,6 +146,7 @@ describe('CommandPalette', () => {
       'Produtos',
       'Categorias',
       'Autores',
+      'Cliques', // UXP-006
     ]);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
   });
@@ -367,6 +368,7 @@ describe('CommandPalette', () => {
       'Produtos',
       'Categorias',
       'Autores',
+      'Cliques', // UXP-006
     ]);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
     expect(reopenedInput).toHaveAttribute('aria-activedescendant', options[0].id);
@@ -499,23 +501,23 @@ describe('CommandPalette', () => {
    * comportamento de agrupamento/busca/navegação/dirty-state associado.
    */
   describe('UXA-010 — ações de criação', () => {
-    it('VIEWER: só os 5 destinos de navegação, sem grupo "Criar"', () => {
+    it('VIEWER: só os 6 destinos de navegação, sem grupo "Criar"', () => {
       render(buildTree('/fastcompre/categories', false, 'VIEWER'));
       act(() => pressShortcut());
 
-      expect(screen.getAllByRole('option')).toHaveLength(5);
+      expect(screen.getAllByRole('option')).toHaveLength(6);
       expect(screen.getByRole('group', { name: 'Navegar' })).toBeInTheDocument();
       expect(screen.queryByRole('group', { name: 'Criar' })).not.toBeInTheDocument();
     });
 
     it.each<Role>(['EDITOR', 'OWNER'])(
-      '%s: os 5 destinos de navegação e os 4 atalhos de criação, em dois grupos',
+      '%s: os 6 destinos de navegação e os 4 atalhos de criação, em dois grupos',
       (role) => {
         render(buildTree('/fastcompre/categories', false, role));
         act(() => pressShortcut());
 
         const options = screen.getAllByRole('option');
-        expect(options).toHaveLength(9);
+        expect(options).toHaveLength(10);
         expect(screen.getByRole('group', { name: 'Navegar' })).toBeInTheDocument();
         expect(screen.getByRole('group', { name: 'Criar' })).toBeInTheDocument();
 
@@ -568,9 +570,10 @@ describe('CommandPalette', () => {
       act(() => pressShortcut());
 
       const input = screen.getByRole('combobox', { name: 'Buscar navegação' });
-      await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}'); // Dashboard -> Artigos -> Produtos -> Categorias -> Autores
-      const autores = screen.getByRole('option', { name: 'Autores' });
-      expect(input).toHaveAttribute('aria-activedescendant', autores.id);
+      // UXP-006: "Cliques" passou a ser o último item de "Navegar".
+      await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}'); // Dashboard -> Artigos -> Produtos -> Categorias -> Autores -> Cliques
+      const cliques = screen.getByRole('option', { name: 'Cliques' });
+      expect(input).toHaveAttribute('aria-activedescendant', cliques.id);
 
       await user.keyboard('{ArrowDown}'); // atravessa a fronteira para o primeiro item de "Criar"
       const novoArtigo = screen.getByRole('option', { name: 'Novo Artigo' });

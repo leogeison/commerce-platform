@@ -26,6 +26,9 @@ import { UpdateOfferAndRevalidateUseCase } from './application/update-offer-and-
 import { OfferArchiveAndRevalidateUseCase } from './application/offer-archive-and-revalidate.use-case';
 import { UpdateAuthorAndRevalidateUseCase } from './application/update-author-and-revalidate.use-case';
 import { AffiliateRedirectController } from './presentation/affiliate-redirect.controller';
+import { ClickAnalyticsController } from './presentation/click-analytics.controller';
+import { ClickAnalyticsService } from './application/click-analytics/click-analytics.service';
+import { PrismaClickAnalyticsQuery } from './infrastructure/prisma-click-analytics.query';
 import { ArchiveArticleController } from './presentation/archive-article.controller';
 import { ArticleHealthController } from './presentation/article-health.controller';
 import { PublishArticleController } from './presentation/publish-article.controller';
@@ -284,6 +287,7 @@ import { UpdateAuthorController } from './presentation/update-author.controller'
     HttpModule,
   ],
   controllers: [
+    ClickAnalyticsController,
     ArticleHealthController,
     RemoveProductController,
     RemoveCategoryController,
@@ -301,6 +305,8 @@ import { UpdateAuthorController } from './presentation/update-author.controller'
     UpdateAuthorController,
   ],
   providers: [
+    ClickAnalyticsService,
+    PrismaClickAnalyticsQuery,
     CalculateArticleHealthUseCase,
     PublishArticleUseCase,
     RemoveProductUseCase,

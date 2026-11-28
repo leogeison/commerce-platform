@@ -2,13 +2,14 @@ import { describe, expect, it } from '@jest/globals';
 import { NAV_DESTINATIONS, isNavDestinationActive, navDestinationHref } from './nav-destinations';
 
 describe('nav-destinations', () => {
-  it('lista os 5 destinos na ordem definitiva da arquitetura de informação, com Dashboard primeiro e marcado como rota raiz', () => {
+  it('lista os 6 destinos na ordem definitiva da arquitetura de informação, com Dashboard primeiro e marcado como rota raiz', () => {
     expect(NAV_DESTINATIONS).toEqual([
       { label: 'Dashboard', segment: '', isRootRoute: true },
       { label: 'Artigos', segment: 'articles' },
       { label: 'Produtos', segment: 'products' },
       { label: 'Categorias', segment: 'categories' },
       { label: 'Autores', segment: 'authors' },
+      { label: 'Cliques', segment: 'clicks' },
     ]);
   });
 

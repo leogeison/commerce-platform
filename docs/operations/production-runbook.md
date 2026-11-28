@@ -220,6 +220,32 @@ Executar após o primeiro deploy e após cada deploy relevante. Não criar dados
 3. **Frontends depois**, quando dependerem da nova API.
 4. Regra obrigatória: mudanças de schema e de contrato são **expand/contract** — a nova migration precisa funcionar com o código que já está no ar, e o código novo precisa tolerar o schema anterior durante a janela de deploy. Remoções e renomeações destrutivas acontecem só em deploy posterior, depois que nenhum código ativo depende do formato antigo.
 
+### 7.1 Deploy da UXP-006 (dashboard de cliques)
+
+Migration `20261125181339_affiliate_click_snapshot`: **aditiva** (um enum e três colunas opcionais em `AffiliateClick`, sem índice, sem backfill), compatível com a API anterior — que simplesmente não preenche as colunas.
+
+1. **Antes do deploy, confirmar o fuso da sessão do banco (somente leitura).** As métricas dependem de `clickedAt` (preenchido por `now()` em coluna sem fuso) estar em UTC. Via `railway ssh` no container ativo da `api` — imprime apenas o fuso e um booleano, nunca a connection string:
+   ```sh
+   node - <<'EOF'
+   const { Client } = require('pg');
+   (async () => {
+     const c = new Client({ connectionString: process.env.DATABASE_URL });
+     await c.connect(); await c.query('BEGIN READ ONLY');
+     const r = await c.query(`SELECT current_setting('TimeZone') AS timezone,
+       abs(extract(epoch FROM (now()::timestamp - (now() AT TIME ZONE 'UTC')))) < 1 AS session_is_utc`);
+     console.table(r.rows);
+     await c.query('ROLLBACK'); await c.end();
+   })().catch((e) => { console.error('Falha:', e.code ?? 'erro'); process.exit(1); });
+   EOF
+   ```
+   Esperado: `session_is_utc = true` (ex.: `UTC`/`Etc/UTC`). Se for `false`, **não fazer o deploy**: reportar, porque os horários exibidos ficariam deslocados.
+2. **Ordem:** o push para `main` publica o Admin automaticamente na Vercel; o deploy da API no Railway é manual. Fazer o deploy manual da API **logo após o push** (pre-deploy aplica a migration → healthcheck 2xx). Na janela entre os dois, a página "Cliques" do Admin mostra "Painel de cliques indisponível no momento" (404 tratado); nenhuma outra tela é afetada.
+3. **Smoke test adicional:** Admin → Cliques carrega (indicadores, rankings, histórico); exportar CSV com Role EDITOR+; um clique real de CTA continua respondendo 302 e aparece no histórico como "Redirecionamento autorizado", com marketplace e categoria.
+4. **Rollback:**
+   - API: rollback no Railway normal (seção 8). As colunas permanecem no banco (expand/contract); a API anterior grava cliques com as colunas `NULL`, que o dashboard exibe como "Não registrado" — nunca inferido.
+   - Admin: Instant Rollback na Vercel remove a página; sem impacto na API.
+   - Nunca remover as colunas/enum nem usar `migrate resolve` para "desfazer" esta migration.
+
 ## 8. Falhas e rollback
 
 | Situação | Procedimento |
